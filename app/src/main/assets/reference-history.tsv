@@ -1,0 +1,8 @@
+M	Landroid/app/AppOpsManager$AttributedOpEntry$LongSparseArrayParceling;->parcel(Landroid/util/LongSparseArray;Landroid/os/Parcel;I)V	bfecf23a78d4da7c3c422ab26c12668bb2371ffd40e7b91b02f52b35b6d5fe25
+M	Landroid/app/AppOpsManager$AttributedOpEntry$LongSparseArrayParceling;->parcel(Ljava/lang/Object;Landroid/os/Parcel;I)V	da519170f7e20eddfb370ee47307d466ce9cef1e2d3ccc4435369c8e802d0b5c
+M	Landroid/app/AppOpsManager$AttributedOpEntry;->writeToParcel(Landroid/os/Parcel;I)V	bcb5faa3c6f1c083cdedaaf93a2a46a864e2106c52ab7d5b3918e5ff2d425a96
+M	Landroid/app/AppOpsManager$NoteOpEvent;->writeToParcel(Landroid/os/Parcel;I)V	1719c507f91b53e80ecbd4b41928e425ebb49722804d5906c8bf28b94ccffaa6
+M	Landroid/app/AppOpsManager$OpEntry;->writeToParcel(Landroid/os/Parcel;I)V	58f541f695ca103c355eeb50c5c9721ea4756135da40203504f7bd202243c26e
+M	Landroid/app/AppOpsManager$PackageOps;->writeToParcel(Landroid/os/Parcel;I)V	699081aceedb8ec2c390c262ddd154bc08067b6ba11a668d0a20aae5664136d9
+M	Lcom/android/internal/app/IAppOpsService$Stub$Proxy;->getOpsForPackage(ILjava/lang/String;[I)Ljava/util/List;	c873101d873ba0da6f91dfaba964a13b11e37f2e0867a2cc136556e0fc6e6e90
+T	Lcom/android/internal/app/IAppOpsService$Stub;->TRANSACTION_getOpsForPackage:I	20

@@ -1,0 +1,161 @@
+{
+  "developer": {
+    "title": "개발자 옵션 켜기",
+    "body": "휴대전화 정보 → 소프트웨어 정보에서 빌드번호를 7번 누르세요.",
+    "screen": "휴대전화 정보",
+    "rows": [
+      "소프트웨어 정보",
+      "소프트웨어 정보",
+      "안드로이드 버전",
+      "빌드번호"
+    ],
+    "highlight": 3,
+    "badge": "7×",
+    "layout": "developer"
+  },
+  "wireless": {
+    "title": "무선 디버깅 켜기",
+    "body": "무선 디버깅을 켠 뒤 바로 페어링 코드 화면을 열어도 돼요.",
+    "screen": "개발자 옵션",
+    "rows": [
+      "USB 디버깅",
+      "무선 디버깅",
+      "무선 디버깅 승인 취소"
+    ],
+    "highlight": 1,
+    "badge": "ON"
+  },
+  "code-page": {
+    "title": "페어링 코드 화면 열기",
+    "body": "페어링 코드로 기기 페어링을 누르고 코드 화면을 열어두세요.",
+    "screen": "무선 디버깅",
+    "rows": [
+      "무선 디버깅 사용 중",
+      "페어링 코드로 기기 페어링",
+      "페어링된 기기"
+    ],
+    "highlight": 1,
+    "badge": "›"
+  },
+  "code-input": {
+    "title": "알림에 코드 입력",
+    "body": "설정 화면을 유지한 채 bluedotOFF 알림에서 코드를 입력하고 전송하세요.",
+    "screen": "알림창",
+    "rows": [
+      "bluedotOFF · 페어링 코드를 입력하세요",
+      "••••••"
+    ],
+    "highlight": 1,
+    "badge": "→",
+    "layout": "notification"
+  },
+  "manual": {
+    "title": "분할 화면에서 입력",
+    "body": "분할 화면에서 설정과 bluedotOFF를 함께 열어 코드를 입력하세요. 코드 창을 닫으면 연결할 수 없어요.",
+    "screen": "분할 화면",
+    "rows": [
+      "설정 · Wi-Fi 페어링 코드",
+      "6자리 페어링 코드",
+      "이 코드로 연결"
+    ],
+    "highlight": 2,
+    "badge": "",
+    "layout": "split"
+  },
+  "wifi": {
+    "title": "Wi-Fi에 연결해주세요",
+    "body": "Wi-Fi를 켜고 네트워크에 연결하면 다음 단계로 넘어가요.",
+    "screen": "Wi-Fi",
+    "rows": [
+      "Wi-Fi 사용 중",
+      "사용할 Wi-Fi",
+      "다른 네트워크"
+    ],
+    "highlight": 1,
+    "badge": "›"
+  },
+  "notifications": {
+    "title": "알림 허용",
+    "body": "알림을 허용하면 설정 화면에서 바로 페어링 코드를 입력할 수 있어요.",
+    "screen": "bluedotOFF에서 알림을 보내도록 허용하시겠습니까?",
+    "rows": [
+      "허용",
+      "허용 안 함"
+    ],
+    "highlight": 0,
+    "badge": "",
+    "layout": "permission"
+  },
+  "verify": {
+    "title": "기기와 앱 확인",
+    "body": "연결과 기기 호환성, 앱의 복원 기록을 먼저 확인해요.",
+    "screen": "bluedotOFF",
+    "rows": [
+      "기기 호환성 확인",
+      "앱 복원 기록 확인",
+      "적용 범위 선택 후 전체 앱 확인"
+    ],
+    "highlight": 0,
+    "badge": "›"
+  },
+  "automatic": {
+    "title": "자동 관리 선택",
+    "body": "권장 선택사항이에요. 사용할 때 연결하고 작업이 끝나면 무선 디버깅을 꺼요.",
+    "screen": "bluedotOFF",
+    "rows": [
+      "자동 관리 사용 (권장)",
+      "지금은 사용하지 않기",
+      "선택 후 적용 범위 선택"
+    ],
+    "highlight": 0,
+    "badge": "›"
+  },
+  "welcome": {
+    "title": "시작하기",
+    "body": "신뢰하는 앱의 파란 위치 표시를 숨깁니다.",
+    "screen": "bluedotOFF",
+    "rows": [
+      "시작하기",
+      "필요한 설정을 차례로 안내",
+      "준비된 단계는 자동으로 생략"
+    ],
+    "highlight": 0,
+    "badge": "›"
+  },
+  "nearby": {
+    "title": "근처 기기 권한",
+    "body": "권한 창에서 허용을 누르면 무선 디버깅 안내로 넘어가요.",
+    "screen": "bluedotOFF에서 근처에 있는 기기를 찾아 연결하고 기기 간 상대적 위치를 파악하도록 허용하시겠습니까?",
+    "rows": [
+      "허용",
+      "허용 안 함"
+    ],
+    "highlight": 0,
+    "badge": "",
+    "layout": "permission"
+  },
+  "scope": {
+    "title": "적용 범위 선택",
+    "body": "일반 적용 또는 전체 적용을 선택하세요. 나중에 설정에서 바꿀 수 있어요.",
+    "screen": "bluedotOFF",
+    "rows": [
+      "일반 적용",
+      "전체 적용",
+      "선택 후 마지막 기기 확인"
+    ],
+    "highlight": 0,
+    "badge": "›"
+  },
+  "final": {
+    "title": "최종 기기 확인",
+    "body": "선택한 범위의 앱을 한 번 확인하고 홈으로 이동해요.",
+    "screen": "bluedotOFF",
+    "rows": [
+      "전체 앱의 표시 상태 확인",
+      "원래 상태 기록 확인",
+      "준비 완료 · 홈으로 이동"
+    ],
+    "highlight": 0,
+    "badge": "›"
+  }
+}

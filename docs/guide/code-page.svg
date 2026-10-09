@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="228" viewBox="0 0 360 228" role="img" aria-labelledby="title description">
+<title id="title">페어링 코드 화면 열기</title>
+<desc id="description">페어링 코드로 기기 페어링을 누르고 코드 화면을 열어두세요.</desc>
+<rect width="360" height="228" rx="20" fill="#f3f5f9"/>
+<g font-family="sans-serif" fill="#1e2431">
+<text x="20" y="32" font-size="17">‹  무선 디버깅</text>
+<rect x="14" y="48" width="332" height="42" rx="12" fill="#ffffff"/>
+<text x="26" y="73" font-size="14">무선 디버깅 사용 중</text>
+<rect x="14" y="94" width="332" height="42" rx="12" fill="#ffffff" stroke="#356aff" stroke-width="2"/>
+<text x="26" y="119" font-size="14">페어링 코드로 기기 페어링</text>
+<text x="306" y="121" font-size="14">›</text>
+<rect x="14" y="140" width="332" height="42" rx="12" fill="#ffffff"/>
+<text x="26" y="165" font-size="14">페어링된 기기</text>
+<text x="20" y="216" font-size="11" fill="#555555">이동한 화면 예시 · 강조된 곳을 누르세요</text>
+</g></svg>

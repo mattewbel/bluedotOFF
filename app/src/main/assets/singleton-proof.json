@@ -1,0 +1,8 @@
+{
+  "state": "VERIFIED",
+  "fingerprint": "samsung/q7qksx/q7q:17/CP2A.260605.016/F966NKSUCCZIH_OKRCCZIH:user/release-keys",
+  "abiProfile": "046bc2fbf34bce569bf04f81b9548cfe8b49c1842783c46af5315aab5e4d28b8",
+  "evidenceId": "phase63-fold7-20261004-dummy-and-kakao-aba",
+  "evidenceSha256": "fe68302eb7d2d6a381da01c22f65704112a0e4c2ff5cd8b4abd20a9cd8110d69",
+  "scope": "Experimental singleton shared-user path; fresh authoritative sole peer plus all normal gates required."
+}

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="220" viewBox="0 0 360 220" role="img" aria-labelledby="title description">
+<title id="title">알림 허용</title>
+<desc id="description">알림을 허용하면 설정 화면에서 바로 페어링 코드를 입력할 수 있어요.</desc>
+<rect width="360" height="220" rx="20" fill="#f3f5f9"/>
+<g font-family="sans-serif" fill="#1e2431">
+<path d="M169 35 L172 30 V25 Q172 15 180 15 Q188 15 188 25 V30 L191 35 Z M177 37 Q180 41 183 37" stroke="#356aff" stroke-width="2" fill="none"/>
+<text x="180" y="70" font-size="17" text-anchor="middle">bluedotOFF에서 알림을 보내도록 허용</text>
+<text x="180" y="89" font-size="17" text-anchor="middle">하시겠습니까?</text>
+<rect x="28" y="116" width="304" height="40" rx="12" fill="#ffffff" stroke="#356aff" stroke-width="2"/>
+<text x="180" y="145" font-size="16" text-anchor="middle">허용</text>
+<text x="180" y="193" font-size="16" text-anchor="middle">허용 안 함</text>
+<text x="20" y="208" font-size="11" fill="#555555">이동한 화면 예시 · 강조된 곳을 누르세요</text>
+</g></svg>

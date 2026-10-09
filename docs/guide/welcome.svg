@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="228" viewBox="0 0 360 228" role="img" aria-labelledby="title description">
+<title id="title">시작하기</title>
+<desc id="description">신뢰하는 앱의 파란 위치 표시를 숨깁니다.</desc>
+<rect width="360" height="228" rx="20" fill="#f3f5f9"/>
+<g font-family="sans-serif" fill="#1e2431">
+<text x="20" y="32" font-size="17">‹  bluedotOFF</text>
+<rect x="14" y="48" width="332" height="42" rx="12" fill="#ffffff" stroke="#356aff" stroke-width="2"/>
+<text x="26" y="73" font-size="14">시작하기</text>
+<text x="306" y="75" font-size="14">›</text>
+<rect x="14" y="94" width="332" height="42" rx="12" fill="#ffffff"/>
+<text x="26" y="119" font-size="14">필요한 설정을 차례로 안내</text>
+<rect x="14" y="140" width="332" height="42" rx="12" fill="#ffffff"/>
+<text x="26" y="165" font-size="14">준비된 단계는 자동으로 생략</text>
+<text x="20" y="216" font-size="11" fill="#555555">이동한 화면 예시 · 강조된 곳을 누르세요</text>
+</g></svg>

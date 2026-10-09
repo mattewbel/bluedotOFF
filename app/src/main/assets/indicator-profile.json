@@ -1,0 +1,6 @@
+{
+  "fingerprint": "samsung/q7qksx/q7q:17/CP2A.260605.016/F966NKSUCCZIH_OKRCCZIH:user/release-keys",
+  "systemUiSha256": "6c463b842b511ebb8277cc5d3e332a1679e13fb944e45a51757767a03499301b",
+  "aospCommit": "94b4c163b7dfe5ce3607f7bb8456f9573f7de57d",
+  "roles": ["config_systemAmbientAudioIntelligence", "config_systemUiIntelligence", "config_systemAudioIntelligence", "config_systemNotificationIntelligence", "config_systemTextIntelligence", "config_systemVisualIntelligence"]
+}

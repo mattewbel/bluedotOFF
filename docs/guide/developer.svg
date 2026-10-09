@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="320" viewBox="0 0 360 320" role="img" aria-labelledby="title description">
+<title id="title">개발자 옵션 켜기</title>
+<desc id="description">휴대전화 정보 → 소프트웨어 정보에서 빌드번호를 7번 누르세요.</desc>
+<rect width="360" height="320" rx="20" fill="#f3f5f9"/>
+<g font-family="sans-serif" fill="#1e2431">
+<text x="20" y="30" font-size="16">‹  휴대전화 정보</text>
+<rect x="14" y="46" width="332" height="42" rx="12" fill="#ffffff" stroke="#356aff" stroke-width="2"/>
+<text x="26" y="71" font-size="14">소프트웨어 정보</text>
+<text x="306" y="73" font-size="14">›</text>
+<text x="180" y="117" font-size="20" text-anchor="middle">↓</text>
+<text x="20" y="146" font-size="16">‹  소프트웨어 정보</text>
+<rect x="14" y="162" width="332" height="42" rx="12" fill="#ffffff"/>
+<text x="26" y="187" font-size="14">안드로이드 버전</text>
+<rect x="14" y="212" width="332" height="42" rx="12" fill="#ffffff" stroke="#356aff" stroke-width="2"/>
+<text x="26" y="237" font-size="14">빌드번호</text>
+<text x="306" y="239" font-size="14">7×</text>
+<text x="20" y="308" font-size="11" fill="#555555">이동한 화면 예시 · 강조된 곳을 누르세요</text>
+</g></svg>

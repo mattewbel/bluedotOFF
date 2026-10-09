@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="228" viewBox="0 0 360 228" role="img" aria-labelledby="title description">
+<title id="title">자동 관리 선택</title>
+<desc id="description">권장 선택사항이에요. 사용할 때 연결하고 작업이 끝나면 무선 디버깅을 꺼요.</desc>
+<rect width="360" height="228" rx="20" fill="#f3f5f9"/>
+<g font-family="sans-serif" fill="#1e2431">
+<text x="20" y="32" font-size="17">‹  bluedotOFF</text>
+<rect x="14" y="48" width="332" height="42" rx="12" fill="#ffffff" stroke="#356aff" stroke-width="2"/>
+<text x="26" y="73" font-size="14">자동 관리 사용 (권장)</text>
+<text x="306" y="75" font-size="14">›</text>
+<rect x="14" y="94" width="332" height="42" rx="12" fill="#ffffff"/>
+<text x="26" y="119" font-size="14">지금은 사용하지 않기</text>
+<rect x="14" y="140" width="332" height="42" rx="12" fill="#ffffff"/>
+<text x="26" y="165" font-size="14">선택 후 적용 범위 선택</text>
+<text x="20" y="216" font-size="11" fill="#555555">이동한 화면 예시 · 강조된 곳을 누르세요</text>
+</g></svg>

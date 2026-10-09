@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="310" viewBox="0 0 360 310" role="img" aria-labelledby="title description">
+<title id="title">근처 기기 권한</title>
+<desc id="description">권한 창에서 허용을 누르면 무선 디버깅 안내로 넘어가요.</desc>
+<rect width="360" height="310" rx="20" fill="#f3f5f9"/>
+<g font-family="sans-serif" fill="#1e2431">
+<text x="180" y="38" font-size="26" text-anchor="middle">◇</text>
+<text x="180" y="70" font-size="17" text-anchor="middle">bluedotOFF에서 근처에 있는 기기를 </text>
+<text x="180" y="89" font-size="17" text-anchor="middle">찾아 연결하고 기기 간 상대적 위치를 </text>
+<text x="180" y="108" font-size="17" text-anchor="middle">파악하도록 허용하시겠습니까?</text>
+<rect x="28" y="194" width="304" height="40" rx="12" fill="#ffffff" stroke="#356aff" stroke-width="2"/>
+<text x="180" y="223" font-size="16" text-anchor="middle">허용</text>
+<text x="180" y="271" font-size="16" text-anchor="middle">허용 안 함</text>
+<text x="20" y="298" font-size="11" fill="#555555">이동한 화면 예시 · 강조된 곳을 누르세요</text>
+</g></svg>

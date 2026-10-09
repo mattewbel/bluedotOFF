@@ -1,0 +1,12 @@
+.gradle/
+.kotlin/
+.cxx/
+**/.cxx/
+**/build/
+artifacts/
+local.properties
+.private/
+*.p12
+*.jks
+*.keystore
+*-release.properties

@@ -3,7 +3,9 @@ package app.bluedotoff.core
 enum class GuideStep(val number:Int,val asset:String) {
     WELCOME(1,"welcome"), NOTIFICATIONS(2,"notifications"), DEVELOPER(3,"developer"), WIFI(4,"wifi"), NEARBY(5,"nearby"),
     WIRELESS(6,"wireless"), CODE_PAGE(7,"code-page"), CODE_INPUT(7,"code-input"), VERIFY(8,"verify"),
-    AUTOMATIC(9,"automatic"), SCOPE(10,"scope"), FINAL(11,"final")
+    AUTOMATIC(9,"automatic"), SCOPE(10,"scope"), FINAL(11,"final"),
+    // Not setup steps: the two-picture "turn off Auto Blocker" explanation.
+    AUTO_BLOCKER(1,"auto-blocker"), AUTO_BLOCKER_OFF(2,"auto-blocker-off")
 }
 data class GuideSelection(val step:GuideStep,val manual:Boolean=false)
 object OnboardingGuide {

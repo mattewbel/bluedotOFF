@@ -157,7 +157,8 @@ class SetupSession internal constructor(private val context:Context,private val 
             developer=dev,wireless=wireless,supported=runtime.supported,wifiConnected=runtime.wifiConnected,
             paired=paired,nearbyResolved=broad||prefs.getBoolean("nearbyAsked",false),sessionStarted=discovery!=null,
             pairAdvertisement=found!=null,pairing=pairing,connecting=connecting,verifying=verifying,verified=verified,forcePairing=forcePairing,error=error,completedOffline=runtime.intentionalExit&&!wireless,
-            managementChoiceResolved=runtime.managementChoiceResolved,managing=managing,applicationScopeResolved=app.bluedotoff.ScopePreferences(context).resolved,finalCheckResolved=runtime.finalCheckResolved
+            managementChoiceResolved=runtime.managementChoiceResolved,managing=managing,applicationScopeResolved=app.bluedotoff.ScopePreferences(context).resolved,finalCheckResolved=runtime.finalCheckResolved,
+            autoBlocked=runtime.autoBlocked
         )
         val stage=SetupFlow.stage(facts)
         if(!dev||!wifi||!pairingNeeded||error!=null)settingsHandoff=false

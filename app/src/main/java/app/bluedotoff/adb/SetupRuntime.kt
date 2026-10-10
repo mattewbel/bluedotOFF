@@ -24,6 +24,7 @@ internal interface SetupRuntime {
     fun skipManagement() {}
     fun enableManagement(port:Int):Unit=throw UnsupportedOperationException()
     val wifiConnected:Boolean get()=true
+    val autoBlocked:Boolean get()=false
     fun foregroundUse() {}
     fun keepPairingAlive(required:Boolean):Boolean=true
     val intentionalExit:Boolean get()=false
@@ -87,6 +88,7 @@ internal class AndroidSetupRuntime(private val context:Context):SetupRuntime {
     override fun foregroundUse(){ending=false;if(busy)return;val controls=WirelessControls(context);if(controls.mayStart(app.bluedotoff.ForegroundState.active))controls.enableWirelessDebugging()}
     override val developer get()=Settings.Global.getInt(context.contentResolver,Settings.Global.DEVELOPMENT_SETTINGS_ENABLED,0)==1
     override val wireless get()=Settings.Global.getInt(context.contentResolver,"adb_wifi_enabled",0)==1
+    override val autoBlocked get()=AutoBlocker.suspected&&!wireless
     override val paired get()=context.getSharedPreferences("local-adb",0).getString("pairedGuid",null)!=null&&AdbHostIdentity(context).exists
     override val supported get()=app.bluedotoff.DeviceSupport.basic()
     override val notifications get()=(Build.VERSION.SDK_INT<33||context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED)&&context.getSystemService(android.app.NotificationManager::class.java).areNotificationsEnabled()

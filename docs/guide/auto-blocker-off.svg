@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="228" viewBox="0 0 360 228" role="img" aria-labelledby="title description">
+<title id="title">자동 차단 끄기</title>
+<desc id="description">맨 위 스위치를 끄세요. ‘자동으로 켜기’도 끄면 30분 뒤 다시 켜지지 않아요.</desc>
+<rect width="360" height="228" rx="20" fill="#f3f5f9"/>
+<g font-family="sans-serif" fill="#1e2431">
+<text x="20" y="32" font-size="17">‹  보안 위험 자동 차단</text>
+<rect x="14" y="48" width="332" height="42" rx="12" fill="#ffffff" stroke="#356aff" stroke-width="2"/>
+<text x="26" y="69.0" font-size="14" dominant-baseline="central">사용 안 함</text>
+<rect x="294" y="58.0" width="40" height="22" rx="11" fill="#969ca8"/><circle cx="305" cy="69.0" r="8" fill="#ffffff"/>
+<rect x="14" y="94" width="332" height="42" rx="12" fill="#ffffff"/>
+<text x="26" y="115.0" font-size="14" dominant-baseline="central">자동으로 켜기</text>
+<rect x="14" y="140" width="332" height="42" rx="12" fill="#ffffff"/>
+<text x="26" y="161.0" font-size="14" dominant-baseline="central">최대 제한</text>
+<text x="20" y="216" font-size="11" fill="#555555">이동한 화면 예시 · 강조된 곳을 누르세요</text>
+</g></svg>

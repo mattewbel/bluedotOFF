@@ -31,6 +31,14 @@ object SettingsEntrypoints {
             }
         }
     }
+    /** Auto Blocker screen when Samsung exports it to apps; otherwise the general security screen. */
+    fun autoBlocker(context:Context) {
+        val direct=Intent("com.samsung.android.rampart.action.MAIN_SETTING_ACTIVITY").setPackage("com.samsung.android.rampart")
+        val info=context.packageManager.resolveActivity(direct,PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo
+        if(info!=null&&info.exported&&info.enabled&&(info.permission==null||context.checkSelfPermission(info.permission)==PackageManager.PERMISSION_GRANTED)&&runCatching{context.startActivity(direct)}.isSuccess)return
+        for(action in listOf(Settings.ACTION_SECURITY_SETTINGS,Settings.ACTION_SETTINGS))
+            if(runCatching{context.startActivity(Intent(action))}.isSuccess)return
+    }
     fun wifi(context:Context) {
         for(action in listOf(Settings.Panel.ACTION_WIFI,Settings.ACTION_WIFI_SETTINGS,Settings.ACTION_SETTINGS))
             if(runCatching{context.startActivity(Intent(action))}.isSuccess)return

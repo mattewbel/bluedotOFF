@@ -96,14 +96,15 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         setTextColor(if(size>=28f)colors.onSurface.toArgb() else colors.onSurfaceVariant.toArgb())
         setLineHeight(android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP,if(size>=28f)36f else if(size==14f)20f else 24f,resources.displayMetrics).toInt())
     })}
-    private fun button(label:String,action:()->Unit){add(Button(this).apply{
+    private fun button(label:String,action:()->Unit){add(primaryButton(label,action))}
+    private fun primaryButton(label:String,action:()->Unit)=Button(this).apply{
         text=app.bluedotoff.UiText.text(this@LocalAdbSetupActivity,label);isAllCaps=false;textSize=14f
         typeface=Typeface.create("sans-serif-medium",Typeface.NORMAL);includeFontPadding=false
         minHeight=dp(BlueDotAppearance.BUTTON_HEIGHT);minimumHeight=minHeight
         setPadding(dp(24),dp(16),dp(24),dp(16));setTextColor(colors.onPrimary.toArgb());backgroundTintList=null
         background=RippleDrawable(ColorStateList.valueOf(colors.onPrimary.copy(alpha=0.16f).toArgb()),rounded(colors.primary.toArgb()),null)
         setOnClickListener{action()}
-    })}
+    }
     private fun link(label:String,action:()->Unit){add(TextView(this).apply{
         text=app.bluedotoff.UiText.text(this@LocalAdbSetupActivity,label);textSize=14f;includeFontPadding=false
         typeface=Typeface.create("sans-serif-medium",Typeface.NORMAL);minHeight=dp(48);gravity=Gravity.CENTER_VERTICAL
@@ -144,11 +145,12 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         if(isDestroyed||!::box.isInitialized||permissionDialog)return
         val f=session.facts;val p=SetupFlow.presentation(f)
         if(p.stage==SetupStage.READY&&foreground&&!navigating&&!advanced){navigating=true;session.close(keepScan=true);startActivity(Intent(this,app.bluedotoff.MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP));finish();return}
-        val key="${p.stage}|${session.notifications}|${session.manualInput}|${session.needsPort}|${session.inputError}|$advanced|${session.diagnosticResult}|${session.managementError}|${session.scanProgress}"
+        val key="${p.stage}|${f.autoBlocked}|${session.notifications}|${session.manualInput}|${session.needsPort}|${session.inputError}|$advanced|${session.diagnosticResult}|${session.managementError}|${session.scanProgress}"
         if(lastKey==key)return;lastKey=key;code?.text?.clear();code=null;box.removeAllViews()
         progress(p.progress)
         text(p.title,28f)
-        OnboardingGuide.current(p.stage,session.notifications,session.manualInput)?.let{image->
+        if(f.autoBlocked&&p.stage==SetupStage.WIRELESS_DEBUGGING_OFF)listOf(GuideStep.AUTO_BLOCKER,GuideStep.AUTO_BLOCKER_OFF).forEach{add(app.bluedotoff.GuideArtwork(this,GuideSelection(it)))}
+        else OnboardingGuide.current(p.stage,session.notifications,session.manualInput)?.let{image->
             add(app.bluedotoff.GuideArtwork(this,image))
         }
         if(session.manualInput&&p.stage in listOf(SetupStage.WAIT_FOR_PAIRING_ADVERTISEMENT,SetupStage.PAIRING_NOTIFICATION_READY,SetupStage.GUIDE_PAIRING_CODE_PAGE)){
@@ -160,6 +162,12 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         }
         text(if(session.manualInput&&p.stage in listOf(SetupStage.WAIT_FOR_PAIRING_ADVERTISEMENT,SetupStage.PAIRING_NOTIFICATION_READY))"분할 화면에서 설정과 bluedotOFF를 함께 열어 코드를 입력하세요. 코드 창을 닫으면 연결할 수 없어요." else p.body)
         if(p.action!=SetupAction.NONE){if(session.manualInput&&p.stage==SetupStage.WAIT_FOR_PAIRING_ADVERTISEMENT)link(p.button){act(p.action)}else button(p.button){act(p.action)}}
+        // Without automatic management the app cannot see Auto Blocker; a greyed-out switch is the sign the user sees.
+        if(p.stage==SetupStage.WIRELESS_DEBUGGING_OFF&&!f.autoBlocked)add(TextView(this).apply{
+            text=app.bluedotoff.UiText.text(this@LocalAdbSetupActivity,"무선 디버깅 버튼이 회색으로 잠겨 있나요? 눌러서 해결 방법 보기")
+            textSize=16f;typeface=Typeface.create("sans-serif-medium",Typeface.BOLD);setTextColor(colors.onTertiaryContainer.toArgb())
+            background=rounded(colors.tertiaryContainer.toArgb());setPadding(dp(16),dp(16),dp(16),dp(16));isClickable=true;setOnClickListener{autoBlockerHelp()}
+        })
         val scan=session.scanProgress.takeIf{p.stage in listOf(SetupStage.VERIFYING,SetupStage.FINAL_CHECK)}
         if(scan!=null){
             text(if(scan.finishing)"${scan.total}개 앱 확인 완료 · 마무리 중…" else "${scan.completed} / ${scan.total}개 앱 확인 · ${scan.percent}%")
@@ -208,6 +216,22 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
             }
         }
     }
+    /** Same two-picture guide as the Home dialog, for setup where the block cannot be detected. */
+    private fun autoBlockerHelp(){
+        val content=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(24),dp(8),dp(24),0)}
+        fun line(value:String,bold:Boolean=false)=content.addView(TextView(this).apply{text=value;textSize=15f;setPadding(0,dp(8),0,dp(8));if(bold)typeface=Typeface.create("sans-serif-medium",Typeface.BOLD)})
+        line(app.bluedotoff.UiText.text(this,"이 기능이 켜져 있으면 휴대폰이 무선 디버깅을 막아서 bluedotOFF가 연결할 수 없어요. 아래 순서대로 끈 뒤 다시 시도해주세요."))
+        listOf(GuideStep.AUTO_BLOCKER,GuideStep.AUTO_BLOCKER_OFF).forEach{step->
+            val guide=app.bluedotoff.GuideContent.load(this,GuideSelection(step))
+            line("${step.number}  ${guide.title}",bold=true);content.addView(app.bluedotoff.GuideArtwork(this,GuideSelection(step)));line(guide.body)
+        }
+        // The pictures scroll; the button stays visible below them.
+        val frame=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;addView(android.widget.ScrollView(this@LocalAdbSetupActivity).apply{addView(content)},LinearLayout.LayoutParams(-1,-2,1f))}
+        val dialog=android.app.AlertDialog.Builder(this).setTitle(app.bluedotoff.UiText.text(this,"보안 위험 자동 차단을 꺼주세요")).setView(frame)
+            .setNegativeButton(app.bluedotoff.UiText.text(this,"확인"),null).create()
+        frame.addView(primaryButton("보안 설정 열기"){dialog.dismiss();app.bluedotoff.SettingsEntrypoints.autoBlocker(this)},LinearLayout.LayoutParams(-1,-2).apply{setMargins(dp(24),dp(12),dp(24),0)})
+        dialog.show()
+    }
     private fun chooseScope(){
         app.bluedotoff.ScopeDialogs.choose(this,ApplicationScope.NORMAL,firstSetup=true){scope->
             app.bluedotoff.ScopeDialogs.confirm(this,scope,firstSetup=true){session.chooseScope(scope)}
@@ -225,6 +249,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         SetupAction.RETRY_PAIRING->session.beginPairing()
         SetupAction.RETRY_CONNECTION,SetupAction.RESUME->session.retryConnection()
         SetupAction.CHOOSE_CONNECTION->session.chooseConnection()
+        SetupAction.SECURITY_SETTINGS->app.bluedotoff.SettingsEntrypoints.autoBlocker(this)
         SetupAction.NONE->Unit
     }}
     override fun onRequestPermissionsResult(r:Int,p:Array<String>,g:IntArray){

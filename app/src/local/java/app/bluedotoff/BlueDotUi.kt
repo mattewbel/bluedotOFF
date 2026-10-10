@@ -91,7 +91,8 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
         if(model.reapplyCount==0||model.busy||model.page!=Page.HOME||model.gate!=Gate.READY)showReapplyNeeded=false
     }
     val snackbars = remember { SnackbarHostState() }
-    LaunchedEffect(model.notice,model.busy) { if(model.notice.isNotBlank()&&!model.busy){snackbars.showSnackbar(UiText.text(context,UiText.error(model.notice)),duration=SnackbarDuration.Short);clearNotice()} }
+    var showAutoBlocker by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(model.notice,model.busy) { if(model.notice==app.bluedotoff.adb.AutoBlocker.MESSAGE&&!model.busy){showAutoBlocker=true;clearNotice()} else if(model.notice.isNotBlank()&&!model.busy){snackbars.showSnackbar(UiText.text(context,UiText.error(model.notice)),duration=SnackbarDuration.Short);clearNotice()} }
     MaterialTheme(colorScheme=scheme) {
         BackHandler(enabled=model.busy) {}
         BackHandler(enabled=model.page!=Page.HOME&&!model.busy) { navigate(Page.HOME) }
@@ -152,7 +153,7 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
                         val p=model.progress
                         CircularProgressIndicator();Spacer(Modifier.height(24.dp))
                         Text(when(p?.phase){BatchPhase.CONNECTING->"연결을 준비하고 있습니다";BatchPhase.CLOSING->"결과를 저장하고 연결을 마무리합니다";else->if(model.operationHide)"안전하게 적용을 확인하고 있습니다" else "안전하게 복원을 확인하고 있습니다"},style=MaterialTheme.typography.titleMedium)
-                        if(p!=null){Spacer(Modifier.height(20.dp));LinearProgressIndicator(progress={p.percent/100f},modifier=Modifier.fillMaxWidth());Spacer(Modifier.height(12.dp));Text("${p.completed} / ${p.total}개 확인 · ${p.percent}%",style=MaterialTheme.typography.titleLarge)}
+                        if(p!=null){Spacer(Modifier.height(20.dp));LinearProgressIndicator(progress={p.percent/100f},modifier=Modifier.fillMaxWidth());Spacer(Modifier.height(12.dp));Text(if(p.phase==BatchPhase.CLOSING)"${p.completed} / ${p.total}개 확인 · 마무리 중…" else "${p.completed} / ${p.total}개 확인 · ${p.percent}%",style=MaterialTheme.typography.titleLarge)}
                         Spacer(Modifier.height(12.dp));Text("확인이 끝난 뒤 결과를 알려드립니다.",textAlign=androidx.compose.ui.text.style.TextAlign.Center,color=scheme.onSurfaceVariant)
                         if(p!=null)Text("작업이 끝날 때까지 이 화면을 열어 두세요.",Modifier.padding(top=8.dp),style=MaterialTheme.typography.bodySmall,color=scheme.onSurfaceVariant)
                         if(model.operationHide)Text("일부 앱은 Android가 파란 위치 표시를 다시 켤 수 있어요. 적용 직후에도 풀릴 수 있으니, 필요하면 홈에서 다시 적용해주세요.",Modifier.padding(top=12.dp),style=MaterialTheme.typography.bodySmall,color=scheme.onSurfaceVariant,textAlign=androidx.compose.ui.text.style.TextAlign.Center)
@@ -163,6 +164,9 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
                 SnackbarHost(snackbars,modifier=Modifier.align(Alignment.BottomCenter).padding(16.dp))
             }
         }
+        if(showAutoBlocker&&!model.busy) AlertDialog(onDismissRequest={showAutoBlocker=false},title={Text("보안 위험 자동 차단을 꺼주세요")},
+            text={Column(verticalArrangement=Arrangement.spacedBy(12.dp)){Column(Modifier.weight(1f,fill=false).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(16.dp)){Text("이 기능이 켜져 있으면 휴대폰이 무선 디버깅을 막아서 bluedotOFF가 연결할 수 없어요. 아래 순서대로 끈 뒤 다시 시도해주세요.");GuideCard(GuideSelection(GuideStep.AUTO_BLOCKER));GuideCard(GuideSelection(GuideStep.AUTO_BLOCKER_OFF))};Primary("보안 설정 열기",{showAutoBlocker=false;SettingsEntrypoints.autoBlocker(context)})}},
+            confirmButton={TextButton(onClick={showAutoBlocker=false}){Text("확인")}})
         if(model.notificationOffer&&model.gate==Gate.READY&&!model.busy) AlertDialog(onDismissRequest=dismissNotifications,title={Text("재적용 알림")},text={Text("휴대폰 재시작이나 등록 앱 업데이트로 숨김이 해제될 수 있을 때 알려드립니다. 광고나 상시 알림은 없습니다. 알림 없이도 핵심 기능은 사용할 수 있습니다.")},confirmButton={TextButton(onClick=allowNotifications){Text("알림 허용")}},dismissButton={TextButton(onClick=dismissNotifications){Text("나중에")}})
         model.sharedOffer?.let{offer->
             AlertDialog(onDismissRequest=sharedDismiss,title={Text("위치 설정을 함께 쓰는 앱")},text={
@@ -206,7 +210,7 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
         if(m.gate==Gate.WELCOME)Surface(shape=RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.tertiaryContainer,contentColor=MaterialTheme.colorScheme.onTertiaryContainer,border=BorderStroke(1.dp,MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha=0.18f))){
             Column(Modifier.fillMaxWidth().padding(18.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
                 Text("미리 알아두세요",style=MaterialTheme.typography.titleMedium)
-                listOf("일부 앱은 적용 후 몇 분 만에 숨김이 풀릴 수 있어요.","앱이 스스로 구성을 바꾸거나 업데이트되면 숨김 설정이 기본값으로 돌아가요.","풀린 앱은 홈에 ‘재적용 필요’로 표시돼요. 눌러서 다시 적용하면 돼요.").forEach{line->
+                listOf("일부 앱은 적용 후 몇 분 만에 숨김이 풀릴 수 있어요.","앱이 스스로 구성을 바꾸거나 업데이트되면 숨김 설정이 기본값으로 돌아가요.","풀린 앱은 홈에 ‘재적용 필요’로 표시돼요. 눌러서 다시 적용하면 돼요.","갤럭시의 ‘보안 위험 자동 차단’이 켜져 있으면 연결할 수 없어요. 연결 안내에서 끄는 방법을 보여드려요.").forEach{line->
                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){Text("•",style=MaterialTheme.typography.bodyMedium,translate=false);Text(line,style=MaterialTheme.typography.bodyMedium.copy(lineBreak=androidx.compose.ui.text.style.LineBreak.Paragraph.copy(wordBreak=androidx.compose.ui.text.style.LineBreak.WordBreak.Phrase)))}
                 }
             }
@@ -505,9 +509,10 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
         Text("적용이 안 될 때",style=MaterialTheme.typography.titleMedium)
         Text("기기 연결과 정확한 위치 권한을 확인하세요. 다른 앱과 위치 설정을 공유하는 앱과 핵심 시스템 구성 요소는 개별 적용할 수 없어요. 기본 설치 앱도 조건을 통과하면 선택할 수 있어요. 기기마다 호환성을 검사하며, 일부 지역이나 소프트웨어 버전은 지원되지 않을 수 있어요. 업데이트 후에는 다시 확인해요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         Text("위치 설정을 공유하는 앱은 구성원 목록을 확인하고 묶음 전체를 선택할 수 있어요. 핵심 시스템 앱은 전체 적용에서 선택할 수 있어요. 묶음 전체의 설치 정보와 위치 권한 상태를 확인하지 못하면 변경하지 않아요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("보안 위험 자동 차단이 켜져 있으면 Android가 무선 디버깅을 막아 연결할 수 없어요. 작업할 때는 설정 → 보안 및 개인정보 보호에서 꺼주세요. ‘자동으로 켜기’를 켜두면 30분 뒤 다시 켜져요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         Text("재적용 알림은 bluedotOFF가 완전히 종료돼 있는 동안 업데이트된 앱은 바로 알려드리지 못해요. 다음에 앱을 열면 확인해서 보여드려요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         Text("복원 확인이 필요할 때",style=MaterialTheme.typography.titleMedium)
-        Text("실패 기록을 지우려고 앱 데이터를 초기화하거나 앱을 삭제하지 마세요. 기기를 연결해 현재 상태를 읽은 뒤, GitHub의 bluedotOFF 저장소 Issues에 문의해 주세요. 불확실한 대상에 자동으로 다시 쓰지 않습니다.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("실패 기록을 지우려고 앱 데이터를 초기화하거나 앱을 삭제하지 마세요. 기기를 연결해 현재 상태를 읽은 뒤, GitHub의 bluedotOFF 저장소 Issues에 문의해 주세요. 상태가 확실하지 않은 앱은 bluedotOFF가 스스로 다시 바꾸지 않아요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         Text("위치 사용 기록",style=MaterialTheme.typography.titleMedium)
         Text("앱 기록은 최근 위치 사용을 사용자 앱 중심으로 정리한 목록입니다. 전체 위치 사용에서는 시스템·내부 서비스도 볼 수 있습니다. 삼성 설정의 권한 사용 현황과는 데이터 출처가 다릅니다. 숨김이 적용돼도 위치 사용 기록은 남으며, 기록 자체가 파란 표시를 띄웠다는 뜻은 아닙니다.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         Text("루팅이나 부트로더 해제는 필요 없습니다. 휴대폰의 무선 디버깅 기능만 사용하며, 앱의 위치 권한과 보안 설정은 바꾸지 않습니다. 네트워크 권한은 휴대폰 안의 무선 디버깅 연결에만 사용합니다. 외부 서버 통신·광고·분석·추적 기능은 없습니다.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)

@@ -13,6 +13,13 @@ class SetupFlowTest {
         assertEquals(SetupStage.AUTOMATIC_MANAGEMENT,SetupFlow.stage(f.copy(verified=true,wireless=false,completedOffline=true)))
     }
     private fun stage(f:SetupFacts)=SetupFlow.stage(f)
+    @Test fun autoBlockerExplainsTheGreyedOutWirelessSwitch(){
+        val blocked=SetupFlow.presentation(SetupFacts(paired=true,wireless=false,autoBlocked=true))
+        assertEquals(SetupStage.WIRELESS_DEBUGGING_OFF,blocked.stage);assertEquals(SetupAction.SECURITY_SETTINGS,blocked.action);assertTrue(blocked.title.contains("자동 차단"))
+        // Without a refused write the app cannot know; the normal step still names Auto Blocker for a greyed-out switch.
+        val normal=SetupFlow.presentation(SetupFacts(paired=true,wireless=false))
+        assertEquals(SetupAction.WIRELESS_SETTINGS,normal.action);assertTrue(normal.body.contains("자동 차단"))
+    }
     @Test fun firstUseHasOneNextAction(){val p=SetupFlow.presentation(SetupFacts(welcomed=false,notificationResolved=false,developer=false,wireless=false));assertEquals(SetupStage.WELCOME,p.stage);assertEquals(SetupAction.START,p.action)}
     @Test fun notificationIsExplainedBeforeSettings(){assertEquals(SetupStage.NOTIFICATION_PERMISSION,stage(SetupFacts(notificationResolved=false,developer=false)))}
     @Test fun grantedOrDeclinedNotificationsBothProceed(){assertEquals(SetupStage.DEVELOPER_OPTIONS_OFF,stage(SetupFacts(notificationResolved=true,developer=false)))}

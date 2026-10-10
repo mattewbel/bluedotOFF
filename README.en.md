@@ -42,6 +42,7 @@ bluedotOFF has one goal:
 - **Some apps lose hiding quickly.** When an app changes its own components, is updated, or the phone restarts, Android resets the indicator setting to its default. Some banking apps, for example, lose it within minutes. Such apps are marked "reapply needed" on Home; bluedotOFF does not reapply automatically (so it does not keep touching your phone).
 - **Only one device has been verified.** It has been tested only on the Galaxy Z Fold7 (One UI 9). Other models work only if their internals are identical; otherwise the app stops without changing anything.
 - **US models** have an extra location indicator path, so the dot may not be hidden.
+- **It does not work while Auto Blocker is on.** Auto Blocker blocks wireless debugging. Turn it off in Settings → Security and privacy → Auto Blocker when you use the app. New Galaxy phones have it on by default, and with “Turn on automatically” it turns back on after 30 minutes. With automatic management, the app notices the block and tells you how to turn it off.
 - **Developer options and Wireless debugging are required.** Wireless debugging is turned on briefly for each operation, and Android may show a "Wireless debugging connected" notification.
 - **Restore everything before uninstalling.** If you just uninstall, the hidden apps may stay hidden.
 

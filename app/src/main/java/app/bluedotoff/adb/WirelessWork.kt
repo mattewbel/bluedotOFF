@@ -44,7 +44,7 @@ object WirelessWork {
         val wasOff=!controls.wireless
         if(wasOff) {
             check(controls.mayStart(userAction&&ForegroundState.active)){"무선 디버깅을 켜주세요."}
-            check(controls.enableWirelessDebugging()){"무선 디버깅을 켜지 못했습니다. 설정에서 직접 켜주세요."}
+            check(controls.enableWirelessDebugging()){if(AutoBlocker.suspected)AutoBlocker.MESSAGE else "무선 디버깅을 켜지 못했습니다. 설정에서 직접 켜주세요."}
         }
         val observers=mutableListOf<LocalAdbDiscovery>()
         var completed=false

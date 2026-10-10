@@ -23,7 +23,9 @@ class WirelessControls(private val context:Context) {
     fun enableWirelessDebugging():Boolean {
         check(mayStart(app.bluedotoff.ForegroundState.active))
         val before=wireless
-        val result=runCatching{Settings.Global.putInt(context.contentResolver,"adb_wifi_enabled",1)&&wireless}.getOrDefault(false)
+        val written=runCatching{Settings.Global.putInt(context.contentResolver,"adb_wifi_enabled",1)}.getOrDefault(false)
+        val result=written&&wireless
+        AutoBlocker.suspected=written&&!result
         audit("wireless_on",before,wireless,result);return result
     }
     fun disableWirelessDebugging():Boolean {
@@ -39,4 +41,12 @@ class WirelessControls(private val context:Context) {
             .put("key","adb_wifi_enabled").put("before",before).put("after",after).put("success",success)
             .put("uid",android.os.Process.myUid()).put("time",System.currentTimeMillis()).toString()+"\n")
     }
+}
+
+/** Samsung Auto Blocker (보안 위험 자동 차단) turns USB and Wi-Fi ADB off. Its own state (Secure "rampart_blocked_adb_cmd")
+ *  is @hide and not readable by apps, even with WRITE_SECURE_SETTINGS (Fold7, 2026-10-10). Observed instead: while it is on,
+ *  writing adb_wifi_enabled=1 succeeds but reads back 0 at once (off: stays 1). That refusal is what this remembers. */
+object AutoBlocker {
+    const val MESSAGE="휴대폰이 무선 디버깅을 막고 있어요. 설정 → 보안 및 개인정보 보호 → 보안 위험 자동 차단을 끈 뒤 다시 시도해주세요."
+    @Volatile var suspected=false
 }

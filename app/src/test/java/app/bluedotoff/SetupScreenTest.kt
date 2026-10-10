@@ -143,6 +143,14 @@ class SetupScreenTest {
         assertTrue(views.filterIsInstance<TextView>().any{it.text=="Not now"})
         assertEquals(listOf("Use automatic management (recommended)"),views.filterIsInstance<Button>().map{it.text.toString()})
     }
+    @Test fun greyedOutWirelessSwitchLeadsToAutoBlockerGuide(){
+        runtime.paired=true;runtime.wireless=false;val views=show("09-wireless-off-auto-blocker-hint")
+        val hint=views.filterIsInstance<android.widget.TextView>().single{it.text.toString().startsWith("무선 디버깅 버튼이 회색으로 잠겨 있나요?")}
+        hint.performClick();shadowOf(Looper.getMainLooper()).idle()
+        val dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog() as android.app.AlertDialog
+        assertTrue(dialog.isShowing);assertEquals("확인",dialog.getButton(android.app.AlertDialog.BUTTON_NEGATIVE).text.toString())
+        assertTrue(dialog.findViewById<android.view.ViewGroup>(android.R.id.content).let{root->generateSequence(listOf<android.view.View>(root)){level->level.flatMap{v->(v as? android.view.ViewGroup)?.let{g->(0 until g.childCount).map(g::getChildAt)}?:emptyList()}.ifEmpty{null}}.flatten().any{it is Button&&it.text.toString()=="보안 설정 열기"}})
+    }
     @Test fun pairedWirelessOffDoesNotShowAnyCodeFields(){runtime.paired=true;runtime.wireless=false;val views=show("02-paired-wireless-off");assertEquals(listOf("무선 디버깅 열기"),views.filterIsInstance<Button>().map{it.text.toString()});assertTrue(views.filterIsInstance<EditText>().isEmpty())}
     @Test fun advertisementReadyKeepsSettingsNotificationAsPrimaryAction(){runtime.pairEndpoint=LocalAdbDiscovery.Endpoint("own",37000);val views=show("03-code-notification-ready");assertTrue(views.filterIsInstance<Button>().isEmpty());assertTrue(views.filterIsInstance<EditText>().isEmpty());assertTrue(views.filterIsInstance<TextView>().any{it.text.contains("코드 입력")})}
     @Test fun deniedNotificationUsesInAppInputWithoutShowingPortWhenResolved(){runtime.notifications=false;context.getSharedPreferences("local-adb",0).edit().putBoolean("notificationAsked",true).commit();runtime.pairEndpoint=LocalAdbDiscovery.Endpoint("own",37000);val views=show("04-notification-denied");assertEquals(listOf("이 코드로 연결"),views.filterIsInstance<Button>().map{it.text.toString()});val input=views.filterIsInstance<EditText>().single();assertEquals("6자리 페어링 코드",input.hint);assertFalse(input.isSaveEnabled);assertEquals(0,controller!!.get().window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE)}

@@ -129,6 +129,25 @@ those files; bump `versionName`/`versionCode` in `app/build.gradle.kts` first.
   also reflects the "reapply" notification channel (`MainActivity.reapplyNotificationsEnabled`, blocked = off; not created
   yet = on); switching it on while only that channel is blocked opens the channel's system settings.
   Help ("적용이 안 될 때") now says reminders cannot report app updates while bluedotOFF is fully closed.
+- Auto Blocker (2026-10-10, after 1.0.0 release; friend report + GPT research `research/autoblocker-20261010/`): Samsung
+  "보안 위험 자동 차단" greys out USB/wireless debugging and makes AdbService turn ADB off (Fold7 device test: USB ADB dropped
+  the moment it switched on). Its state (Secure `rampart_blocked_adb_cmd`, `rampart_main_switch_enabled`) is @hide and NOT
+  readable by apps, even with WRITE_SECURE_SETTINGS (probe app, SecurityException). Observed instead: while it is on,
+  `putInt(adb_wifi_enabled,1)` returns true but reads back 0 immediately; while off it stays 1. So
+  `WirelessControls.enableWirelessDebugging` records that refusal in `AutoBlocker.suspected`; `WirelessWork.lease` then
+  fails with `AutoBlocker.MESSAGE`, and setup shows "보안 위험 자동 차단을 꺼주세요" + "보안 설정 열기"
+  (`SetupAction.SECURITY_SETTINGS` -> `SettingsEntrypoints.autoBlocker`). Manual users (no automatic management) cannot be
+  detected, so the normal wireless step always adds "버튼이 회색으로 잠겨 있으면 먼저 보안 위험 자동 차단을 꺼주세요."
+  One UI 8.5+ "자동으로 켜기" re-enables Auto Blocker 30 min after it is turned off. Help/README mention it.
+  On Home the refusal is a centered dialog (not a snackbar) with two guide pictures (`GuideStep.AUTO_BLOCKER`,
+  `AUTO_BLOCKER_OFF`, `assets/guide/steps.json`) and "보안 설정 열기"/"확인"; setup shows the same pictures. Test `87-auto-blocker-dialog`.
+  Setup on a fresh install cannot detect it (no permission yet), so the wireless step always shows a tappable card
+  "무선 디버깅 버튼이 회색으로 잠겨 있나요?" that opens the same guide (`LocalAdbSetupActivity.autoBlockerHelp`), and the welcome
+  "미리 알아두세요" card has a 4th line about it. Owner device test of fresh setup with Auto Blocker on found the gap.
+- Review pass (2026-10-11, owner asleep; only clear fixes): batch progress in CLOSING shows "N / N개 확인 · 마무리 중…" instead of
+  "N / N · 99%" (bar still 99%); Help recovery sentence no longer says "다시 쓰지" (jargon). Guide pictures: ON/OFF drawn as
+  switches, labels centred on glyph bounds, equal bottom spacing, boxed permission choices, fake "무선 디버깅 승인 취소" row removed.
+  Suggestions (resume rescans, tone, dead gates, etc.) are in `bluedotOFF/artifacts/claude-review-20261011.md` (not in Git).
 - Not done (suggested later): splitting `MainActivity`, reformatting dense code, moving i18n to
   `strings.xml`, tidying the root research folder (`bluedotOFF_audit.zip`, `bluedotoff_filelist.txt`).
   Not device-tested in this session.

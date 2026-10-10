@@ -26,7 +26,7 @@ data class GuideContent(val title:String,val body:String,val screen:String,val r
 class GuideArtwork(context:Context,val selection:GuideSelection):View(context) {
     val content=GuideContent.load(context,selection)
     private val paint=Paint(Paint.ANTI_ALIAS_FLAG)
-    private val logicalHeight=when(content.layout){"permission"->if(selection.step==GuideStep.NEARBY)310f else 220f;"developer"->320f;"split"->320f;else->228f}
+    private val logicalHeight=when(content.layout){"permission"->if(selection.step==GuideStep.NEARBY)294f else 250f;"developer"->300f;"split"->330f;"notification"->217f;"settings"->90f+content.rows.size*46f;else->228f}
     init{contentDescription=UiText.text(context,"${selection.step.number}단계 예시. ${content.body}");importantForAccessibility=IMPORTANT_FOR_ACCESSIBILITY_YES}
     override fun onMeasure(w:Int,h:Int){val width=MeasureSpec.getSize(w).coerceAtLeast(1);val diagram=width.coerceAtMost((480*resources.displayMetrics.density).toInt());setMeasuredDimension(width,(diagram*logicalHeight/360f).toInt().coerceAtLeast(1))}
     override fun onDraw(canvas:Canvas){
@@ -45,11 +45,21 @@ class GuideArtwork(context:Context,val selection:GuideSelection):View(context) {
             val text=StaticLayout.Builder.obtain(s,0,s.length,tp,width).setAlignment(if(center)Layout.Alignment.ALIGN_CENTER else Layout.Alignment.ALIGN_NORMAL).setIncludePad(false).setLineSpacing(2f,1f).setMaxLines(maxLines).setEllipsize(android.text.TextUtils.TruncateAt.END).build()
             canvas.save();canvas.translate(x,y);text.draw(canvas);canvas.restore()
         }
+        // Center on the drawn glyphs, not the font's line box: fonts (Samsung, user-installed) reserve different space
+        // below the baseline, and a fixed offset made Korean labels sit visibly high.
+        fun centered(s:String,x:Float,cy:Float,width:Int,color:Int){
+            val tp=TextPaint(Paint.ANTI_ALIAS_FLAG).apply{textSize=14f;this.color=color;typeface=android.graphics.Typeface.create("sans-serif",android.graphics.Typeface.NORMAL)}
+            val text=StaticLayout.Builder.obtain(s,0,s.length,tp,width).setIncludePad(false).setLineSpacing(2f,1f).setMaxLines(2).setEllipsize(android.text.TextUtils.TruncateAt.END).build()
+            if(text.lineCount==1){val b=android.graphics.Rect();tp.getTextBounds(s,0,s.length,b);canvas.drawText(s,x,cy-(b.top+b.bottom)/2f,tp)}
+            else{canvas.save();canvas.translate(x,cy-text.height/2f);text.draw(canvas);canvas.restore()}
+        }
         fun row(s:String,top:Float,selected:Boolean=false,badge:String="",height:Float=42f){
             rect(14f,top,346f,top+height,card)
             if(selected){paint.color=BlueDotAppearance.dotBlue.toArgb();paint.style=Paint.Style.STROKE;paint.strokeWidth=2f;canvas.drawRoundRect(14f,top,346f,top+height,12f,12f,paint);paint.style=Paint.Style.FILL}
-            wrap(s,26f,top+10f,if(badge.isBlank())306 else 258,14f,maxLines=2)
-            if(badge.isNotBlank())label(badge,306f,top+27f,14f,accent)
+            centered(s,26f,top+height/2f,if(badge.isBlank())306 else 258,fg)
+            // ON/OFF are drawn as a Samsung-style switch rather than text.
+            if(badge=="ON"||badge=="OFF"){val on=badge=="ON";val cy=top+height/2f;paint.color=if(on)accent else Color.rgb(150,156,168);canvas.drawRoundRect(294f,cy-11f,334f,cy+11f,11f,11f,paint);paint.color=Color.WHITE;canvas.drawCircle(if(on)323f else 305f,cy,8f,paint)}
+            else if(badge.isNotBlank())centered(badge,306f,top+height/2f,40,accent)
         }
         when(content.layout){
             "permission"->{
@@ -61,11 +71,15 @@ class GuideArtwork(context:Context,val selection:GuideSelection):View(context) {
                     canvas.drawPath(bell,paint);canvas.drawArc(177f,34f,183f,40f,0f,180f,false,paint);paint.style=Paint.Style.FILL
                 }
                 wrap(content.screen,24f,53f,312,17f,center=true,maxLines=6)
-                val allowTop=if(selection.step==GuideStep.NEARBY)194f else 116f
-                rect(28f,allowTop,332f,allowTop+40f,card)
-                paint.color=BlueDotAppearance.dotBlue.toArgb();paint.style=Paint.Style.STROKE;paint.strokeWidth=2f;canvas.drawRoundRect(28f,allowTop,332f,allowTop+40f,12f,12f,paint);paint.style=Paint.Style.FILL
-                wrap(content.rows[0],28f,allowTop+11f,304,16f,center=true,maxLines=1)
-                wrap(content.rows[1],28f,allowTop+61f,304,16f,center=true,maxLines=1)
+                val allowTop=if(selection.step==GuideStep.NEARBY)160f else 116f
+                // Allow (highlighted) and Don't allow each get a box, like the rows of the other pictures.
+                fun choice(s:String,top:Float,selected:Boolean){
+                    rect(28f,top,332f,top+40f,card)
+                    if(selected){paint.color=BlueDotAppearance.dotBlue.toArgb();paint.style=Paint.Style.STROKE;paint.strokeWidth=2f;canvas.drawRoundRect(28f,top,332f,top+40f,12f,12f,paint);paint.style=Paint.Style.FILL}
+                    val tp=TextPaint(Paint.ANTI_ALIAS_FLAG).apply{textSize=16f;color=fg;textAlign=Paint.Align.CENTER;typeface=android.graphics.Typeface.create("sans-serif",android.graphics.Typeface.NORMAL)}
+                    val b=android.graphics.Rect();tp.getTextBounds(s,0,s.length,b);canvas.drawText(s,180f,top+20f-(b.top+b.bottom)/2f,tp)
+                }
+                choice(content.rows[0],allowTop,true);choice(content.rows[1],allowTop+48f,false)
             }
             "developer"->{
                 label("‹   ${content.screen}",20f,30f,16f)
@@ -77,7 +91,7 @@ class GuideArtwork(context:Context,val selection:GuideSelection):View(context) {
             }
             "notification"->{
                 label(content.screen,20f,32f,17f)
-                rect(14f,48f,346f,191f,card,18f)
+                rect(14f,48f,346f,171f,card,18f)
                 wrap(content.rows[0],26f,62f,306,14f,maxLines=2)
                 row(content.rows[1],105f,true,"→",52f)
             }

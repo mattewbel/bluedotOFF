@@ -176,7 +176,7 @@ class UiRenderTest {
     }
     @Test fun finalClosingDoesNotShowOneHundredPercentEarly(){
         render("74-progress-closing",model().copy(busy=true,progress=BatchProgress(70,70,BatchPhase.CLOSING)))
-        compose.onNodeWithText("70 / 70개 확인 · 99%").assertExists()
+        compose.onNodeWithText("70 / 70개 확인 · 마무리 중…").assertExists();compose.onNodeWithText("100%",substring=true).assertDoesNotExist()
     }
     @Test @Config(qualifiers="en-rUS-w412dp-h915dp-xxhdpi") fun completionAndOfflineHomeExplainLastCheck(){
         val base=model(applied=true)
@@ -337,6 +337,15 @@ class UiRenderTest {
     @Test fun reapply(){render("08-reapply",model(page=Page.REAPPLY));compose.onNodeWithText("모두 재적용").assertExists()}
     @Test @Config(qualifiers="ko-rKR-w412dp-h915dp-night-xxhdpi") fun dark(){render("09-dark",model(applied=true))}
     @Test @Config(qualifiers="ko-rKR-w960dp-h750dp-xhdpi") fun fold(){render("10-fold-wide",model(applied=true))}
+    @Test fun autoBlockerOpensACenteredGuideInsteadOfASnackbar(){
+        controller.get().setContent { BlueDotApp(model(applied=true).copy(notice=app.bluedotoff.adb.AutoBlocker.MESSAGE),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}) }
+        compose.waitForIdle()
+        compose.onNodeWithText("보안 위험 자동 차단을 꺼주세요").assertExists();compose.onNodeWithText("보안 설정 열기").assertExists();compose.onNodeWithText("확인").assertExists()
+        compose.onNodeWithText("자동 차단 끄기",substring=true).assertExists()
+        val view=checkNotNull(org.robolectric.shadows.ShadowDialog.getLatestDialog().window).decorView
+        val image=Bitmap.createBitmap(view.width,view.height,Bitmap.Config.ARGB_8888);compose.runOnIdle{view.draw(Canvas(image))}
+        File(checkNotNull(System.getProperty("screenshotDir")).also{File(it).mkdirs()},"87-auto-blocker-dialog.png").outputStream().use{check(image.compress(Bitmap.CompressFormat.PNG,100,it))}
+    }
     @Test fun notificationDenied(){render("11-notifications-denied",model(page=Page.SETTINGS).copy(notifications=false));compose.onNode(androidx.compose.ui.test.isToggleable()and androidx.compose.ui.test.hasText("재적용 알림")).assertIsOff()}
     @Test fun unsupported(){render("12-unsupported",model(gate=Gate.UNSUPPORTED));compose.onNodeWithText("이 기기는 지원하지 않습니다").assertExists();compose.onNodeWithText("bluedotOFF 적용").assertDoesNotExist()}
     @Test fun compatibilityPass(){render("13-ready",model().copy(entries=emptyList()));compose.onNodeWithText("준비 완료").assertExists()}

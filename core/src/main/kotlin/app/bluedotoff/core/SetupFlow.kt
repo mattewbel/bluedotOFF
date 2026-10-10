@@ -7,7 +7,7 @@ enum class SetupStage {
     PAIRING_NOTIFICATION_READY, PAIRING, CONNECTING, VERIFYING, AUTOMATIC_MANAGEMENT, ENABLING_MANAGEMENT, APPLICATION_SCOPE, FINAL_CHECK, READY,
     PAIRING_RETRY, CONNECTION_RECOVERY, DISCOVERY_RECOVERY, SESSION_EXPIRED, UNSUPPORTED
 }
-enum class SetupAction { START, NOTIFICATIONS, DEVICE_INFO, WIFI_SETTINGS, WIRELESS_SETTINGS, NEARBY, AUTOMATIC_MANAGEMENT, APPLICATION_SCOPE, RETRY_PAIRING, RETRY_CONNECTION, CHOOSE_CONNECTION, RESUME, NONE }
+enum class SetupAction { START, NOTIFICATIONS, DEVICE_INFO, WIFI_SETTINGS, WIRELESS_SETTINGS, NEARBY, AUTOMATIC_MANAGEMENT, APPLICATION_SCOPE, RETRY_PAIRING, RETRY_CONNECTION, CHOOSE_CONNECTION, RESUME, NONE, SECURITY_SETTINGS }
 data class SetupFacts(
     val welcomed:Boolean=true, val notificationResolved:Boolean=true,
     val developer:Boolean=true, val wireless:Boolean=true, val supported:Boolean=true,
@@ -15,7 +15,8 @@ data class SetupFacts(
     val pairAdvertisement:Boolean=false, val pairing:Boolean=false, val connecting:Boolean=false,
     val verifying:Boolean=false, val verified:Boolean=false, val forcePairing:Boolean=false,
     val error:SetupStage?=null, val wifiConnected:Boolean=true, val completedOffline:Boolean=false,
-    val managementChoiceResolved:Boolean=true, val managing:Boolean=false, val applicationScopeResolved:Boolean=true, val finalCheckResolved:Boolean=true
+    val managementChoiceResolved:Boolean=true, val managing:Boolean=false, val applicationScopeResolved:Boolean=true, val finalCheckResolved:Boolean=true,
+    val autoBlocked:Boolean=false
 )
 data class SetupPresentation(val stage:SetupStage,val progress:Int,val title:String,val body:String,val action:SetupAction,val button:String="")
 object SetupFlow {
@@ -52,7 +53,7 @@ object SetupFlow {
             SetupStage.NOTIFICATION_PERMISSION->SetupPresentation(s,2,"알림을 켜면 연결이 쉬워요","알림에서 페어링 코드를 입력하고, 재부팅·업데이트 후 확인 안내를 받을 수 있어요. 알림 없이 연결하려면 분할 화면이 필요해요.",SetupAction.NOTIFICATIONS,"알림 허용")
             SetupStage.DEVELOPER_OPTIONS_OFF->SetupPresentation(s,3,"먼저 개발자 옵션을 켜주세요","휴대전화 정보에서 ‘소프트웨어 정보’를 열고 ‘빌드번호’를 7번 연속 누르세요. 돌아오면 다음 단계로 넘어가요.",SetupAction.DEVICE_INFO,"휴대전화 정보 열기")
             SetupStage.WIFI_NOT_CONNECTED->SetupPresentation(s,4,"먼저 Wi-Fi에 연결해주세요","Wi-Fi를 켜고 네트워크에 연결하세요. 연결되면 자동으로 다음 단계로 넘어가요.",SetupAction.WIFI_SETTINGS,"Wi-Fi 열기")
-            SetupStage.WIRELESS_DEBUGGING_OFF->SetupPresentation(s,6,"무선 디버깅을 켜주세요",if(f.paired)"이미 페어링된 기기예요. 무선 디버깅만 켜면 코드를 다시 입력할 필요가 없어요." else "개발자 옵션에서 ‘무선 디버깅’을 켜주세요. 이어서 바로 페어링 코드 화면을 열어도 돼요.",SetupAction.WIRELESS_SETTINGS,"무선 디버깅 열기")
+            SetupStage.WIRELESS_DEBUGGING_OFF->if(f.autoBlocked)SetupPresentation(s,6,"보안 위험 자동 차단을 꺼주세요","보안 위험 자동 차단이 켜져 있으면 무선 디버깅을 켤 수 없어요. 설정 → 보안 및 개인정보 보호 → 보안 위험 자동 차단을 끈 뒤 돌아오세요. ‘자동으로 켜기’가 켜져 있으면 30분 뒤 다시 켜지니, 그때는 다시 꺼주세요.",SetupAction.SECURITY_SETTINGS,"보안 설정 열기") else SetupPresentation(s,6,"무선 디버깅을 켜주세요",if(f.paired)"이미 페어링된 기기예요. 무선 디버깅만 켜면 코드를 다시 입력할 필요가 없어요. 버튼이 회색으로 잠겨 있으면 먼저 보안 위험 자동 차단을 꺼주세요." else "개발자 옵션에서 ‘무선 디버깅’을 켜주세요. 이어서 바로 페어링 코드 화면을 열어도 돼요. 버튼이 회색으로 잠겨 있으면 먼저 보안 위험 자동 차단을 꺼주세요.",SetupAction.WIRELESS_SETTINGS,"무선 디버깅 열기")
             SetupStage.NEARBY_PERMISSION->SetupPresentation(s,5,"근처 기기 권한을 허용해주세요","아래 버튼을 누르면 ‘근처에 있는 기기를 찾아 연결하고 기기 간 상대적 위치를 파악’하는 권한 창이 떠요. 그 창에서 ‘허용’을 눌러주세요. 이 휴대폰의 무선 연결을 찾는 데 사용해요.",SetupAction.NEARBY,"근처 기기 허용")
             SetupStage.GUIDE_PAIRING_CODE_PAGE,SetupStage.WAIT_FOR_PAIRING_ADVERTISEMENT->SetupPresentation(s,7,"‘페어링 코드로 기기 페어링’을 누르세요","코드 화면을 열어두세요. 준비되면 알림의 ‘코드 입력’에서 6자리 숫자를 입력하고 전송하세요.",SetupAction.WIRELESS_SETTINGS,"무선 디버깅 화면 열기")
             SetupStage.PAIRING_NOTIFICATION_READY->SetupPresentation(s,7,"페어링 코드를 입력하세요","설정의 코드 화면을 유지한 채 알림의 ‘코드 입력’을 누르세요. 입력 후 전송하면 자동으로 연결돼요.",SetupAction.NONE)

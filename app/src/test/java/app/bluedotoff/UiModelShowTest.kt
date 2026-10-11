@@ -49,6 +49,8 @@ class UiModelShowTest {
         // Update users with records are not asked.
         val old=Entry(Identity("demo.other",0,10009,listOf("demo"),1,1,1),"다른 앱",256,false,TargetState.NOT_APPLIED,1,"demo","demo",false)
         assertFalse(UiModel(gate=Gate.READY,discovered=listOf(off),entries=listOf(old)).askUsedBefore);assertTrue(UiModel(gate=Gate.READY,discovered=listOf(off),entries=listOf(old)).showLeftOffCard)
+        // Closed once: stays closed (Settings still has the way in).
+        assertFalse(UiModel(gate=Gate.READY,discovered=listOf(off),usedBefore=true,leftOffCardClosed=true).showLeftOffCard)
         // Nothing to point to: no question either.
         assertFalse(UiModel(gate=Gate.READY).askUsedBefore)
     }

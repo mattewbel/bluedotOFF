@@ -190,6 +190,7 @@ class UiRenderTest {
         render("89-home-left-off",model().copy(entries=emptyList(),discovered=listOf(leftOffApp),usedBefore=true))
         compose.onNodeWithText("파란 위치 표시가 꺼진 앱 1개").performScrollTo().assertExists()
         compose.onNodeWithText("확인하기").performScrollTo().assertExists()
+        compose.onNodeWithText("닫기").performScrollTo().assertExists()
     }
     @Test fun firstTimeUsersAreAskedBeforeLeftOffAppsAreCalledLeftovers(){
         render("89-home-used-before-question",model().copy(entries=emptyList(),discovered=listOf(leftOffApp)))

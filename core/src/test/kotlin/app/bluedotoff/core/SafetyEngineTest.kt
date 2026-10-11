@@ -51,6 +51,10 @@ class SafetyEngineTest {
         val(_,p,e)=rig();p.current=off.copy(sharedUserId="test.shared",peers=listOf(identity.packageName,"second.app"));expectFailure{e.userShow(identity.packageName)}
         p.current=off.copy(fineGranted=false);expectFailure{e.userShow(identity.packageName)};assertTrue(p.writes.isEmpty())
     }
+    @Test fun verifiedSingletonSharedUserCanBeTurnedBackOn(){
+        val(s,p,e)=rig();p.current=off.copy(sharedUserId="test.shared",singletonVerified=true)
+        assertEquals(TargetState.NOT_APPLIED,e.userShow(identity.packageName).state);assertEquals(listOf(256),p.writes);assertEquals("test.shared",s.data.last().sharedUserId)
+    }
     @Test fun failedShowRollsBackToOff(){
         val(s,p,e)=rig();p.current=off;p.failAfterWrite=true
         val entry=e.userShow(identity.packageName)

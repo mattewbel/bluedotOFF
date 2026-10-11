@@ -183,13 +183,23 @@ class UiRenderTest {
         compose.onNodeWithText("기존 위치 앱").assertExists()
         compose.onNodeWithText("표시 꺼짐 · 기록 없음").assertExists()
         compose.onNodeWithText("등록한 앱").assertDoesNotExist()
-        compose.onNodeWithText("‘표시 꺼짐 · 기록 없음’은 bluedotOFF 기록 없이 위치 표시가 이미 꺼져 있는 앱이에요. 숨길 필요가 없고, 홈의 ‘표시 켜기’에서 다시 켤 수 있어요.").assertExists()
+        compose.onNodeWithText("‘표시 꺼짐 · 기록 없음’은 bluedotOFF 기록 없이 파란 위치 표시가 이미 꺼져 있는 앱이에요. 숨길 필요가 없고, 설정 → ‘파란 위치 표시 다시 켜기’에서 다시 켤 수 있어요.").assertExists()
         assertFalse(m.canSelect(leftOffApp))
     }
-    @Test fun homeOffersShowForAppsLeftOffWithoutARecord(){
-        render("89-home-left-off",model().copy(entries=emptyList(),discovered=listOf(leftOffApp)))
-        compose.onNodeWithText("위치 표시가 꺼진 채 남은 앱 1개").performScrollTo().assertExists()
-        compose.onNodeWithText("표시 켜기").performScrollTo().assertExists()
+    @Test fun homePointsToTurningBackOnOnlyAfterTheUserSaysBluedotOffWasUsedBefore(){
+        render("89-home-left-off",model().copy(entries=emptyList(),discovered=listOf(leftOffApp),usedBefore=true))
+        compose.onNodeWithText("파란 위치 표시가 꺼진 앱 1개").performScrollTo().assertExists()
+        compose.onNodeWithText("확인하기").performScrollTo().assertExists()
+    }
+    @Test fun firstTimeUsersAreAskedBeforeLeftOffAppsAreCalledLeftovers(){
+        render("89-home-used-before-question",model().copy(entries=emptyList(),discovered=listOf(leftOffApp)))
+        compose.onNodeWithText("이 휴대폰에서 bluedotOFF를 사용한 적이 있나요?").assertExists()
+        compose.onNodeWithText("파란 위치 표시가 꺼진 앱 1개").assertDoesNotExist()
+        compose.onNodeWithText("처음이에요").assertExists()
+    }
+    @Test fun settingsAlwaysOffersTurningTheIndicatorBackOn(){
+        render("88-settings-turn-back-on",model(page=Page.SETTINGS).copy(usedBefore=false))
+        compose.onNodeWithText("파란 위치 표시 다시 켜기").performScrollTo().assertExists()
     }
     @Test fun showPageSeparatesPreinstalledAppsAndConfirmsWithoutPromisingTheDot(){
         val system=leftOffApp.copy(packageName="demo.camera",label="카메라",uid=10002,preinstalled=true)
@@ -197,8 +207,8 @@ class UiRenderTest {
         render("90-show-page",m)
         compose.onNodeWithText("표시 꺼짐 · 기록 없음").assertExists()
         compose.onNodeWithText("기본 앱 · 원래 꺼져 있었을 수 있어요").assertExists()
-        compose.onNodeWithText("1개 표시 켜기").assertIsEnabled().performClick()
-        compose.onNodeWithText("선택한 1개 앱의 위치 표시 설정을 켜요. 시스템에서 표시를 제외하는 앱은 켜도 파란 위치 표시가 나타나지 않을 수 있어요. 위치 권한과 사용 기록은 그대로예요.").assertExists()
+        compose.onNodeWithText("1개 다시 켜기").assertIsEnabled().performClick()
+        compose.onNodeWithText("선택한 1개 앱의 파란 위치 표시 설정을 켜요. 시스템에서 표시를 제외하는 앱은 켜도 파란 위치 표시가 나타나지 않을 수 있어요. 위치 권한과 사용 기록은 그대로예요.").assertExists()
     }
     @Test fun welcomeAndConnectionUseTheSameElevenStepDisplay(){
         render("75-welcome",model(gate=Gate.WELCOME));compose.onNodeWithText("연결 준비 · 1 / 11").assertExists()
@@ -273,7 +283,7 @@ class UiRenderTest {
     @Test fun permissionRemovalIsAvailableOnlyAfterOpeningAdvancedSettings(){
         render("79-settings",model(page=Page.SETTINGS).copy(autoPermission=true))
         compose.onNodeWithText("자동 관리 권한 제거").assertDoesNotExist()
-        compose.onNodeWithText("고급 설정").performClick()
+        compose.onNodeWithText("고급 설정").performScrollTo().performClick()
         compose.onNodeWithText("자동 관리 권한 제거").performScrollTo().assertExists()
     }
     @get:Rule val compose = createEmptyComposeRule()

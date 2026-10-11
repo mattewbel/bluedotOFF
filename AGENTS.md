@@ -206,6 +206,7 @@ those files; bump `versionName`/`versionCode` in `app/build.gradle.kts` first.
   off while the app is open runs `releaseNow` first, so wireless debugging the app turned on is switched off before consent
   is withdrawn. Tests: `KeptConnectionTest` (adopted from the review probe).
 - Recheck timer (GPT final review 2026-10-11): a partial check of changed apps reset the 10-minute full-check timer, so an app that changes often (Toss) could postpone the other apps' recheck forever. `RecheckClock` (MainActivity.kt) now resets only on a check of all registered apps, and an expired timer wins over a partial check; "마지막 확인" shows the last full check. Test `RecheckClockTest`.
+- Progress wording (owner request 2026-10-11): the batch overlay said "확인이 끝나면 결과를 알려드려요." as its main line, which read as if leaving were fine; leaving stops the remaining apps. It now always says "끝날 때까지 이 화면을 열어 두세요. 앱을 나가면 남은 앱은 바꾸지 않아요." (the separate small line was removed).
 - Not done (suggested later): splitting `MainActivity`, reformatting dense code, moving i18n to
   `strings.xml`, tidying the root research folder (`bluedotOFF_audit.zip`, `bluedotoff_filelist.txt`).
   Not device-tested in this session.

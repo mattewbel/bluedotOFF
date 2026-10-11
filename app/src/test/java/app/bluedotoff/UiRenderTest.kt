@@ -329,7 +329,7 @@ class UiRenderTest {
     @Test fun compatibilityChecking(){render("04-compatibility",model(gate=Gate.CHECKING));compose.onNodeWithText("기기를 확인하고 있어요").assertExists()}
     @Test fun blueHome(){render("05-blue-home",model());compose.onNodeWithText("앱 추가").assertExists()}
     @Test fun scopeChoiceDoesNotRewindProgressDuringFinalRead(){render("81-scope-final-read",model(gate=Gate.CHECKING).copy(scopeResolved=true));compose.onNodeWithText("연결 준비 · 11 / 11").assertExists();compose.onNodeWithText("연결 준비 · 10 / 11").assertDoesNotExist()}
-    @Test fun applying(){render("06-applying",model().copy(busy=true));compose.onNodeWithText("적용하고 안전하게 확인하고 있어요").assertExists()}
+    @Test fun applying(){render("06-applying",model().copy(busy=true));compose.onNodeWithText("적용하고 안전하게 확인하고 있어요").assertExists();compose.onNodeWithText("끝날 때까지 이 화면을 열어 두세요. 앱을 나가면 남은 앱은 바꾸지 않아요.").assertExists()}
     @Test fun appliedHome(){render("07-applied-system-theme",model(applied=true));compose.onNodeWithText("bluedotOFF\n적용 완료").assertExists()}
     @Test fun successfulHideUsesHomeSummaryAndRetainsClosureWarnings(){
         val base=model(applied=true)

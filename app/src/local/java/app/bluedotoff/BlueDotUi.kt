@@ -166,8 +166,7 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
                         CircularProgressIndicator();Spacer(Modifier.height(24.dp))
                         Text(when(p?.phase){BatchPhase.CONNECTING->"연결을 준비하고 있어요";BatchPhase.CLOSING->"결과를 저장하고 연결을 마무리하고 있어요";else->if(model.operationHide)"적용하고 안전하게 확인하고 있어요" else "복원하고 안전하게 확인하고 있어요"},style=MaterialTheme.typography.titleMedium)
                         if(p!=null){Spacer(Modifier.height(20.dp));LinearProgressIndicator(progress={p.percent/100f},modifier=Modifier.fillMaxWidth());Spacer(Modifier.height(12.dp));Text(if(p.phase==BatchPhase.CLOSING)"${p.completed} / ${p.total}개 확인 · 마무리 중…" else "${p.completed} / ${p.total}개 확인 · ${p.percent}%",style=MaterialTheme.typography.titleLarge)}
-                        Spacer(Modifier.height(12.dp));Text("확인이 끝나면 결과를 알려드려요.",textAlign=androidx.compose.ui.text.style.TextAlign.Center,color=scheme.onSurfaceVariant)
-                        if(p!=null)Text("작업이 끝날 때까지 이 화면을 열어 두세요.",Modifier.padding(top=8.dp),style=MaterialTheme.typography.bodySmall,color=scheme.onSurfaceVariant)
+                        Spacer(Modifier.height(12.dp));Text("끝날 때까지 이 화면을 열어 두세요. 앱을 나가면 남은 앱은 바꾸지 않아요.",textAlign=androidx.compose.ui.text.style.TextAlign.Center,color=scheme.onSurfaceVariant)
                         if(model.operationHide)Text("일부 앱은 Android가 파란 위치 표시를 다시 켤 수 있어요. 적용 직후에도 풀릴 수 있으니, 필요하면 홈에서 다시 적용해주세요.",Modifier.padding(top=12.dp),style=MaterialTheme.typography.bodySmall,color=scheme.onSurfaceVariant,textAlign=androidx.compose.ui.text.style.TextAlign.Center)
                     }
                     }

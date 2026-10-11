@@ -25,6 +25,57 @@ class SafetyEngineTest {
     @Test fun singletonLifecyclePeerAdditionIsStickyReviewWithoutSetter(){val(s,p,e)=rig();p.current=baseline.copy(sharedUserId="test.shared",singletonVerified=true);e.userHide(identity.packageName);val changed=Reconcile.read(s.data.last(),p.current.copy(peers=listOf(identity.packageName,"second.app")),firmware.key,"boot:1");assertEquals(TargetState.SHARED_UID_CHANGED,changed.state);assertEquals(changed,Reconcile.update(changed));assertEquals(changed,Reconcile.boot(changed));assertEquals(changed,Reconcile.read(changed,p.current,firmware.key,"boot:1"));assertEquals(listOf(0),p.writes)}
     @Test fun singletonUpdateRetainsSameOriginalAndNamespace(){val(s,p,e)=rig();p.current=baseline.copy(sharedUserId="test.shared",singletonVerified=true);e.userHide(identity.packageName);p.current=p.current.copy(identity=identity.copy(versionCode=2,lastUpdateTime=900),fineFlags=baseline.fineFlags);e.userHide(identity.packageName);assertEquals(256,s.data.last().originalBit);assertEquals("test.shared",s.data.last().sharedUserId);assertEquals(listOf(0,0),p.writes)}
     @Test fun singletonFailureRollsBackOnlyOriginalBitWhenOwnershipStable(){val(_,p,e)=rig();p.current=baseline.copy(sharedUserId="test.shared",singletonVerified=true);val original=p.current;p.failAfterWrite=true;assertEquals(TargetState.FAILED_SAFE,e.userHide(identity.packageName).state);assertEquals(original,p.current);assertEquals(listOf(0,256),p.writes)}
+    // "표시 켜기": an app left OFF without any record (e.g. bluedotOFF was reinstalled) is turned ON.
+    private val off get()=baseline.copy(fineFlags=baseline.fineFlags and 256.inv())
+    @Test fun showRecordsOffAndTargetOnBeforeWritingThenLeavesTheAppUnregistered(){
+        val(s,p,e)=rig();p.current=off
+        val journalBeforeWrite=mutableListOf<Entry>()
+        val port=object:TargetPort{override fun compatibleFirmware()=firmware;override fun read(packageName:String)=p.read(packageName)
+            override fun writeFineBit(packageName:String,originalBit:Int){journalBeforeWrite.add(s.data.last());p.writeFineBit(packageName,originalBit)}}
+        val done=SafetyEngine(port,s,{200},{"boot:1"},wait={}).userShow(identity.packageName)
+        assertEquals(TargetState.PENDING_SHOW,journalBeforeWrite.single().state);assertEquals(0,journalBeforeWrite.single().originalBit)
+        assertEquals(listOf(256),p.writes);assertEquals(baseline,p.current)
+        assertEquals(TargetState.NOT_APPLIED,done.state);assertFalse(done.enabled);assertTrue(done.settlingVerified);assertEquals(256,done.originalBit)
+        // A later hide takes ON as the original, so restoring it turns the indicator back on.
+        e.userHide(identity.packageName);assertEquals(0,p.current.bit);assertEquals(256,s.data.last().originalBit)
+        e.userRestore(identity.packageName);assertEquals(baseline,p.current)
+    }
+    @Test fun showRefusesAnAppThatIsAlreadyOn(){val(_,p,e)=rig();expectFailure{e.userShow(identity.packageName)};assertTrue(p.writes.isEmpty())}
+    @Test fun showRefusesAnAppWithARecordAndLeavesItToRestore(){
+        val(s,p,e)=rig();p.current=off;e.userHide(identity.packageName)
+        expectFailure{e.userShow(identity.packageName)};assertTrue(p.writes.isEmpty());assertTrue(s.data.last().enabled)
+        // After that record is restored (it stays OFF, its original), the app can be shown.
+        e.userRestore(identity.packageName);assertEquals(TargetState.NOT_APPLIED,e.userShow(identity.packageName).state);assertEquals(listOf(256),p.writes)
+    }
+    @Test fun showRefusesSharedOrUnsafeApps(){
+        val(_,p,e)=rig();p.current=off.copy(sharedUserId="test.shared",peers=listOf(identity.packageName,"second.app"));expectFailure{e.userShow(identity.packageName)}
+        p.current=off.copy(fineGranted=false);expectFailure{e.userShow(identity.packageName)};assertTrue(p.writes.isEmpty())
+    }
+    @Test fun failedShowRollsBackToOff(){
+        val(s,p,e)=rig();p.current=off;p.failAfterWrite=true
+        val entry=e.userShow(identity.packageName)
+        assertEquals(TargetState.FAILED_SAFE,entry.state);assertEquals(off,p.current);assertEquals(listOf(256,0),p.writes);assertEquals(0,s.data.last().originalBit)
+    }
+    @Test fun interruptedShowIsRecognisedAfterRestart(){
+        val(s,p,_)=rig();p.current=off
+        val pending=Entry(identity,"Test",0,true,TargetState.PENDING_SHOW,100,firmware.key,"boot:1",false,invariantDigest=off.invariantDigest())
+        // Closed after the write: ON is the target, so it is simply unregistered with ON.
+        val on=Reconcile.read(pending,baseline,firmware.key,"boot:1")
+        assertEquals(TargetState.NOT_APPLIED,on.state);assertFalse(on.enabled);assertEquals(256,on.originalBit)
+        // Closed before the write: still OFF, nothing changed.
+        val still=Reconcile.read(pending,off,firmware.key,"boot:1")
+        assertEquals(TargetState.NOT_APPLIED,still.state);assertFalse(still.enabled);assertEquals(0,still.originalBit)
+        // Something else changed meanwhile: blocked for review, as for an interrupted hide or restore.
+        assertEquals(TargetState.FAILED_ROLLBACK,Reconcile.read(pending,off.copy(fineMode=1),firmware.key,"boot:1").state)
+        // A boot or an app update never turns an unfinished show into a reapply.
+        assertEquals(TargetState.PENDING_SHOW,Reconcile.boot(pending).state);assertEquals(TargetState.PENDING_SHOW,Reconcile.update(pending).state)
+        assertTrue(p.writes.isEmpty());assertTrue(s.data.isEmpty())
+    }
+    @Test fun showWindowTurnsOnEveryAppAndChecksEachOne(){
+        val(s,p,_)=rig();p.current=off;var clock=0L
+        val out=SafetyEngine(p,s,{200},{"boot:1"},wait={clock+=it}).userShowWindow(listOf(identity.packageName),elapsed={clock})
+        assertTrue(out.results.single().success);assertEquals(listOf(256),p.writes);assertFalse(s.data.last().enabled);assertEquals(256,s.data.last().originalBit)
+    }
     private val identity = Identity("test.location.app", 0, 10792, listOf("certificate"), 100, 1, 110)
     private val baseline = Snapshot(identity,"Test",listOf(identity.packageName),true,true,true,false,0x80301,0x301,0,4,4,false)
     private val firmware = Firmware("samsung",37,"90000","fp","id","Galaxy","abi-verified")
@@ -43,7 +94,7 @@ class SafetyEngineTest {
             return current
         }
         override fun writeFineBit(packageName: String, originalBit: Int) {
-            assertTrue(store.entries().last().state in listOf(TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE))
+            assertTrue(store.entries().last().state in listOf(TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE,TargetState.PENDING_SHOW))
             writes.add(originalBit)
             current=current.copy(fineFlags=(current.fineFlags and 256.inv()) or originalBit)
             if(writes.size==1){

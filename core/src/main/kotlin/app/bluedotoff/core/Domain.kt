@@ -3,7 +3,8 @@ package app.bluedotoff.core
 import java.security.MessageDigest
 
 const val SENSITIVITY_BIT = 0x100
-enum class TargetState { NOT_APPLIED, PENDING_HIDE, PENDING_RESTORE, APPLIED, NEEDS_REAPPLY_BOOT, NEEDS_REAPPLY_UPDATE, NEEDS_RECHECK_FIRMWARE, UNSUPPORTED_STATE, MISSING_TARGET, SHARED_UID_BLOCKED, SHIZUKU_REQUIRED, FAILED_SAFE, FAILED_ROLLBACK, INACTIVE_INSTALL, SHARED_UID_CHANGED, NEEDS_REVIEW, NEEDS_REAPPLY_POLICY }
+// Stored by name in journals: append only. PENDING_SHOW is an unfinished "표시 켜기" (value before OFF, target ON).
+enum class TargetState { NOT_APPLIED, PENDING_HIDE, PENDING_RESTORE, APPLIED, NEEDS_REAPPLY_BOOT, NEEDS_REAPPLY_UPDATE, NEEDS_RECHECK_FIRMWARE, UNSUPPORTED_STATE, MISSING_TARGET, SHARED_UID_BLOCKED, SHIZUKU_REQUIRED, FAILED_SAFE, FAILED_ROLLBACK, INACTIVE_INSTALL, SHARED_UID_CHANGED, NEEDS_REVIEW, NEEDS_REAPPLY_POLICY, PENDING_SHOW }
 enum class Compatibility { SUPPORTED_VERIFIED, UNVERIFIED, UNSUPPORTED, NEEDS_RECHECK }
 data class Identity(val packageName: String, val userId: Int, val uid: Int, val signers: List<String>, val firstInstallTime: Long, val versionCode: Long, val lastUpdateTime: Long) {
     fun sameInstall(other: Identity) = packageName == other.packageName && userId == other.userId && uid == other.uid && signers == other.signers && firstInstallTime == other.firstInstallTime
@@ -47,20 +48,24 @@ class SafetyEngine(private val port: TargetPort, private val journal: Journal, p
     fun userHide(packageName: String): Entry = synchronized(writeLock) { execute(packageName, hide = true) }
     fun userRestore(packageName: String): Entry = synchronized(writeLock) { execute(packageName, hide = false) }
     fun userOne(packageName:String,hide:Boolean,canStart:()->Boolean):Entry = synchronized(writeLock){execute(packageName,hide,canStart)}
+    /** "표시 켜기": an app that is OFF with no bluedotOFF record is turned ON. Not a restore: the record keeps OFF as the
+     *  value before and ON as the target (PENDING_SHOW), a failure rolls back to OFF, and success leaves it unregistered. */
+    fun userShow(packageName:String,canStart:()->Boolean={true}):Entry = synchronized(writeLock){execute(packageName,false,canStart,show=true)}
     private fun durable(entry: Entry): Entry {
         val saved=try{journal.commit(entry)}catch(_:Exception){false}
         if(!saved)throw JournalPersistenceException()
         return entry
     }
     private fun records():List<Entry> = try{journal.entries()}catch(_:Exception){throw JournalPersistenceException()}
-    private fun prepare(pkg: String, hide: Boolean, canStart: () -> Boolean = { true }, inFlightUids: Set<Int> = emptySet()): Started {
+    private fun prepare(pkg: String, hide: Boolean, canStart: () -> Boolean = { true }, inFlightUids: Set<Int> = emptySet(), show: Boolean = false): Started {
         val firmware = port.compatibleFirmware()
         if (!firmware.osSupported || firmware.abiProfile.isBlank()) throw SafetyException("이 기기에서는 안전한 적용을 확인할 수 없습니다. 변경된 내용은 없습니다.")
         val before = port.read(pkg)
         observe("before", before, false)
         if (before.identity.uid in inFlightUids) throw OwnershipChangedException()
-        val old = records().lastOrNull { it.identity.packageName == pkg && it.identity.userId == 0 }?.takeUnless { !it.enabled && (it.state == TargetState.INACTIVE_INSTALL || (hide && it.state == TargetState.NOT_APPLIED)) }
+        val old = records().lastOrNull { it.identity.packageName == pkg && it.identity.userId == 0 }?.takeUnless { !it.enabled && (it.state == TargetState.INACTIVE_INSTALL || ((hide || show) && it.state == TargetState.NOT_APPLIED)) }
         if(old?.groupIdentities?.isNotEmpty()==true)throw SafetyException("이 앱은 공유 앱 묶음으로 함께 변경해야 합니다.")
+        if(show&&old!=null)throw SafetyException("bluedotOFF 기록이 있는 앱이에요. 표시 켜기 대신 원래대로 복원을 써주세요.")
         if (old?.state in listOf(TargetState.FAILED_ROLLBACK,TargetState.SHARED_UID_CHANGED,TargetState.NEEDS_REVIEW)) throw SafetyException("복원 상태를 확인할 수 없어 추가 변경을 차단했습니다.")
         if (old != null && !old.identity.sameInstall(before.identity)) {
             durable(old.copy(state = TargetState.INACTIVE_INSTALL, enabled = false, error = "새 설치입니다. 과거 기록은 적용하지 않습니다."))
@@ -70,21 +75,22 @@ class SafetyEngine(private val port: TargetPort, private val journal: Journal, p
             durable(old.copy(state=TargetState.SHARED_UID_CHANGED,error=OwnershipChangedException().message!!))
             throw OwnershipChangedException()
         }
-        if (old?.state in listOf(TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE) && (old!!.invariantDigest.isBlank() || old.invariantDigest != before.invariantDigest())) {
+        if (old?.state in listOf(TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE,TargetState.PENDING_SHOW) && (old!!.invariantDigest.isBlank() || old.invariantDigest != before.invariantDigest())) {
             durable(old.copy(state=TargetState.FAILED_ROLLBACK,error="중단된 작업의 안전성을 확인하지 못했습니다. 추가 변경을 차단했습니다."))
             throw SafetyException("중단된 작업의 복원 확인이 필요합니다.")
         }
         if (old != null && old.firmware != firmware.key && old.firmware.substringAfterLast('|') != firmware.abiProfile) throw SafetyException("기기 업데이트 후 호환성 재확인이 필요합니다.")
         if (!hide && old != null && !old.enabled && old.state == TargetState.NOT_APPLIED && before.safe()) return Started.Finished(old)
-        if (hide && !before.safe()) throw SafetyException(before.rejectionReason()+" 변경된 내용은 없습니다.")
+        if ((hide || show) && !before.safe()) throw SafetyException(before.rejectionReason()+" 변경된 내용은 없습니다.")
         // Restore also refuses unsafe identities, UID peers or revoked/unusual permission states.
         if (!hide && !before.safe()) throw SafetyException("현재 앱 권한 상태에서 안전한 복원을 확인할 수 없습니다. 변경하지 않았습니다.")
-        if (!hide && old == null) throw SafetyException("복원할 등록 기록이 없습니다.")
+        if (!hide && !show && old == null) throw SafetyException("복원할 등록 기록이 없습니다.")
+        if (show && before.bit != 0) throw SafetyException("이미 위치 표시가 켜져 있어요. 변경하지 않았어요.")
         val original = old?.originalBit ?: before.bit
-        val wanted = if (hide) 0 else original
-        val pending = Entry(before.identity, before.label, original, true, if (hide) TargetState.PENDING_HIDE else TargetState.PENDING_RESTORE, now(), firmware.key, boot(), old?.changedByUs ?: false, error = "", invariantDigest=before.invariantDigest(),sharedUserId=before.sharedUserId)
+        val wanted = if (hide) 0 else if (show) SENSITIVITY_BIT else original
+        val pending = Entry(before.identity, before.label, original, true, if (hide) TargetState.PENDING_HIDE else if (show) TargetState.PENDING_SHOW else TargetState.PENDING_RESTORE, now(), firmware.key, boot(), old?.changedByUs ?: false, error = "", invariantDigest=before.invariantDigest(),sharedUserId=before.sharedUserId)
         durable(pending) // Mandatory before the first possible system mutation.
-        val operation = Verification(before, pending, wanted, hide, before.bit != wanted)
+        val operation = Verification(before, pending, wanted, hide, before.bit != wanted, show)
         if (!operation.wrote) return Started.Checking(operation)
         // Close the window opened by durable IO; never write against an outdated preflight.
         val immediate = port.read(pkg)
@@ -97,12 +103,12 @@ class SafetyEngine(private val port: TargetPort, private val journal: Journal, p
             Started.Checking(operation)
         } catch (failure: Exception) { Started.Finished(failed(operation,failure)) }
     }
-    private data class Verification(val before:Snapshot,val pending:Entry,val wanted:Int,val hide:Boolean,val wrote:Boolean)
+    private data class Verification(val before:Snapshot,val pending:Entry,val wanted:Int,val hide:Boolean,val wrote:Boolean,val show:Boolean=false)
     private sealed interface Started {
         data class Finished(val entry:Entry):Started
         data class Checking(val operation:Verification):Started
     }
-    private fun execute(pkg:String,hide:Boolean,canStart:()->Boolean={true}):Entry = when(val started=prepare(pkg,hide,canStart)) {
+    private fun execute(pkg:String,hide:Boolean,canStart:()->Boolean={true},show:Boolean=false):Entry = when(val started=prepare(pkg,hide,canStart,show=show)) {
         is Started.Finished -> started.entry
         is Started.Checking -> try {
             val operation=started.operation
@@ -110,7 +116,9 @@ class SafetyEngine(private val port: TargetPort, private val journal: Journal, p
             finished(operation)
         } catch(failure:Exception) { failed(started.operation,failure) }
     }
-    private fun finished(operation:Verification):Entry = durable(operation.pending.copy(
+    // A verified "표시 켜기" leaves the app unregistered; ON, its actual state now, is what a later hide restores to.
+    private fun finished(operation:Verification):Entry = durable(if(operation.show)operation.pending.copy(enabled=false,state=TargetState.NOT_APPLIED,
+        originalBit=SENSITIVITY_BIT,changedByUs=false,lastVerifiedTime=now(),settlingVerified=true) else operation.pending.copy(
         enabled=operation.hide,state=if(operation.hide)TargetState.APPLIED else TargetState.NOT_APPLIED,
         changedByUs=operation.hide && (operation.wrote || operation.pending.changedByUs),lastVerifiedTime=now(),settlingVerified=true))
     private fun failed(operation:Verification,failure:Exception):Entry {
@@ -144,8 +152,9 @@ class SafetyEngine(private val port: TargetPort, private val journal: Journal, p
      * A bounded window drains every started record before its helper can close. */
     fun userHideWindow(packages:List<String>,canStart:()->Boolean={true},elapsed:()->Long={System.nanoTime()/1_000_000},
         onResult:(BatchResult)->Unit={}):HideWindowOutcome = userWindow(packages,true,canStart,elapsed,onResult)
+    fun userShowWindow(packages:List<String>,canStart:()->Boolean={true},elapsed:()->Long={System.nanoTime()/1_000_000},onResult:(BatchResult)->Unit={}):HideWindowOutcome = userWindow(packages,false,canStart,elapsed,onResult,show=true)
     fun userRestoreWindow(packages:List<String>,canStart:()->Boolean={true},elapsed:()->Long={System.nanoTime()/1_000_000},onResult:(BatchResult)->Unit={}):HideWindowOutcome = userWindow(packages,false,canStart,elapsed,onResult)
-    private fun userWindow(packages:List<String>,hide:Boolean,canStart:()->Boolean,elapsed:()->Long,onResult:(BatchResult)->Unit):HideWindowOutcome = synchronized(writeLock) {
+    private fun userWindow(packages:List<String>,hide:Boolean,canStart:()->Boolean,elapsed:()->Long,onResult:(BatchResult)->Unit,show:Boolean=false):HideWindowOutcome = synchronized(writeLock) {
         require(packages.isNotEmpty() && packages.size<=BatchWindow.MAX_TARGETS && packages.distinct()==packages)
         data class Scheduled(val operation:Verification,var phase:Int=1,var due:Long)
         val waiting=mutableListOf<Scheduled>()
@@ -180,7 +189,7 @@ class SafetyEngine(private val port: TargetPort, private val journal: Journal, p
             if(!stopped && cursor<packages.size && waiting.size<HideWindowOutcome.MAX_IN_FLIGHT && BatchWindow.next(cursor,elapsed()-start)) {
                 val pkg=packages[cursor++]
                 try {
-                    when(val prepared=prepare(pkg,hide,canStart,waiting.map{it.operation.before.identity.uid}.toSet())) {
+                    when(val prepared=prepare(pkg,hide,canStart,waiting.map{it.operation.before.identity.uid}.toSet(),show)) {
                         is Started.Finished -> publish(result(pkg,prepared.entry))
                         is Started.Checking -> {
                             val operation=prepared.operation
@@ -216,7 +225,7 @@ class SafetyEngine(private val port: TargetPort, private val journal: Journal, p
 
 object Reconcile {
     private fun review(entry:Entry)=entry.state in listOf(TargetState.FAILED_ROLLBACK,TargetState.SHARED_UID_CHANGED,TargetState.NEEDS_REVIEW)
-    private fun pending(entry: Entry) = entry.state in listOf(TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE)
+    private fun pending(entry: Entry) = entry.state in listOf(TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE,TargetState.PENDING_SHOW)
     fun boot(entry: Entry) = if (entry.enabled && !review(entry) && !pending(entry)) entry.copy(state = TargetState.NEEDS_REAPPLY_BOOT) else entry
     fun update(entry: Entry) = if (entry.enabled && !review(entry) && !pending(entry)) entry.copy(state = TargetState.NEEDS_REAPPLY_UPDATE) else entry
     fun read(entry: Entry, snapshot: Snapshot?, firmware: String, bootSession: String,all:Map<String,Snapshot?> = emptyMap()): Entry {
@@ -232,6 +241,9 @@ object Reconcile {
         if (!entry.enabled) return entry
         if (!pending(entry) && (entry.identity.versionCode != snapshot.identity.versionCode || entry.identity.lastUpdateTime != snapshot.identity.lastUpdateTime || entry.state == TargetState.NEEDS_REAPPLY_UPDATE)) return entry.copy(state = TargetState.NEEDS_REAPPLY_UPDATE)
         if (entry.invariantDigest.isBlank() || entry.invariantDigest != snapshot.invariantDigest()) return entry.copy(state=TargetState.UNSUPPORTED_STATE,error="권한 상태와 이전 안전성 기록이 일치하지 않습니다. 직접 확인해 주세요.")
+        // An interrupted "표시 켜기" (app closed mid-way): the invariants still match, so whether the app is ON (target
+        // reached) or still OFF, that is its real state. It is unregistered with that state as its value from now on.
+        if (entry.state == TargetState.PENDING_SHOW) return entry.copy(state = TargetState.NOT_APPLIED, enabled = false, changedByUs = false, originalBit = snapshot.bit)
         if (entry.state == TargetState.PENDING_RESTORE && snapshot.bit == entry.originalBit) return entry.copy(state = TargetState.NOT_APPLIED, enabled = false, changedByUs = false)
         if (entry.state == TargetState.PENDING_HIDE) return entry.copy(state = TargetState.FAILED_SAFE, error = "중단된 적용의 지속성을 확인하지 못했습니다. 직접 다시 확인해 주세요.")
         if (entry.state == TargetState.FAILED_SAFE) return entry

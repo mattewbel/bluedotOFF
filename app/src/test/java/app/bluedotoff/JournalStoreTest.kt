@@ -27,6 +27,15 @@ class JournalStoreTest {
         file.writeText(flipped);file.setLastModified(stamp);assertEquals(text.length,file.readText().length)
         try{JournalStore(context).entries();fail("A damaged journal must not be served from cache")}catch(_:IllegalStateException){}
     }
+    /** An unfinished "표시 켜기" must still read as one after the app restarts (value before OFF, state PENDING_SHOW). */
+    @Test fun pendingShowSurvivesARestart(){
+        val show=entry.copy(originalBit=0,state=TargetState.PENDING_SHOW)
+        assertTrue(JournalStore(context).commit(show))
+        // Different stored bytes (a trailing space; the checksum covers only the payload) force a real parse, as after a restart.
+        file.appendText(" ")
+        val reread=JournalStore(context).entries()
+        assertEquals(TargetState.PENDING_SHOW,reread.single().state);assertEquals(0,reread.single().originalBit);assertTrue(reread.single().enabled)
+    }
     @Test fun cachedEntriesMatchAFreshParseOfTheStoredBytes(){
         val member=Identity("test.peer",0,10792,listOf("cert"),1,1,1)
         val rich=listOf(entry.copy(error="오류",invariantDigest="b".repeat(64),settlingVerified=true,sharedUserId="test.shared"),

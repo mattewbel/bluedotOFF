@@ -3,7 +3,7 @@ package app.bluedotoff
 import app.bluedotoff.core.*
 
 enum class Gate { CHECKING, WELCOME, UNSUPPORTED, NOT_RUNNING, READY }
-enum class Page { HOME, HISTORY, PICK, RESTORE, DETAIL, REAPPLY, SETTINGS, HELP }
+enum class Page { HOME, HISTORY, PICK, RESTORE, DETAIL, REAPPLY, SETTINGS, HELP, SHOW }
 /** A shared-UID group big enough (or system-owned) that picking it asks first. */
 data class BigGroup(val label:String,val names:List<String>,val system:Boolean)
 /** A shared group left out of a selection, with the reason shown to the user. */
@@ -12,7 +12,7 @@ data class SharedOffer(val members:List<Snapshot>,val hide:Boolean=true,val load
 /** States SafetyEngine.prepare refuses to restore; skipped in multi-app restores (mirrors batchHide). */
 val RESTORE_SKIP=listOf(TargetState.INACTIVE_INSTALL,TargetState.FAILED_ROLLBACK,TargetState.SHARED_UID_BLOCKED,TargetState.SHARED_UID_CHANGED,TargetState.NEEDS_REVIEW,TargetState.UNSUPPORTED_STATE)
 
-data class UiModel(val gate: Gate = Gate.CHECKING, val page: Page = Page.HOME, val entries: List<Entry> = emptyList(), val candidates: List<Snapshot> = emptyList(), val selected: String? = null, val connected: Boolean = false, val busy: Boolean = false, val loadingApps: Boolean = false, val notice: String = "", val compatibility: String = "기기 확인 대기", val notifications: Boolean = false, val notificationOffer: Boolean = false, val successToken: Int = 0, val freshPackages:Set<String> = emptySet(), val picked:Set<String> = emptySet(), val query:String = "", val historyAvailable:Boolean = false, val discovered:List<DiscoveredApp> = emptyList(), val filter:AppFilter = AppFilter.ALL, val homePicked:Set<String> = emptySet(), val batchResults:List<BatchResult> = emptyList(), val metrics:ScanMetrics = ScanMetrics(), val loadingDetail:Boolean = false, val pickerRows:List<DiscoveredApp>? = null, val historyView:HistoryView = HistoryView.APPS, val pickerView:PickerView = PickerView.CANDIDATES,val automaticReady:Boolean=false,val autoManagement:Boolean=false,val autoPermission:Boolean=false,val progress:BatchProgress?=null,val completion:BatchOutcome?=null,val wirelessWarning:String="",val operationHide:Boolean=true,val sharedOffer:SharedOffer?=null,val approvedGroups:List<List<String>> = emptyList(),val applicationScope:ApplicationScope=ApplicationScope.GROUPS,val scopePending:Boolean=false,val scopeResolved:Boolean=false,val scopePreview:Boolean=false,val scanProgress:ScanProgress?=null,val checkingRegistered:Boolean=false,val usModel:Boolean=false,val rejectedGroups:Set<String> = emptySet(),val reapplyNotify:Boolean=true,val rechecking:Boolean=false,val lastCheckedAt:Long=0L,val bigGroups:List<BigGroup> = emptyList(),val rejectedGroupList:List<RejectedGroup> = emptyList()) {
+data class UiModel(val gate: Gate = Gate.CHECKING, val page: Page = Page.HOME, val entries: List<Entry> = emptyList(), val candidates: List<Snapshot> = emptyList(), val selected: String? = null, val connected: Boolean = false, val busy: Boolean = false, val loadingApps: Boolean = false, val notice: String = "", val compatibility: String = "기기 확인 대기", val notifications: Boolean = false, val notificationOffer: Boolean = false, val successToken: Int = 0, val freshPackages:Set<String> = emptySet(), val picked:Set<String> = emptySet(), val query:String = "", val historyAvailable:Boolean = false, val discovered:List<DiscoveredApp> = emptyList(), val filter:AppFilter = AppFilter.ALL, val homePicked:Set<String> = emptySet(),val showPicked:Set<String> = emptySet(), val batchResults:List<BatchResult> = emptyList(), val metrics:ScanMetrics = ScanMetrics(), val loadingDetail:Boolean = false, val pickerRows:List<DiscoveredApp>? = null, val historyView:HistoryView = HistoryView.APPS, val pickerView:PickerView = PickerView.CANDIDATES,val automaticReady:Boolean=false,val autoManagement:Boolean=false,val autoPermission:Boolean=false,val progress:BatchProgress?=null,val completion:BatchOutcome?=null,val wirelessWarning:String="",val operationHide:Boolean=true,val operationShow:Boolean=false,val sharedOffer:SharedOffer?=null,val approvedGroups:List<List<String>> = emptyList(),val applicationScope:ApplicationScope=ApplicationScope.GROUPS,val scopePending:Boolean=false,val scopeResolved:Boolean=false,val scopePreview:Boolean=false,val scanProgress:ScanProgress?=null,val checkingRegistered:Boolean=false,val usModel:Boolean=false,val rejectedGroups:Set<String> = emptySet(),val reapplyNotify:Boolean=true,val rechecking:Boolean=false,val lastCheckedAt:Long=0L,val bigGroups:List<BigGroup> = emptyList(),val rejectedGroupList:List<RejectedGroup> = emptyList()) {
     // Drawing progress follows checked targets, never drives actual work or success.
     val blueRemaining get()=when {
         busy && !scopePreview -> 1f-(progress?.percent?:0)/100f
@@ -33,7 +33,15 @@ data class UiModel(val gate: Gate = Gate.CHECKING, val page: Page = Page.HOME, v
     /** Already hidden and verified: selecting it again would only re-check, so the picker leaves it out. */
     fun isApplied(pkg:String)=entries.any{it.identity.packageName==pkg&&it.enabled&&it.state==TargetState.APPLIED&&it.settlingVerified}
     /** Selectable in the picker: actionable and not already hidden. Applied apps stay in the main list as "적용 중". */
-    fun canSelect(a:DiscoveredApp)=canAct(a)&&!isApplied(a.packageName)
+    fun canSelect(a:DiscoveredApp)=canAct(a)&&!isApplied(a.packageName)&&!leftOff(a)
+    /** Location indicator OFF (latest read) and no bluedotOFF record that could restore it, e.g. after bluedotOFF was
+     *  removed and installed again. Hiding it changes nothing, so the picker does not offer it; "표시 켜기" can turn it on. */
+    fun leftOff(a:DiscoveredApp)=PickerPolicy.alreadyNotSensitive(a)&&a.packageName !in managedPackages&&
+        candidates.firstOrNull{it.identity.packageName==a.packageName}?.let{it.bit==0}!=false&&
+        entries.none{it.identity.packageName==a.packageName&&it.state in listOf(TargetState.FAILED_ROLLBACK,TargetState.SHARED_UID_CHANGED,TargetState.NEEDS_REVIEW)}
+    val leftOffApps get()=displayApps.filter(::leftOff).sortedWith(compareBy<DiscoveredApp>{it.preinstalled}.thenBy{it.label.lowercase()})
+    /** "표시 켜기" handles one app at a time; shared-UID apps are only listed. */
+    fun canShow(a:DiscoveredApp)=leftOff(a)&&canAct(a)&&a.uidPeers.size<=1&&a.sharedUserId==null
     /** A shared-UID app in the whole scope that is not chosen yet: picking it checks and selects its whole group. */
     fun canPickGroup(a:DiscoveredApp)=canInspectGroup(a)&&!groupChosen(a.packageName)&&a.check!=CandidateCheck.NEEDS_CHECK&&a.packageName !in rejectedGroups&&groupMayShowIndicator(a)
     /** A shared group is offered only if some member declares precise location: groups without it never show the blue

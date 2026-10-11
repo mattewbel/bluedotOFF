@@ -92,18 +92,18 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             BatchRuntime.state.collect { state ->
                 if(state.id==0L)return@collect
-                if(state.busy){model=model.copy(busy=true,operationHide=state.hide,progress=state.progress,loadingApps=false,notice="")}
+                if(state.busy){model=model.copy(busy=true,operationHide=state.hide,operationShow=state.show,progress=state.progress,loadingApps=false,notice="")}
                 else state.outcome?.let { outcome ->
                     val succeeded=outcome.results.filter{it.success}.map{it.packageName}.toSet()
                     val first=handledBatchId!=state.id;handledBatchId=state.id
                     val scopeChanged=model.applicationScope!=scopes.current
                     model=model.copy(busy=false,progress=null,completion=outcome,applicationScope=scopes.current,scopePending=scopes.pending!=null||scopes.requested!=null,
-                        page=if(first&&outcome.results.isNotEmpty()&&outcome.results.all{it.success}&&model.page==(if(outcome.hide)Page.PICK else Page.RESTORE))Page.HOME else model.page,
+                        page=if(first&&outcome.results.isNotEmpty()&&outcome.results.all{it.success}&&model.page==(if(outcome.hide)Page.PICK else if(outcome.show)Page.SHOW else Page.RESTORE))Page.HOME else model.page,
                         entries=outcome.entries.ifEmpty{model.entries},
                         candidates=model.candidates.filterNot{s->outcome.snapshots.any{it.identity.packageName==s.identity.packageName}}+outcome.snapshots,
                         freshPackages=outcome.snapshots.map{it.identity.packageName}.toSet(),
                         connected=controls.wireless,automaticReady=automaticReady(),
-                        picked=model.picked-succeeded,homePicked=model.homePicked-succeeded,
+                        picked=model.picked-succeeded,homePicked=model.homePicked-succeeded,showPicked=model.showPicked-succeeded,
                         batchResults=outcome.results,wirelessWarning=outcome.cleanupWarning,
                         notice=if(first){(if(outcome.error.isBlank()&&outcome.results.all{it.success})"" else outcome.error.ifBlank{outcome.summary()}).ifBlank{skipNotice}.also{skipNotice=""}}else model.notice,
                         successToken=if(first&&outcome.hide&&succeeded.isNotEmpty())model.successToken+1 else model.successToken)
@@ -145,7 +145,7 @@ class MainActivity : ComponentActivity() {
         else @Suppress("DEPRECATION") registerReceiver(packageChanges,packageFilter)
         wifiObserver=WifiConnection.observe(this){runOnUiThread{model=model.copy(automaticReady=automaticReady());if(ForegroundState.active&&!model.busy)refresh()}}
         navigateNotification(intent)
-        setContent { BlueDotApp(model, ::navigate, ::select, ::requestHide, ::requestRestore, ::batchHide, ::restoreAll, ::openBackend, ::openBackend, ::openBackend, ::refreshFromUser, ::allowNotifications, ::dismissNotificationOffer, ::begin, ::loadApps, ::clearNotice, ::togglePick, ::addSelected, ::changeQuery, ::changeFilter, { model=model.copy(homePicked=emptySet());navigate(Page.RESTORE) }, ::toggleHomePick, ::restoreSelected, ::contentShown, pickerRevision, { model=model.copy(historyView=it) },pickerViewChanged={model=model.copy(pickerView=it,pickerRows=null);filterPicker()},wirelessExit={if(!model.busy)WirelessDebuggingExit.open(this)},toggleAll=::toggleAll,managementChanged=::managementChanged,removeManagementPermission=::removeManagementPermission,sharedInspect={pickGroups(listOf(it))},sharedAccept=::acceptShared,sharedDismiss={sharedGeneration++;model=model.copy(sharedOffer=null)},scopeChange=::chooseScope,reapplyNeeded={perform(it,true)},notificationChanged=::reapplyNotificationChanged,recheck=::recheck,bigGroupsAccept=::acceptBigGroups,bigGroupsDismiss={model=model.copy(bigGroups=emptyList())},rejectedDismiss={model=model.copy(rejectedGroupList=emptyList())},restorePickAll=::toggleAllRestore) }
+        setContent { BlueDotApp(model, ::navigate, ::select, ::requestHide, ::requestRestore, ::batchHide, ::restoreAll, ::openBackend, ::openBackend, ::openBackend, ::refreshFromUser, ::allowNotifications, ::dismissNotificationOffer, ::begin, ::loadApps, ::clearNotice, ::togglePick, ::addSelected, ::changeQuery, ::changeFilter, { model=model.copy(homePicked=emptySet());navigate(Page.RESTORE) }, ::toggleHomePick, ::restoreSelected, ::contentShown, pickerRevision, { model=model.copy(historyView=it) },pickerViewChanged={model=model.copy(pickerView=it,pickerRows=null);filterPicker()},wirelessExit={if(!model.busy)WirelessDebuggingExit.open(this)},toggleAll=::toggleAll,managementChanged=::managementChanged,removeManagementPermission=::removeManagementPermission,sharedInspect={pickGroups(listOf(it))},sharedAccept=::acceptShared,sharedDismiss={sharedGeneration++;model=model.copy(sharedOffer=null)},scopeChange=::chooseScope,reapplyNeeded={perform(it,true)},notificationChanged=::reapplyNotificationChanged,recheck=::recheck,bigGroupsAccept=::acceptBigGroups,bigGroupsDismiss={model=model.copy(bigGroups=emptyList())},rejectedDismiss={model=model.copy(rejectedGroupList=emptyList())},restorePickAll=::toggleAllRestore,showPick=::toggleShowPick,showPickAll=::toggleAllShow,showSelected=::showSelected,openShow={model=model.copy(showPicked=emptySet());navigate(Page.SHOW)}) }
     }
     // Leaving bluedotOFF turns a held wireless debugging off after a short grace (quick switches back keep it on).
     private val releaseHandler=android.os.Handler(android.os.Looper.getMainLooper())
@@ -312,6 +312,9 @@ class MainActivity : ComponentActivity() {
         if(groups.isEmpty()){if(covered.isNotEmpty())model=model.copy(picked=if(covered.all{it in model.picked})model.picked-covered else model.picked+covered)}else{model=model.copy(picked=model.picked+covered);pickGroups(groups)}}}
     private fun toggleHomePick(pkg:String) { if(model.busy)return;model=model.copy(homePicked=if(pkg in model.homePicked)model.homePicked-(model.entries.firstOrNull{it.identity.packageName==pkg}?.groupIdentities?.map{it.packageName}?.takeIf{it.isNotEmpty()}?:listOf(pkg)).toSet() else model.homePicked+(model.entries.firstOrNull{it.identity.packageName==pkg}?.groupIdentities?.map{it.packageName}?.takeIf{it.isNotEmpty()}?:listOf(pkg))) }
     private fun restoreSelected() = perform(model.homePicked.toList(),false)
+    private fun toggleShowPick(pkg:String){if(model.busy)return;model=model.copy(showPicked=if(pkg in model.showPicked)model.showPicked-pkg else model.showPicked+pkg)}
+    private fun toggleAllShow(pkgs:List<String>){if(model.busy)return;model=model.copy(showPicked=if(pkgs.all{it in model.showPicked})model.showPicked-pkgs.toSet() else model.showPicked+pkgs)}
+    private fun showSelected() = perform(model.showPicked.toList(),hide=false,show=true)
     /** "전체 선택" on the restore page: all listed apps (with their shared-group members) on, or all off. */
     private fun toggleAllRestore(pkgs:List<String>){if(model.busy)return
         val all=pkgs.flatMap{p->model.entries.firstOrNull{it.identity.packageName==p}?.groupIdentities?.map{it.packageName}?.takeIf{it.isNotEmpty()}?:listOf(p)}.toSet()
@@ -321,8 +324,9 @@ class MainActivity : ComponentActivity() {
     private fun requestRestore(pkg: String) {if(model.entries.any{it.identity.packageName==pkg&&it.groupIdentities.isNotEmpty()})inspectShared(pkg,false)else perform(listOf(pkg),hide=false)}
     private fun batchHide() = perform(model.entries.filter { it.enabled && it.state !in listOf(TargetState.FAILED_ROLLBACK,TargetState.INACTIVE_INSTALL,TargetState.MISSING_TARGET,TargetState.SHARED_UID_BLOCKED,TargetState.SHARED_UID_CHANGED,TargetState.NEEDS_REVIEW,TargetState.UNSUPPORTED_STATE) }.map { it.identity.packageName }, hide = true)
     private fun restoreAll() = perform(model.entries.filter { it.enabled }.map { it.identity.packageName }, hide = false)
-    private fun perform(requested: List<String>, hide: Boolean) {
-        val (packages,needsCheck)=if(hide)requested to 0 else model.restorePlan(requested)
+    /** [show]: "표시 켜기" for apps that are OFF with no record (SafetyEngine.userShow); one app at a time, no shared groups. */
+    private fun perform(requested: List<String>, hide: Boolean, show: Boolean = false) {
+        val (packages,needsCheck)=if(hide||show)requested to 0 else model.restorePlan(requested)
         if(packages.isEmpty()&&requested.isNotEmpty()&&!model.busy){model=model.copy(notice=if(needsCheck==0)"삭제된 앱은 복원할 필요가 없어요. 앱을 지우면 위치 표시 설정도 함께 사라져요." else "선택한 앱은 지금 복원할 수 없어요. 앱을 하나씩 열어 상태를 확인해주세요.");return}
         if(model.busy||BatchRuntime.state.value.busy||packages.isEmpty())return
         refreshJob?.cancel()
@@ -330,14 +334,14 @@ class MainActivity : ComponentActivity() {
         if(!model.canOperate||model.gate!=Gate.READY){model=model.copy(notice="연결 설정에서 기기를 연결한 뒤 다시 눌러 주세요.");return}
         refreshJob?.cancel();discoveryJob?.cancel();discoveryGeneration++
         StartupScanHandoff.cache.invalidate()
-        val groups=(model.approvedGroups+model.entries.map{it.groupIdentities.map{p->p.packageName}}.filter{it.isNotEmpty()}).distinct()
+        val groups=if(show)emptyList() else (model.approvedGroups+model.entries.map{it.groupIdentities.map{p->p.packageName}}.filter{it.isNotEmpty()}).distinct()
         val units=packages.distinct().map{p->groups.firstOrNull{p in it}?:listOf(p)}.distinct()
         val targets=units.flatten().distinct()
         val groupMap=groups.flatMap{g->g.map{it to g}}.toMap()
         val app=applicationContext
         val journal=JournalStore(app)
         val runtimePrefs=app.getSharedPreferences("ui-state",MODE_PRIVATE)
-        val started=BatchRuntime.start(targets.size,hide) { report ->
+        val started=BatchRuntime.start(targets.size,hide,show) { report ->
             val results=mutableListOf<BatchResult>()
             val observed=linkedMapOf<String,Snapshot>()
             val runner=TargetBatch.Runner()
@@ -377,18 +381,18 @@ class MainActivity : ComponentActivity() {
                         } else if(targets.size>1) {
                             val completedBefore=results.size
                             var completed=0
-                            val window=if(hide)engine.userHideWindow(targets.drop(cursor).takeWhile{it !in groupMap}.take(BatchWindow.MAX_TARGETS),
-                                canStart={ForegroundState.canStartTargets},elapsed=android.os.SystemClock::elapsedRealtime,onResult={result->
-                                    if(!result.success)observed.remove(result.packageName)
-                                    completed++;report(BatchProgress(completedBefore+completed,targets.size,BatchPhase.CHECKING))
-                                }) else engine.userRestoreWindow(targets.drop(cursor).takeWhile{it !in groupMap}.take(BatchWindow.MAX_TARGETS),
-                                canStart={ForegroundState.canStartTargets},elapsed=android.os.SystemClock::elapsedRealtime,onResult={result->
-                                    if(!result.success)observed.remove(result.packageName)
-                                    completed++
-                                    report(BatchProgress(completedBefore+completed,targets.size,BatchPhase.CHECKING))
-                                })
+                            val chunk=targets.drop(cursor).takeWhile{it !in groupMap}.take(BatchWindow.MAX_TARGETS)
+                            val onResult:(BatchResult)->Unit={result->
+                                if(!result.success)observed.remove(result.packageName)
+                                completed++;report(BatchProgress(completedBefore+completed,targets.size,BatchPhase.CHECKING))
+                            }
+                            val window=when{
+                                hide->engine.userHideWindow(chunk,canStart={ForegroundState.canStartTargets},elapsed=android.os.SystemClock::elapsedRealtime,onResult=onResult)
+                                show->engine.userShowWindow(chunk,canStart={ForegroundState.canStartTargets},elapsed=android.os.SystemClock::elapsedRealtime,onResult=onResult)
+                                else->engine.userRestoreWindow(chunk,canStart={ForegroundState.canStartTargets},elapsed=android.os.SystemClock::elapsedRealtime,onResult=onResult)
+                            }
                             results.addAll(window.results);cursor+=window.started;pipelineStopped=window.stopped
-                            android.util.Log.i("bluedotOFF","window: ${window.started} apps ${if(hide)"hide" else "restore"}")
+                            android.util.Log.i("bluedotOFF","window: ${window.started} apps ${if(hide)"hide" else if(show)"show" else "restore"}")
                             if(window.reason.isNotBlank())failure=window.reason
                         } else {
                             val start=android.os.SystemClock.elapsedRealtime()
@@ -397,7 +401,7 @@ class MainActivity : ComponentActivity() {
                                 if(!ForegroundState.canStartTargets){failure="화면을 떠나서 남은 앱은 바꾸지 않았어요. 이미 끝난 적용과 등록 기록은 그대로예요.";break}
                                 report(BatchProgress(cursor,targets.size,BatchPhase.CHECKING))
                                 val pkg=targets[cursor]
-                                val result=runner.run(pkg){engine.userOne(it,hide){ForegroundState.canStartTargets}}
+                                val result=runner.run(pkg){if(show)engine.userShow(it){ForegroundState.canStartTargets} else engine.userOne(it,hide){ForegroundState.canStartTargets}}
                                 results.add(result);cursor++;count++
                                 if(!result.success)observed.remove(pkg)
                                 report(BatchProgress(cursor,targets.size,BatchPhase.CHECKING))
@@ -413,12 +417,12 @@ class MainActivity : ComponentActivity() {
             }catch(e:Exception){failure=e.message?:"현재 상태를 확인하지 못했어요."}
             val untouched=if(runner.stopped||pipelineStopped)"앞선 작업의 복원이나 연결을 먼저 확인해야 해서 바꾸지 않았어요." else "작업을 멈춰서 이 앱은 바꾸지 않았어요."
             while(cursor<targets.size){results.add(BatchResult(targets[cursor++],error=untouched))}
-            val outcome=BatchOutcome(hide,results,journal.entries(),observed.values.toList(),warning,failure)
-            if(!hide&&ScopePreferences(app).pending!=null&&!ScopePreferences(app).finishRestore(outcome))return@start outcome.copy(error=outcome.error.ifBlank{"일부 앱의 복원을 확인하지 못해 이전 적용 범위를 유지했어요. 설정에서 다시 확인해주세요."})
+            val outcome=BatchOutcome(hide,results,journal.entries(),observed.values.toList(),warning,failure,show=show)
+            if(!hide&&!show&&ScopePreferences(app).pending!=null&&!ScopePreferences(app).finishRestore(outcome))return@start outcome.copy(error=outcome.error.ifBlank{"일부 앱의 복원을 확인하지 못해 이전 적용 범위를 유지했어요. 설정에서 다시 확인해주세요."})
             outcome
         }
         if(started)skipNotice=if(needsCheck>0)"확인이 필요한 ${needsCheck}개 앱은 건너뛰었어요. 홈 목록에서 상태를 확인해주세요." else ""
-        if(started)model=model.copy(busy=true,operationHide=hide,progress=BatchProgress(0,targets.size),completion=null,loadingApps=false,notice="",wirelessWarning="",batchResults=emptyList())
+        if(started)model=model.copy(busy=true,operationHide=hide,operationShow=show,progress=BatchProgress(0,targets.size),completion=null,loadingApps=false,notice="",wirelessWarning="",batchResults=emptyList())
     }
     private fun openBackend(){checkOnResume=true;refreshJob?.cancel();discoveryJob?.cancel();invalidateScan();startActivity(Intent(this,LocalAdbSetupActivity::class.java))}
     private fun <T> localBatch(userAction:Boolean=true,block:()->T):T {

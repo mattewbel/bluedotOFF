@@ -17,6 +17,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
@@ -173,14 +174,31 @@ class UiRenderTest {
         compose.onNodeWithText("Reapply needed: 1").assertExists()
         compose.onNodeWithText("Keep completed apps as they are. Check only the apps that need attention.").assertExists()
     }
-    @Test fun offTargetsRemainPickableAfterJournalResetWithoutFalseAppliedStatus(){
-        val hidden=DiscoveredApp("demo.old","기존 위치 앱",10001,launcher=true,indicator=IndicatorAssessment(IndicatorEligibility.EXEMPT_SYSTEM_USAGE,true,0x100),hasLocationDeclaration=true)
-        val m=model(page=Page.PICK).copy(entries=emptyList(),discovered=listOf(hidden),historyAvailable=true)
+    private val leftOffApp=DiscoveredApp("demo.old","기존 위치 앱",10001,launcher=true,indicator=IndicatorAssessment(IndicatorEligibility.EXEMPT_SYSTEM_USAGE,true,0x100),hasLocationDeclaration=true)
+    /** After a journal reset (e.g. bluedotOFF reinstalled) an OFF app has no record: it is listed but not offered for
+     *  hiding (that would record OFF as its original), and "표시 켜기" is pointed to instead. */
+    @Test fun offTargetsAfterJournalResetAreListedButNotPickable(){
+        val m=model(page=Page.PICK).copy(entries=emptyList(),discovered=listOf(leftOffApp),historyAvailable=true)
         render("76-picker-cleared-journal",m)
         compose.onNodeWithText("기존 위치 앱").assertExists()
-        compose.onNodeWithText("이미 표시 꺼짐").assertExists()
+        compose.onNodeWithText("표시 꺼짐 · 기록 없음").assertExists()
         compose.onNodeWithText("등록한 앱").assertDoesNotExist()
-        compose.onNodeWithText("‘이미 표시 꺼짐’은 지금 파란 위치 표시가 이미 꺼져 있는 앱이에요. 등록하면 이 꺼진 상태가 복원 기준이 돼서, 복원해도 꺼진 채로 남아요.").assertExists()
+        compose.onNodeWithText("‘표시 꺼짐 · 기록 없음’은 bluedotOFF 기록 없이 위치 표시가 이미 꺼져 있는 앱이에요. 숨길 필요가 없고, 홈의 ‘표시 켜기’에서 다시 켤 수 있어요.").assertExists()
+        assertFalse(m.canSelect(leftOffApp))
+    }
+    @Test fun homeOffersShowForAppsLeftOffWithoutARecord(){
+        render("89-home-left-off",model().copy(entries=emptyList(),discovered=listOf(leftOffApp)))
+        compose.onNodeWithText("위치 표시가 꺼진 채 남은 앱 1개").performScrollTo().assertExists()
+        compose.onNodeWithText("표시 켜기").performScrollTo().assertExists()
+    }
+    @Test fun showPageSeparatesPreinstalledAppsAndConfirmsWithoutPromisingTheDot(){
+        val system=leftOffApp.copy(packageName="demo.camera",label="카메라",uid=10002,preinstalled=true)
+        val m=model(page=Page.SHOW).copy(entries=emptyList(),discovered=listOf(leftOffApp,system),showPicked=setOf("demo.old"))
+        render("90-show-page",m)
+        compose.onNodeWithText("표시 꺼짐 · 기록 없음").assertExists()
+        compose.onNodeWithText("기본 앱 · 원래 꺼져 있었을 수 있어요").assertExists()
+        compose.onNodeWithText("1개 표시 켜기").assertIsEnabled().performClick()
+        compose.onNodeWithText("선택한 1개 앱의 위치 표시 설정을 켜요. 시스템에서 표시를 제외하는 앱은 켜도 파란 위치 표시가 나타나지 않을 수 있어요. 위치 권한과 사용 기록은 그대로예요.").assertExists()
     }
     @Test fun welcomeAndConnectionUseTheSameElevenStepDisplay(){
         render("75-welcome",model(gate=Gate.WELCOME));compose.onNodeWithText("연결 준비 · 1 / 11").assertExists()
@@ -245,7 +263,7 @@ class UiRenderTest {
         render("79-home-en",model(applied=true))
         val off=DiscoveredApp("demo.off","Example",10002,launcher=true,hasLocationDeclaration=true,indicator=IndicatorAssessment(IndicatorEligibility.EXEMPT_SYSTEM_USAGE,true,0x100))
         render("79-picker-en",model(page=Page.PICK).copy(entries=emptyList(),discovered=listOf(off)))
-        compose.onNodeWithText("Indicator already off").assertExists()
+        compose.onNodeWithText("Indicator off · no record").assertExists()
     }
     @Test fun waterProgressKeepsRealCountsAndHidesThePageBehindIt(){
         render("79-water-half",model().copy(busy=true,progress=BatchProgress(35,70,BatchPhase.CHECKING)))

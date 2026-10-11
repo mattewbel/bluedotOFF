@@ -47,7 +47,7 @@ class SharedGroupEngine(private val port:TargetPort,private val journal:Journal,
         if(!hide&&old.any{it==null})throw SafetyException("복원할 공유 앱 묶음 기록이 없습니다.")
         old.filterNotNull().forEachIndexed{i,e->
             if(e.groupIdentities.map{it.packageName}!=names||e.groupIdentities.size!=identities.size||e.groupIdentities.zip(identities).any{(a,b)->!a.sameInstall(b)}||!e.identity.sameInstall(identities[i])||e.sharedUserId!=before[i].sharedUserId)throw OwnershipChangedException()
-            if(e.state in setOf(TargetState.FAILED_ROLLBACK,TargetState.NEEDS_REVIEW,TargetState.SHARED_UID_CHANGED,TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE))throw SafetyException("공유 앱 묶음의 복원 확인이 필요합니다.")
+            if(e.state in setOf(TargetState.FAILED_ROLLBACK,TargetState.NEEDS_REVIEW,TargetState.SHARED_UID_CHANGED,TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE,TargetState.PENDING_SHOW))throw SafetyException("공유 앱 묶음의 복원 확인이 필요합니다.")
             if(e.firmware.substringAfterLast('|')!=fw.abiProfile)throw SafetyException("기기 업데이트 후 호환성 재확인이 필요합니다.")
         }
         val originals=old.filterNotNull().map{it.originalBit}.distinct()
@@ -99,7 +99,7 @@ object SharedGroupReconcile {
         if(e.groupIdentities.zip(members).any{(id,s)->!id.sameInstall(s.identity)})return e.copy(state=TargetState.NEEDS_REVIEW,error="공유 앱 묶음의 설치 정보가 바뀌었습니다.")
         if(members.any{it.peers.sorted()!=e.groupIdentities.map{p->p.packageName}||it.sharedUserId!=e.sharedUserId})return e.copy(state=TargetState.NEEDS_REVIEW,error=OwnershipChangedException().message!!)
         if(e.firmware!=firmware)return e.copy(state=TargetState.NEEDS_RECHECK_FIRMWARE)
-        if(e.state in setOf(TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE))return e.copy(state=TargetState.NEEDS_REVIEW,error="중단된 공유 앱 묶음은 자동으로 변경하지 않습니다.")
+        if(e.state in setOf(TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE,TargetState.PENDING_SHOW))return e.copy(state=TargetState.NEEDS_REVIEW,error="중단된 공유 앱 묶음은 자동으로 변경하지 않습니다.")
         if(!e.enabled)return e
         if(e.groupIdentities.zip(members).any{(id,s)->id!=s.identity})return e.copy(state=TargetState.NEEDS_REAPPLY_UPDATE)
         try{SharedGroupPolicy.validate(members)}catch(_:Exception){return e.copy(state=TargetState.UNSUPPORTED_STATE)}

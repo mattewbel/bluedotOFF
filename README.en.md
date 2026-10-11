@@ -79,6 +79,8 @@ Pairing is needed only once.
 - **Restore:** Home → **Restore apps** → **Restore all**, or **Choose apps** (also Home → **Edit**) to pick apps with search and Select all like Add apps, then **Restore N**. You can also restore one app from its detail screen with **Unhide · restore original setting**.
 - **Reapply:** After a restart or an app update, Android may turn the indicator back on. When Home shows **reapply needed**, tap it to apply again. The app does not reapply on its own.
 - **Check again:** Tap ↻ next to **Last checked N min ago** on Home to recheck your registered apps right away.
+- **Keep the screen open while it works.** If you leave the app during apply or restore, the remaining apps are not changed. Apps already done stay as they are.
+- **Apps left hidden (after reinstalling only):** Only needed if bluedotOFF was removed and installed again. Settings → **Apps left hidden (after reinstalling only)** → pick apps → **Unhide N**. Preinstalled apps may have had the indicator off originally, so Select all skips them; pick them one by one.
 
 ### Scope
 
@@ -98,12 +100,12 @@ To stop, turn off **Settings → Manage wireless debugging automatically** or ta
 
 ## Good to know
 
-- **Restore all apps before uninstalling bluedotOFF.** Uninstalling or clearing app data alone does not bring back the original state. The record of the original state is removed too, so after reinstalling, apps left off show as "Hidden · no record" and can be unhidden in Settings → **Apps left hidden (after reinstalling only)** instead of Restore (without a record this turns the indicator setting on rather than restoring an original state; apps the system excludes from the indicator may still not show it). Restarting the phone sometimes brings the indicator back, but it depends on the app.
+- **Restore all apps before uninstalling bluedotOFF.** Uninstalling or clearing app data also removes the record of the original state, so hidden apps stay hidden. After reinstalling, such apps show as "Hidden · no record" and can be unhidden in Settings → **Apps left hidden (after reinstalling only)**. Without a record this turns the indicator setting on rather than restoring an exact original, and apps the system excludes from the indicator may still not show it. Restarting the phone sometimes brings the indicator back, but it depends on the app.
 - Android sometimes turns the indicator back on (restart, app update, OS policy). The app detects this and shows **reapply needed**.
 - There is no real-time monitoring. **When you open the app again**, it rechecks only the apps Android reported as changed (update, install, component change), or all registered apps if 10 minutes have passed. Tap ↻ next to **Last checked** on Home to check at any time. While bluedotOFF is fully closed, reapply notifications cannot report app updates right away.
 - If the connection drops or the state cannot be confirmed, the app does not report success and stops changing things. If you see **Restore needs review**, do not clear app data; connect again and recheck.
 - **Reset this app's pairing** only clears this app's connection data. To remove the phone's record, go to Wireless debugging → Paired devices → bluedotOFF → Forget.
-- Apps whose indicator was already off stay off after restoring.
+- Apps whose indicator was already off stay off after restoring (that is their exact original state). To turn the indicator on, unhide them in Settings → **Apps left hidden (after reinstalling only)**.
 
 ## Language
 

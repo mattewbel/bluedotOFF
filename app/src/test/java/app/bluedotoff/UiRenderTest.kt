@@ -181,35 +181,23 @@ class UiRenderTest {
         val m=model(page=Page.PICK).copy(entries=emptyList(),discovered=listOf(leftOffApp),historyAvailable=true)
         render("76-picker-cleared-journal",m)
         compose.onNodeWithText("기존 위치 앱").assertExists()
-        compose.onNodeWithText("표시 꺼짐 · 기록 없음").assertExists()
+        compose.onNodeWithText("숨김 남음 · 기록 없음").assertExists()
         compose.onNodeWithText("등록한 앱").assertDoesNotExist()
-        compose.onNodeWithText("‘표시 꺼짐 · 기록 없음’은 bluedotOFF 기록 없이 파란 위치 표시가 이미 꺼져 있는 앱이에요. 숨길 필요가 없고, 설정 → ‘파란 위치 표시 다시 켜기’에서 다시 켤 수 있어요.").assertExists()
+        compose.onNodeWithText("‘숨김 남음 · 기록 없음’은 bluedotOFF 기록 없이 이미 숨겨져 있는 앱이에요. 다시 숨길 필요가 없고, 설정 → ‘숨김이 남은 앱’에서 숨김을 풀 수 있어요.").assertExists()
         assertFalse(m.canSelect(leftOffApp))
     }
-    @Test fun homePointsToTurningBackOnOnlyAfterTheUserSaysBluedotOffWasUsedBefore(){
-        render("89-home-left-off",model().copy(entries=emptyList(),discovered=listOf(leftOffApp),usedBefore=true))
-        compose.onNodeWithText("파란 위치 표시가 꺼진 앱 1개").performScrollTo().assertExists()
-        compose.onNodeWithText("확인하기").performScrollTo().assertExists()
-        compose.onNodeWithText("닫기").performScrollTo().assertExists()
-    }
-    @Test fun firstTimeUsersAreAskedBeforeLeftOffAppsAreCalledLeftovers(){
-        render("89-home-used-before-question",model().copy(entries=emptyList(),discovered=listOf(leftOffApp)))
-        compose.onNodeWithText("이 휴대폰에서 bluedotOFF를 사용한 적이 있나요?").assertExists()
-        compose.onNodeWithText("파란 위치 표시가 꺼진 앱 1개").assertDoesNotExist()
-        compose.onNodeWithText("처음이에요").assertExists()
-    }
-    @Test fun settingsAlwaysOffersTurningTheIndicatorBackOn(){
-        render("88-settings-turn-back-on",model(page=Page.SETTINGS).copy(usedBefore=false))
-        compose.onNodeWithText("파란 위치 표시 다시 켜기").performScrollTo().assertExists()
+    @Test fun settingsOffersAppsLeftHidden(){
+        render("88-settings-turn-back-on",model(page=Page.SETTINGS))
+        compose.onNodeWithText("숨김이 남은 앱 (재설치 시에만)").performScrollTo().assertExists()
     }
     @Test fun showPageSeparatesPreinstalledAppsAndConfirmsWithoutPromisingTheDot(){
         val system=leftOffApp.copy(packageName="demo.camera",label="카메라",uid=10002,preinstalled=true)
         val m=model(page=Page.SHOW).copy(entries=emptyList(),discovered=listOf(leftOffApp,system),showPicked=setOf("demo.old"))
         render("90-show-page",m)
-        compose.onNodeWithText("표시 꺼짐 · 기록 없음").assertExists()
+        compose.onNodeWithText("숨김 남음 · 기록 없음").assertExists()
         compose.onNodeWithText("기본 앱 · 원래 꺼져 있었을 수 있어요").assertExists()
-        compose.onNodeWithText("1개 다시 켜기").assertIsEnabled().performClick()
-        compose.onNodeWithText("선택한 1개 앱의 파란 위치 표시 설정을 켜요. 시스템에서 표시를 제외하는 앱은 켜도 파란 위치 표시가 나타나지 않을 수 있어요. 위치 권한과 사용 기록은 그대로예요.").assertExists()
+        compose.onNodeWithText("1개 숨김 풀기").assertIsEnabled().performClick()
+        compose.onNodeWithText("선택한 1개 앱의 숨김을 풀어요(파란 위치 표시 설정을 켜요). 시스템에서 표시를 제외하는 앱은 숨김을 풀어도 파란 위치 표시가 나타나지 않을 수 있어요. 위치 권한과 사용 기록은 그대로예요.").assertExists()
     }
     @Test fun welcomeAndConnectionUseTheSameElevenStepDisplay(){
         render("75-welcome",model(gate=Gate.WELCOME));compose.onNodeWithText("연결 준비 · 1 / 11").assertExists()
@@ -274,7 +262,7 @@ class UiRenderTest {
         render("79-home-en",model(applied=true))
         val off=DiscoveredApp("demo.off","Example",10002,launcher=true,hasLocationDeclaration=true,indicator=IndicatorAssessment(IndicatorEligibility.EXEMPT_SYSTEM_USAGE,true,0x100))
         render("79-picker-en",model(page=Page.PICK).copy(entries=emptyList(),discovered=listOf(off)))
-        compose.onNodeWithText("Indicator off · no record").assertExists()
+        compose.onNodeWithText("Hidden · no record").assertExists()
     }
     @Test fun waterProgressKeepsRealCountsAndHidesThePageBehindIt(){
         render("79-water-half",model().copy(busy=true,progress=BatchProgress(35,70,BatchPhase.CHECKING)))

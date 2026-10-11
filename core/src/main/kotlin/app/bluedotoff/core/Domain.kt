@@ -65,7 +65,7 @@ class SafetyEngine(private val port: TargetPort, private val journal: Journal, p
         if (before.identity.uid in inFlightUids) throw OwnershipChangedException()
         val old = records().lastOrNull { it.identity.packageName == pkg && it.identity.userId == 0 }?.takeUnless { !it.enabled && (it.state == TargetState.INACTIVE_INSTALL || ((hide || show) && it.state == TargetState.NOT_APPLIED)) }
         if(old?.groupIdentities?.isNotEmpty()==true)throw SafetyException("이 앱은 공유 앱 묶음으로 함께 변경해야 합니다.")
-        if(show&&old!=null)throw SafetyException("bluedotOFF 기록이 있는 앱이에요. 다시 켜기 대신 원래대로 복원을 써주세요.")
+        if(show&&old!=null)throw SafetyException("bluedotOFF 기록이 있는 앱이에요. 숨김 풀기 대신 원래대로 복원을 써주세요.")
         if (old?.state in listOf(TargetState.FAILED_ROLLBACK,TargetState.SHARED_UID_CHANGED,TargetState.NEEDS_REVIEW)) throw SafetyException("복원 상태를 확인할 수 없어 추가 변경을 차단했습니다.")
         if (old != null && !old.identity.sameInstall(before.identity)) {
             durable(old.copy(state = TargetState.INACTIVE_INSTALL, enabled = false, error = "새 설치입니다. 과거 기록은 적용하지 않습니다."))

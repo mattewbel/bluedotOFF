@@ -68,7 +68,7 @@ fun TargetState.label(): String = when(this) {
 private fun Snapshot.blockReason(): String = rejectionReason()
 
 @Composable
-fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, hide: (String)->Unit, restore: (String)->Unit, hideAll: ()->Unit, restoreAll: ()->Unit, openBackend: ()->Unit, setupBackend: ()->Unit, authorize: ()->Unit, refresh: ()->Unit, allowNotifications: ()->Unit, dismissNotifications: ()->Unit, begin: ()->Unit, loadApps: ()->Unit, clearNotice: ()->Unit, togglePick:(String)->Unit={}, addSelected:()->Unit={}, queryChanged:(String)->Unit={},filterChanged:(AppFilter)->Unit={},editHome:()->Unit={},toggleHome:(String)->Unit={},restoreSelected:()->Unit={},contentShown:()->Unit={},pickerRevision:Long=0L,historyViewChanged:(HistoryView)->Unit={},pickerViewChanged:(PickerView)->Unit={},wirelessExit:()->Unit={},toggleAll:()->Unit={},managementChanged:(Boolean)->Unit={},removeManagementPermission:()->Unit={},sharedInspect:(String)->Unit={},sharedAccept:()->Unit={},sharedDismiss:()->Unit={},scopeChange:()->Unit={},reapplyNeeded:(List<String>)->Unit={},notificationChanged:(Boolean)->Unit={},recheck:()->Unit={},bigGroupsAccept:()->Unit={},bigGroupsDismiss:()->Unit={},restorePickAll:(List<String>)->Unit={},rejectedDismiss:()->Unit={},showPick:(String)->Unit={},showPickAll:(List<String>)->Unit={},showSelected:()->Unit={},openShow:()->Unit={},usedBeforeAnswer:(Boolean)->Unit={},closeLeftOffCard:()->Unit={}) {
+fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, hide: (String)->Unit, restore: (String)->Unit, hideAll: ()->Unit, restoreAll: ()->Unit, openBackend: ()->Unit, setupBackend: ()->Unit, authorize: ()->Unit, refresh: ()->Unit, allowNotifications: ()->Unit, dismissNotifications: ()->Unit, begin: ()->Unit, loadApps: ()->Unit, clearNotice: ()->Unit, togglePick:(String)->Unit={}, addSelected:()->Unit={}, queryChanged:(String)->Unit={},filterChanged:(AppFilter)->Unit={},editHome:()->Unit={},toggleHome:(String)->Unit={},restoreSelected:()->Unit={},contentShown:()->Unit={},pickerRevision:Long=0L,historyViewChanged:(HistoryView)->Unit={},pickerViewChanged:(PickerView)->Unit={},wirelessExit:()->Unit={},toggleAll:()->Unit={},managementChanged:(Boolean)->Unit={},removeManagementPermission:()->Unit={},sharedInspect:(String)->Unit={},sharedAccept:()->Unit={},sharedDismiss:()->Unit={},scopeChange:()->Unit={},reapplyNeeded:(List<String>)->Unit={},notificationChanged:(Boolean)->Unit={},recheck:()->Unit={},bigGroupsAccept:()->Unit={},bigGroupsDismiss:()->Unit={},restorePickAll:(List<String>)->Unit={},rejectedDismiss:()->Unit={},showPick:(String)->Unit={},showPickAll:(List<String>)->Unit={},showSelected:()->Unit={},openShow:()->Unit={}) {
     val context = LocalContext.current
     val dark = isSystemInDarkTheme()
     val motion = ValueAnimator.areAnimatorsEnabled()
@@ -140,7 +140,7 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
                     if(model.page==Page.HELP) HelpScreen(openBackend,setupBackend)
                     else if(model.gate!=Gate.READY) Wizard(model,openBackend,begin,{navigate(Page.HELP)})
                     else when(model.page) {
-                        Page.HOME -> HomeScreen(model,wide,{navigate(Page.PICK)},{showRestoreMenu=true},select,openBackend,{navigate(Page.HISTORY)},hide,editHome,toggleHome,restoreSelected,wirelessExit,{showReapplyNeeded=true},recheck,openShow,closeLeftOffCard)
+                        Page.HOME -> HomeScreen(model,wide,{navigate(Page.PICK)},{showRestoreMenu=true},select,openBackend,{navigate(Page.HISTORY)},hide,editHome,toggleHome,restoreSelected,wirelessExit,{showReapplyNeeded=true},recheck)
                         Page.HISTORY -> HistoryScreen(model,hide,openBackend,historyViewChanged)
                         Page.RESTORE -> RestoreScreen(model,toggleHome,restorePickAll,restoreSelected)
                         Page.SHOW -> ShowScreen(model,showPick,showPickAll,showSelected)
@@ -165,7 +165,7 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
                     Column(Modifier.padding(24.dp).semantics { liveRegion=LiveRegionMode.Polite },horizontalAlignment=Alignment.CenterHorizontally) {
                         val p=model.progress
                         CircularProgressIndicator();Spacer(Modifier.height(24.dp))
-                        Text(when(p?.phase){BatchPhase.CONNECTING->"연결을 준비하고 있어요";BatchPhase.CLOSING->"결과를 저장하고 연결을 마무리하고 있어요";else->if(model.operationHide)"적용하고 안전하게 확인하고 있어요" else if(model.operationShow)"다시 켜고 안전하게 확인하고 있어요" else "복원하고 안전하게 확인하고 있어요"},style=MaterialTheme.typography.titleMedium)
+                        Text(when(p?.phase){BatchPhase.CONNECTING->"연결을 준비하고 있어요";BatchPhase.CLOSING->"결과를 저장하고 연결을 마무리하고 있어요";else->if(model.operationHide)"적용하고 안전하게 확인하고 있어요" else if(model.operationShow)"숨김을 풀고 안전하게 확인하고 있어요" else "복원하고 안전하게 확인하고 있어요"},style=MaterialTheme.typography.titleMedium)
                         if(p!=null){Spacer(Modifier.height(20.dp));LinearProgressIndicator(progress={p.percent/100f},modifier=Modifier.fillMaxWidth());Spacer(Modifier.height(12.dp));Text(if(p.phase==BatchPhase.CLOSING)"${p.completed} / ${p.total}개 확인 · 마무리 중…" else "${p.completed} / ${p.total}개 확인 · ${p.percent}%",style=MaterialTheme.typography.titleLarge)}
                         Spacer(Modifier.height(12.dp));Text("끝날 때까지 이 화면을 열어 두세요. 앱을 나가면 남은 앱은 바꾸지 않아요.",textAlign=androidx.compose.ui.text.style.TextAlign.Center,color=scheme.onSurfaceVariant)
                         if(model.operationHide)Text("일부 앱은 Android가 파란 위치 표시를 다시 켤 수 있어요. 적용 직후에도 풀릴 수 있으니, 필요하면 홈에서 다시 적용해주세요.",Modifier.padding(top=12.dp),style=MaterialTheme.typography.bodySmall,color=scheme.onSurfaceVariant,textAlign=androidx.compose.ui.text.style.TextAlign.Center)
@@ -213,9 +213,6 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
             text={Text("숨긴 앱을 원래 표시 상태로 되돌려요. 위치 권한과 사용 기록은 그대로예요. 앱을 지우기 전에는 모두 복원해 주세요.")},
             confirmButton={TextButton(onClick={showRestoreMenu=false;showRestoreAll=true},enabled=model.canOperate){Text("모두 복원")}},
             dismissButton={TextButton(onClick={showRestoreMenu=false;editHome()}){Text("골라서 복원")}})
-        if(model.askUsedBefore&&model.page==Page.HOME)AlertDialog(onDismissRequest={},title={Text("이 휴대폰에서 bluedotOFF를 사용한 적이 있나요?")},
-            text={Text("예전에 bluedotOFF로 숨긴 앱이 있다면, 앱을 지웠다가 다시 설치하면서 파란 위치 표시가 꺼진 채 남아 있을 수 있어요. 사용한 적이 있으면 홈에서 알려드릴게요. 설정 → ‘파란 위치 표시 다시 켜기’에서는 언제든 확인할 수 있어요.")},
-            confirmButton={TextButton(onClick={usedBeforeAnswer(true)}){Text("있어요")}},dismissButton={TextButton(onClick={usedBeforeAnswer(false)}){Text("처음이에요")}})
         if(showRestoreAll) RestoreAllDialog(model.entries.count{it.enabled},{showRestoreAll=false},{showRestoreAll=false;restoreAll()})
     }
 }
@@ -259,7 +256,7 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
     }
 }
 
-@Composable private fun HomeScreen(m:UiModel,wide:Boolean,add:()->Unit,restoreMenu:()->Unit,select:(String)->Unit,open:()->Unit,history:()->Unit,hide:(String)->Unit,edit:()->Unit,toggle:(String)->Unit,restoreSelected:()->Unit,wirelessExit:()->Unit,showNeeded:()->Unit,recheck:()->Unit={},openShow:()->Unit={},closeCard:()->Unit={}) {
+@Composable private fun HomeScreen(m:UiModel,wide:Boolean,add:()->Unit,restoreMenu:()->Unit,select:(String)->Unit,open:()->Unit,history:()->Unit,hide:(String)->Unit,edit:()->Unit,toggle:(String)->Unit,restoreSelected:()->Unit,wirelessExit:()->Unit,showNeeded:()->Unit,recheck:()->Unit={}) {
     val context=LocalContext.current
     @Composable fun Hero() {
         Column(Modifier.padding(top=10.dp,bottom=20.dp),verticalArrangement=Arrangement.spacedBy(18.dp)) {
@@ -301,15 +298,6 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
             Primary("앱 추가",add)
             if(m.successToken>0&&!m.busy&&m.connected&&!m.autoManagement){Text("작업을 마쳤다면 무선 디버깅을 꺼두세요.",style=MaterialTheme.typography.bodySmall);TextButton(onClick=wirelessExit){Text("무선 디버깅 끄기")}}
             if(m.visibleEntries.any{it.enabled})OutlinedButton(onClick=restoreMenu,enabled=!m.busy,modifier=Modifier.fillMaxWidth().heightIn(min=52.dp)){Text("앱 복원")}
-            // Apps left OFF without a record (e.g. bluedotOFF was removed and installed again) cannot be restored; offer "표시 켜기".
-            if(m.showLeftOffCard)Surface(shape=RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.surfaceContainer){
-                Column(Modifier.fillMaxWidth().padding(16.dp),verticalArrangement=Arrangement.spacedBy(6.dp)){
-                    Text("파란 위치 표시가 꺼진 앱 ${m.leftOffApps.size}개",style=MaterialTheme.typography.titleSmall)
-                    Text("bluedotOFF 기록 없이 파란 위치 표시가 꺼져 있어요. 예전에 숨긴 앱이 남아 있을 수 있어요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("닫아도 설정 → ‘파란 위치 표시 다시 켜기’에서 언제든 할 수 있어요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                    Row{TextButton(onClick=openShow,enabled=!m.busy){Text("확인하기")};TextButton(onClick=closeCard){Text("닫기")}}
-                }
-            }
         }
     }
     @Composable fun Registered() {
@@ -334,10 +322,10 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
     var confirm by remember{mutableStateOf(false)}
     Column(Modifier.fillMaxSize(),verticalArrangement=Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
-            Text("파란 위치 표시 다시 켜기",Modifier.weight(1f),style=MaterialTheme.typography.titleLarge)
+            Text("숨김이 남은 앱",Modifier.weight(1f),style=MaterialTheme.typography.titleLarge)
             Text("${m.showPicked.size}개 선택됨",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
         }
-        Text("bluedotOFF 기록 없이 파란 위치 표시가 꺼져 있는 앱이에요. 기록이 없어서 복원할 수 없으니, 대신 다시 켤 수 있어요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("bluedotOFF를 지웠다가 다시 설치하면, 예전에 숨긴 앱이 기록 없이 숨겨진 채 남을 수 있어요. 기록이 없어서 복원할 수 없으니, 대신 숨김을 풀 수 있어요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         if(m.loadingApps||m.rechecking)LinearProgressIndicator(Modifier.fillMaxWidth())
         val rows=m.leftOffApps.filter{a->query.isBlank()||a.label.contains(query.trim(),true)||a.packageName.contains(query.trim(),true)}
         val names=rows.filter{m.canShow(it)&&!it.preinstalled}.map{it.packageName}
@@ -357,22 +345,22 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
                     AppIcon(a.packageName,a.label,32)
                     Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)){
                         Text(a.label,translate=false,style=MaterialTheme.typography.titleSmall,maxLines=2,overflow=TextOverflow.Ellipsis)
-                        Text(when{m.sharesUid(a)->"다른 앱과 묶여 있어 여기서는 켤 수 없어요";!can->"지금 적용 범위에서는 켤 수 없어요";a.preinstalled->"기본 앱 · 원래 꺼져 있었을 수 있어요";else->"표시 꺼짐 · 기록 없음"},style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(when{m.sharesUid(a)->"다른 앱과 묶여 있어 여기서는 풀 수 없어요";!can->"지금 적용 범위에서는 풀 수 없어요";a.preinstalled->"기본 앱 · 원래 꺼져 있었을 수 있어요";else->"숨김 남음 · 기록 없음"},style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Checkbox(checked=a.packageName in m.showPicked,onCheckedChange={toggle(a.packageName)},enabled=!m.busy&&can)
                 }
                 HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant.copy(alpha=0.35f))
             }
         }
-        if(rows.isEmpty()&&!m.loadingApps)Text(if(query.isBlank())"다시 켤 앱이 없어요." else "조건에 맞는 앱이 없어요.",style=MaterialTheme.typography.bodySmall)
+        if(rows.isEmpty()&&!m.loadingApps)Text(if(query.isBlank())"숨김이 남은 앱이 없어요." else "조건에 맞는 앱이 없어요.",style=MaterialTheme.typography.bodySmall)
         Column(Modifier.fillMaxWidth().padding(bottom=8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
             Text("‘전체 선택’은 직접 설치한 앱만 골라요. 기본 앱은 원래 표시가 꺼져 있었을 수 있어서 하나씩 골라주세요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-            Primary("${m.showPicked.size}개 다시 켜기",{confirm=true},enabled=m.showPicked.isNotEmpty()&&m.canOperate&&!m.busy)
+            Primary("${m.showPicked.size}개 숨김 풀기",{confirm=true},enabled=m.showPicked.isNotEmpty()&&m.canOperate&&!m.busy)
         }
     }
-    if(confirm)AlertDialog(onDismissRequest={confirm=false},title={Text("파란 위치 표시 다시 켜기")},
-        text={Text("선택한 ${m.showPicked.size}개 앱의 파란 위치 표시 설정을 켜요. 시스템에서 표시를 제외하는 앱은 켜도 파란 위치 표시가 나타나지 않을 수 있어요. 위치 권한과 사용 기록은 그대로예요.")},
-        confirmButton={TextButton(onClick={confirm=false;show()}){Text("다시 켜기")}},dismissButton={TextButton(onClick={confirm=false}){Text("취소")}})
+    if(confirm)AlertDialog(onDismissRequest={confirm=false},title={Text("숨김 풀기")},
+        text={Text("선택한 ${m.showPicked.size}개 앱의 숨김을 풀어요(파란 위치 표시 설정을 켜요). 시스템에서 표시를 제외하는 앱은 숨김을 풀어도 파란 위치 표시가 나타나지 않을 수 있어요. 위치 권한과 사용 기록은 그대로예요.")},
+        confirmButton={TextButton(onClick={confirm=false;show()}){Text("숨김 풀기")}},dismissButton={TextButton(onClick={confirm=false}){Text("취소")}})
 }
 
 /** Same layout as "앱 추가": search, select all, checkboxes, and one button at the bottom. Checked = restore. */
@@ -456,7 +444,7 @@ private fun pickerReason(a:DiscoveredApp,scope:ApplicationScope=ApplicationScope
                     AppIcon(a.packageName,a.label,32)
                     if(safe){
                         Text(a.label,translate=false,modifier=Modifier.weight(1f),style=MaterialTheme.typography.titleSmall,maxLines=2,overflow=TextOverflow.Ellipsis)
-                        Text(when{m.isApplied(a.packageName)->"적용 중";a.packageName in m.managedPackages->"등록한 앱";m.leftOff(a)->"표시 꺼짐 · 기록 없음";else->"적용 가능"},style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(when{m.isApplied(a.packageName)->"적용 중";a.packageName in m.managedPackages->"등록한 앱";m.leftOff(a)->"숨김 남음 · 기록 없음";else->"적용 가능"},style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     }else{
                         Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)){Text(a.label,translate=false,style=MaterialTheme.typography.titleSmall);Text(pickerReason(a,m.applicationScope),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
                     }
@@ -471,7 +459,7 @@ private fun pickerReason(a:DiscoveredApp,scope:ApplicationScope=ApplicationScope
         }
         reason?.let{message->AlertDialog(onDismissRequest={reason=null},title={Text("앱 확인 결과")},text={Text(message)},confirmButton={TextButton(onClick={reason=null}){Text("확인")}})}
         if(available.isEmpty()&&!m.loadingApps)Text("조건에 맞는 앱이 없어요.",style=MaterialTheme.typography.bodySmall)
-        Column(Modifier.fillMaxWidth().padding(bottom=8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){Text(if(unmanagedNotSensitive)"‘표시 꺼짐 · 기록 없음’은 bluedotOFF 기록 없이 파란 위치 표시가 이미 꺼져 있는 앱이에요. 숨길 필요가 없고, 설정 → ‘파란 위치 표시 다시 켜기’에서 다시 켤 수 있어요." else "선택한 앱을 등록하고 파란 위치 표시를 숨겨요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);Primary("${m.picked.size}개 추가",add,enabled=m.picked.isNotEmpty()&&!m.busy)}
+        Column(Modifier.fillMaxWidth().padding(bottom=8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){Text(if(unmanagedNotSensitive)"‘숨김 남음 · 기록 없음’은 bluedotOFF 기록 없이 이미 숨겨져 있는 앱이에요. 다시 숨길 필요가 없고, 설정 → ‘숨김이 남은 앱’에서 숨김을 풀 수 있어요." else "선택한 앱을 등록하고 파란 위치 표시를 숨겨요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);Primary("${m.picked.size}개 추가",add,enabled=m.picked.isNotEmpty()&&!m.busy)}
     }
 }
 
@@ -621,10 +609,10 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
         Row(Modifier.toggleable(value=notifyOn,role=androidx.compose.ui.semantics.Role.Switch,onValueChange=notificationChanged),verticalAlignment=Alignment.CenterVertically){Text("재적용 알림",Modifier.weight(1f),style=MaterialTheme.typography.titleMedium);Switch(checked=notifyOn,onCheckedChange=null)}
         Text("휴대폰 재시작이나 앱 업데이트로 숨김이 풀리면 알려드려요.",style=MaterialTheme.typography.bodySmall)
         HorizontalDivider()
-        // Always reachable, whatever the first-use answer was.
+        // Only needed after bluedotOFF was removed and installed again (its records go with it).
         Column(verticalArrangement=Arrangement.spacedBy(2.dp)){
-            LinkRow("파란 위치 표시 다시 켜기",onClick=openShow)
-            Text("bluedotOFF를 지웠다가 다시 설치해, 기록 없이 파란 위치 표시가 꺼진 채 남은 앱을 다시 켤 수 있어요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            LinkRow("숨김이 남은 앱 (재설치 시에만)",onClick=openShow)
+            Text("bluedotOFF를 지웠다가 다시 설치했을 때만 필요해요. 예전에 숨긴 앱이 기록 없이 숨겨진 채 남아 있으면 여기서 숨김을 풀 수 있어요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }
         HorizontalDivider()
         Column(verticalArrangement=Arrangement.spacedBy(2.dp)){
@@ -664,7 +652,7 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
         Text("복원 확인이 필요할 때",style=MaterialTheme.typography.titleMedium)
         Text("실패 기록을 지우려고 앱 데이터를 초기화하거나 앱을 삭제하지 마세요. 기기를 연결해 현재 상태를 읽은 뒤, GitHub의 bluedotOFF 저장소 Issues에 문의해 주세요. 상태가 확실하지 않은 앱은 bluedotOFF가 스스로 다시 바꾸지 않아요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         Text("bluedotOFF를 지웠다가 다시 설치했을 때",style=MaterialTheme.typography.titleMedium)
-        Text("앱을 지우면 원래 상태 기록도 함께 지워져서, 숨겨 둔 앱이 위치 표시가 꺼진 채로 남을 수 있어요. 이런 앱은 설정 → ‘파란 위치 표시 다시 켜기’에서 다시 켤 수 있어요. 휴대폰을 재시작하면 표시가 돌아오기도 하지만 앱마다 달라요. 지우기 전에는 먼저 모두 복원해 주세요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("앱을 지우면 원래 상태 기록도 함께 지워져서, 숨겨 둔 앱이 숨겨진 채로 남을 수 있어요. 이런 앱은 설정 → ‘숨김이 남은 앱’에서 숨김을 풀 수 있어요. 휴대폰을 재시작하면 표시가 돌아오기도 하지만 앱마다 달라요. 지우기 전에는 먼저 모두 복원해 주세요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         Text("위치 사용 기록",style=MaterialTheme.typography.titleMedium)
         Text("앱 기록은 최근 위치를 쓴 앱 목록이에요. ‘전체 위치 사용’에서는 시스템 서비스도 볼 수 있어요. 삼성 설정의 권한 사용 기록과는 출처가 달라요. 숨김을 적용해도 위치 사용 기록은 남고, 기록이 있다고 파란 위치 표시가 떴다는 뜻은 아니에요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         Text("루팅이나 부트로더 해제는 필요 없어요. 휴대폰의 무선 디버깅 기능만 쓰고, 앱의 위치 권한과 보안 설정은 바꾸지 않아요. 네트워크 권한은 휴대폰 안의 무선 디버깅 연결에만 써요. 외부 서버 통신·광고·분석·추적 기능은 없어요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)

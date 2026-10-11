@@ -2,7 +2,7 @@
 
 [한국어](README.md) | **English**
 
-**[⬇ Download the latest APK](https://github.com/mattewbel/bluedotOFF/releases/latest)** — get `bluedotOFF-1.0.1-release.apk` under Assets.
+**[⬇ Download the latest APK](https://github.com/mattewbel/bluedotOFF/releases/latest)** — get `bluedotOFF-1.0.2-release.apk` under Assets.
 
 An app for Samsung One UI 9 (Android 17) phones that **hides the blue location indicator (Blue Dot) only for the apps you choose**.
 Location permissions and location history stay as they are. bluedotOFF changes a single setting that controls the status bar indicator, and you can undo it at any time.
@@ -14,7 +14,7 @@ Location permissions and location history stay as they are. bluedotOFF changes a
 
 ## What it does
 
-<p align="center"><img src="docs/screenshots/before-after.png" width="640" alt="Before: a blue location dot appears in the status bar. After: it does not."></p>
+<p align="center"><img src="docs/screenshots/before-after-en.png" width="640" alt="Before: a blue location dot appears in the status bar. After: it does not."></p>
 
 | Home | Add apps | Settings |
 |:---:|:---:|:---:|
@@ -48,7 +48,7 @@ bluedotOFF has one goal:
 
 ## Install
 
-Download the latest APK (`bluedotOFF-1.0.1-release.apk`) from [Releases](../../releases) and install it. You may need to allow "Install unknown apps" the first time.
+Download the latest APK (`bluedotOFF-1.0.2-release.apk`) from [Releases](../../releases) and install it. You may need to allow "Install unknown apps" the first time.
 
 ## Requirements
 

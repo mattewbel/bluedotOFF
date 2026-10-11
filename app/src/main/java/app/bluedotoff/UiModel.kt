@@ -92,8 +92,8 @@ data class UiModel(val gate: Gate = Gate.CHECKING, val page: Page = Page.HOME, v
     }
     fun status(e:Entry) = if(e.state==TargetState.APPLIED) when {
         !e.settlingVerified -> "적용 확인 필요"
-        connected&&e.identity.packageName in freshPackages -> "bluedotOFF 적용 중"
-        else -> "bluedotOFF 적용 중 · 마지막 확인 기준"
+        connected&&e.identity.packageName in freshPackages -> "적용 중"
+        else -> "적용 중 · 마지막 확인 기준"
     } else e.state.label()
 }
 

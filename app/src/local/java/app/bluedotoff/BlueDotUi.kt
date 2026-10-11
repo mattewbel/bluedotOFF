@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -49,7 +50,7 @@ import kotlinx.coroutines.launch
 
 private val DotBlue = BlueDotAppearance.dotBlue
 fun TargetState.label(): String = when(this) {
-    TargetState.APPLIED -> "bluedotOFF 적용 중"
+    TargetState.APPLIED -> "적용 중"
     TargetState.NOT_APPLIED -> "적용 안 됨"
     TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE,TargetState.PENDING_SHOW -> "확인 필요"
     TargetState.NEEDS_REAPPLY_BOOT -> "재부팅 · 재적용 필요"
@@ -112,11 +113,12 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
                 // the work overlay visually and from accessibility services.
                 val pageVisibility=if(model.busy&&!model.scopePreview)Modifier.alpha(0f).clearAndSetSemantics{} else Modifier
                 Column(Modifier.fillMaxSize().then(pageVisibility).padding(horizontal=if(wide)BlueDotAppearance.WIDE_GUTTER.dp else BlueDotAppearance.PAGE_GUTTER.dp)) {
-                    Row(Modifier.fillMaxWidth().heightIn(min=BlueDotAppearance.HEADER_HEIGHT.dp),verticalAlignment=Alignment.CenterVertically) {
+                    if(model.page==Page.HOME||model.gate!=Gate.READY)Row(Modifier.fillMaxWidth().heightIn(min=BlueDotAppearance.HEADER_HEIGHT.dp),verticalAlignment=Alignment.CenterVertically) {
                         Text(androidx.compose.ui.res.stringResource(R.string.brand_name),style=MaterialTheme.typography.headlineSmall,letterSpacing=(-0.8).sp,modifier=Modifier.weight(1f))
-                        if(model.page in listOf(Page.PICK,Page.RESTORE,Page.SHOW,Page.DETAIL,Page.REAPPLY,Page.HELP)) TextButton(onClick={navigate(Page.HOME)},enabled=!model.busy){Text("홈")}
+                        if(model.page==Page.HELP) TextButton(onClick={navigate(Page.HOME)},enabled=!model.busy){Text("홈")}
                         Box(Modifier.padding(start=12.dp).size(18.dp).background(DotBlue,CircleShape).semantics { contentDescription=UiText.text(context,"bluedotOFF 아이콘") })
                     }
+                    if(!(model.page==Page.HOME||model.gate!=Gate.READY))Spacer(Modifier.height(16.dp))
                     if(model.rechecking&&model.gate==Gate.READY&&!model.busy&&!(model.page==Page.PICK&&model.loadingApps)){
                         val sp=model.scanProgress
                         Column(Modifier.fillMaxWidth().padding(bottom=8.dp),verticalArrangement=Arrangement.spacedBy(4.dp)){
@@ -155,7 +157,7 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
                     // Transparent so the bar follows the blue/system page background instead of floating as a gray block.
                     if(model.gate==Gate.READY)NavigationBar(containerColor=Color.Transparent,tonalElevation=0.dp) {
                         listOf(Page.HOME to "홈",Page.HISTORY to "기록",Page.SETTINGS to "설정").forEach{(page,label)->
-                            NavigationBarItem(selected=model.page==page,onClick={navigate(page)},enabled=!model.busy,icon={Text(when(page){Page.HOME->"◉";Page.HISTORY->"◷";else->"⚙"},fontSize=22.sp)},label={Text(label)})
+                            NavigationBarItem(selected=model.page==page,onClick={navigate(page)},enabled=!model.busy,icon={NavIcon(page)},label={Text(label)})
                         }
                     }
                 }
@@ -273,17 +275,18 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
                     TextButton(onClick=open){Text("연결 준비")}
                 }
             }
-            Text(when{m.allLastVerifiedApplied->"bluedotOFF\n적용 완료";m.reapplyCount>0->"일부 앱의\n재적용이 필요해요";m.visibleEntries.any{it.enabled}->"일부 앱의\n상태 확인이 필요해요";else->"bluedotOFF\n미적용"},style=MaterialTheme.typography.displaySmall)
-            if(m.allLastVerifiedApplied)Text("${m.lastVerifiedAppliedCount}개 앱 bluedotOFF 적용 중",style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(when{m.allLastVerifiedApplied->"적용 완료";m.reapplyCount>0->"일부 앱의\n재적용이 필요해요";m.visibleEntries.any{it.enabled}->"일부 앱의\n상태 확인이 필요해요";else->"미적용"},style=MaterialTheme.typography.displaySmall)
+            if(m.allLastVerifiedApplied)Text("${m.lastVerifiedAppliedCount}개 앱 적용 중",style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
             else if(m.visibleEntries.any{it.enabled}){
-                Text("${m.lastVerifiedAppliedCount}개 앱 bluedotOFF 적용 중",style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("${m.lastVerifiedAppliedCount}개 앱 적용 중",style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 if(m.reapplyCount>0)Text("${m.reapplyCount}개 앱 · 재적용 필요",Modifier.fillMaxWidth().heightIn(min=48.dp).clip(RoundedCornerShape(12.dp)).clickable(role=androidx.compose.ui.semantics.Role.Button,onClick=showNeeded).padding(vertical=12.dp),style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.primary)
                 if(m.otherCheckCount>0)Text("${m.otherCheckCount}개 앱 · 상태 확인 필요",style=MaterialTheme.typography.bodyMedium)
                 Text("완료된 앱은 유지하고, 필요한 앱만 확인해주세요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             }else Text("신뢰하는 앱을 골라\n위치 표시만 가볍게 숨기세요.",style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
             if(m.lastCheckedAt>0L&&m.visibleEntries.any{it.enabled})Row(verticalAlignment=Alignment.CenterVertically){
                 val ctx=LocalContext.current
-                Text("${UiText.text(ctx,"마지막 확인")} ${UiText.text(ctx,accessAge(m.lastCheckedAt))}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,translate=false)
+                // Mid-sentence in English: "Last checked just now", not "Just now".
+                Text("${UiText.text(ctx,"마지막 확인")} ${UiText.text(ctx,accessAge(m.lastCheckedAt)).replaceFirstChar{it.lowercase()}}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,translate=false)
                 RefreshButton(m.rechecking,!m.busy&&m.canOperate,recheck)
             }
             m.recentHistoryApp?.let{a->
@@ -463,6 +466,23 @@ private fun pickerReason(a:DiscoveredApp,scope:ApplicationScope=ApplicationScope
     }
 }
 
+/** Bottom navigation icons share one 24dp frame so the three icons look the same size and the labels line up
+ *  (text glyphs such as ◷ and ⚙ had different heights). Home is the blue dot, the app's symbol. */
+@Composable private fun NavIcon(page:Page){
+    val color=LocalContentColor.current
+    Box(Modifier.size(24.dp),contentAlignment=Alignment.Center){
+        when(page){
+            Page.HOME->Box(Modifier.size(20.dp).background(DotBlue,CircleShape))
+            Page.HISTORY->androidx.compose.foundation.Canvas(Modifier.size(20.dp)){
+                val w=2.dp.toPx()
+                drawCircle(color,radius=size.minDimension/2-w/2,style=androidx.compose.ui.graphics.drawscope.Stroke(w))
+                drawLine(color,center,androidx.compose.ui.geometry.Offset(center.x,center.y-size.height*0.27f),w,cap=androidx.compose.ui.graphics.StrokeCap.Round)
+                drawLine(color,center,androidx.compose.ui.geometry.Offset(center.x+size.width*0.2f,center.y+size.height*0.08f),w,cap=androidx.compose.ui.graphics.StrokeCap.Round)
+            }
+            else->Icon(androidx.compose.material.icons.Icons.Outlined.Settings,contentDescription=null,modifier=Modifier.size(24.dp))
+        }
+    }
+}
 /** Small circular-arrow button; spins while the registered apps are being re-read. */
 @Composable private fun RefreshButton(spinning:Boolean,enabled:Boolean,onClick:()->Unit){
     val ctx=LocalContext.current;val color=MaterialTheme.colorScheme.primary

@@ -2,7 +2,7 @@
 
 **한국어** | [English](README.en.md)
 
-**[⬇ 최신 APK 다운로드](https://github.com/mattewbel/bluedotOFF/releases/latest)** — Assets에서 `bluedotOFF-1.0.1-release.apk`를 받으세요.
+**[⬇ 최신 APK 다운로드](https://github.com/mattewbel/bluedotOFF/releases/latest)** — Assets에서 `bluedotOFF-1.0.2-release.apk`를 받으세요.
 
 Samsung One UI 9 (Android 17) 휴대폰에서 **내가 고른 앱의 파란 위치 표시(Blue Dot)만 숨기는 앱**입니다.
 앱의 위치 권한과 위치 사용 기록은 그대로 두고, 상태 표시줄에 보이는 표시 설정 하나만 바꿉니다. 언제든지 원래 상태로 되돌릴 수 있습니다.
@@ -48,7 +48,7 @@ bluedotOFF의 목표는 이 하나입니다.
 
 ## 설치
 
-[Releases](../../releases)에서 최신 APK(`bluedotOFF-1.0.1-release.apk`)를 받아 설치합니다. 처음 설치할 때 "출처를 알 수 없는 앱 설치" 허용이 필요할 수 있습니다.
+[Releases](../../releases)에서 최신 APK(`bluedotOFF-1.0.2-release.apk`)를 받아 설치합니다. 처음 설치할 때 "출처를 알 수 없는 앱 설치" 허용이 필요할 수 있습니다.
 
 ## 필요한 것
 

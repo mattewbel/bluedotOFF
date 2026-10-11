@@ -24,7 +24,7 @@ class UiTextTest {
     }
     @Test fun dynamicCountsAndCompletionTranslateWithoutTouchingValues(){
         assertEquals("35 / 70 apps checked · 50%",UiText.text(language("en"),"35 / 70개 확인 · 50%"))
-        assertEquals("bluedotOFF applied to 70 apps.",UiText.text(language("en"),"70개 앱에 bluedotOFF 적용 완료"))
+        assertEquals("Applied to 70 apps.",UiText.text(language("en"),"70개 앱 적용 완료"))
         assertEquals("Example app icon",UiText.text(language("en"),"Example app 아이콘"))
         assertEquals("카카오맵",UiText.text(language("en"),"카카오맵"))
     }
@@ -43,7 +43,7 @@ class UiTextTest {
         val entry=app.bluedotoff.core.Entry(id,"app",256,true,app.bluedotoff.core.TargetState.APPLIED,1,"fw","boot",true,settlingVerified=true)
         val model=UiModel(entries=listOf(entry),connected=false)
         assertTrue(model.allLastVerifiedApplied)
-        assertEquals("bluedotOFF applied · Last checked",UiText.text(language("en"),model.status(entry)))
+        assertEquals("Applied · Last checked",UiText.text(language("en"),model.status(entry)))
         assertFalse(model.copy(entries=listOf(entry.copy(state=app.bluedotoff.core.TargetState.NEEDS_REAPPLY_BOOT))).allLastVerifiedApplied)
     }
 }

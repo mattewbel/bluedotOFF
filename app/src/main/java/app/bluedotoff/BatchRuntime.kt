@@ -33,8 +33,8 @@ fun BatchOutcome.summary():String {
     val success=results.count{it.success}
     val failed=results.size-success
     return if(failed==0&&error.isBlank()) {
-        if(hide)"${success}개 앱에 bluedotOFF 적용 완료" else if(show)"${success}개 앱의 숨김을 풀었어요." else "${success}개 앱을 원래 표시 상태로 복원했어요."
+        if(hide)"${success}개 앱 적용 완료" else if(show)"${success}개 앱의 숨김을 풀었어요." else "${success}개 앱을 원래 표시 상태로 복원했어요."
     } else {
-        if(hide)"bluedotOFF 적용 ${success}개 · 확인 필요 ${failed}개" else if(show)"숨김 풀기 ${success}개 · 확인 필요 ${failed}개" else "원래 상태 복원 ${success}개 · 확인 필요 ${failed}개"
+        if(hide)"적용 ${success}개 · 확인 필요 ${failed}개" else if(show)"숨김 풀기 ${success}개 · 확인 필요 ${failed}개" else "원래 상태 복원 ${success}개 · 확인 필요 ${failed}개"
     }
 }

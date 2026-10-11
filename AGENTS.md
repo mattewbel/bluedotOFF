@@ -148,6 +148,63 @@ those files; bump `versionName`/`versionCode` in `app/build.gradle.kts` first.
   "N / N · 99%" (bar still 99%); Help recovery sentence no longer says "다시 쓰지" (jargon). Guide pictures: ON/OFF drawn as
   switches, labels centred on glyph bounds, equal bottom spacing, boxed permission choices, fake "무선 디버깅 승인 취소" row removed.
   Suggestions (resume rescans, tone, dead gates, etc.) are in `bluedotOFF/artifacts/claude-review-20261011.md` (not in Git).
+- Lighter rechecks (owner request 2026-10-11): `MainActivity.resumeCheck` no longer reconnects on every return. It reconnects
+  only if Android reported a change (`changedPackages`, from PACKAGE_ADDED/REMOVED/REPLACED and now PACKAGE_CHANGED) for a
+  registered app (then re-reads only those apps plus their shared-group members), if the last check is older than 10 min,
+  or if the app is not ready. Inventory cache (`ScanStamp`) is 30 min (was 5). History re-reads only access times (at most
+  once a minute); only the picker triggers a full inventory scan. Set-up users keep their screen during a check
+  (`UiModel.rechecking`, small progress line) instead of the full-screen "연결 준비 11/11" view. Home shows "마지막 확인 N분 전"
+  with a refresh icon (re-reads registered apps). Starting a write cancels a running read-only check. Safety re-reads before
+  each write are unchanged. Device-tested on Fold7: return to app = no reconnect; History tab = 3 s read instead of a full scan.
+- Removed dead gates MISSING/AUTHORIZATION/WRONG_MODE/ABI_FAILED (Shizuku era, never set). Home connection screen uses the
+  same segmented 11-step bar as setup. Picker: already applied apps show a filled blue checkbox (disabled).
+- Wording: UI copy unified to "~해요", "적용 중"/"적용 완료" spacing, "파란 위치 표시" instead of "Blue Dot"/"파란 점" in body text
+  (the welcome slogan keeps "Blue Dot"). Core/journal safety messages (Domain, SharedGroup, JournalStore, BinderBackend, …) were
+  left unchanged on purpose; renamed messages that may already be stored keep their old en.json key as well.
+- Timing logs (I/bluedotOFF, durations only): "lease: …", "helper: startup/work/total", "window: N apps hide|restore".
+- Fix (owner device test 2026-10-11): our own lease turning wireless ON made the endpoint watcher start a second check that
+  failed once the lease turned wireless OFF ("무선 디버깅을 켜주세요"); with no enabled entries (after "모두 복원") that failure showed
+  the connection screen. Now `WirelessWork.leasing` suppresses that trigger, background refreshes never connect under automatic
+  management, and a failed check keeps Home when automatic management is ready. Picker label "이미 적용된 앱" -> "이미 표시 꺼짐".
+- Owner requests 2026-10-11 (afternoon):
+  - Speed: `BatchWindow.MAX_TARGETS` 12 -> 48 per helper process, `HideWindowOutcome.MAX_IN_FLIGHT` 4 -> 12. Every target still
+    gets immediate/500 ms/1500 ms checks; pipeline tests now scale with the constants. Baseline before: full restore of ~110
+    apps took 116 s (12-app windows: helper start 0.8-1 s + ~9.5 s work).
+  - Large groups: picking a shared group with >= 10 members or a system UID (< 10000; e.g. 디바이스 찾기 = android.uid.system,
+    93 apps) asks first (`UiModel.bigGroups`, dialog "큰 앱 묶음을 함께 선택할까요?"), both for single taps and "전체 선택".
+  - Hold: main-screen leases (`hold=true`) keep wireless debugging on while a bluedotOFF screen is visible; `WirelessWork.release`
+    turns it off 2 s after leaving (and 5 s after process start if a previous process died while holding, pref heldOn).
+    Setup leases never hold. Device-tested: one ON at open, OFF 2 s after Home.
+- Speed, measured first (I/bluedotOFF "perf:" line per helper; `Perf` counters): 20-app restore = 9.9 s work, of which journal
+  commits 7.3 s (184 ms each: parse ~67 ms before + full rewrite + fsync + parse again) and journal reads 1.0 s; target reads
+  0.5 s; RPC 0.7 ms per call. So `JournalStore` now reuses the last parsed/written list while the file stamp (mtime, size) is
+  unchanged (only this class writes it), verifies a write by comparing the stored bytes with the serialized bytes, and reuses
+  each unchanged entry's JSON text. Fsync + atomic rename before any permission write are unchanged. After: 20-app add 4.8 s
+  (commit 70 ms); entry-text reuse not yet measured. Consecutive shared groups reuse one helper (up to 8).
+- Restore selection is its own page (`Page.RESTORE`, same layout as 앱 추가: search, 전체 선택, checkboxes, "N개 복원").
+  Home inline edit mode and `UiModel.editing` were removed; "골라서 복원" and the Home "편집" link open the page.
+- Measured after the journal changes: 20-app restore 4.15 s work (was 9.9 s), 20-app add 4.1 s; commit 44 ms. What is left is
+  mostly the 500/1500 ms settle waits. RPC bundling (GET_TARGET_SNAPSHOT idea) would save < 1 s per 20 apps; not done.
+- Shared groups: groups with no member declaring precise location (eligibility INELIGIBLE_OP for all same-UID apps) are no
+  longer offered (`UiModel.groupMayShowIndicator`); if one still fails with `SharedGroupPolicy.NO_LOCATION` it is skipped
+  silently. Other failures are listed in a dialog with reasons (`UiModel.rejectedGroupList`) instead of a snackbar count.
+- Snackbar notices: shown 5 s in their own coroutine scope. Before, clearing/replacing `model.notice` restarted the
+  LaunchedEffect and cut the snackbar off after about a second.
+- 1.0.1 (versionCode 28), GPT release review 2026-10-11 fixes: `WirelessWork.lease` clears `leasing` in a finally around the
+  whole lease (a refused start used to leave it set and silence the endpoint watcher; test
+  `LocalAdbSessionTest.refusedWirelessStartReleasesTheLeasingFlag`); automatic-management copy now says the connection stays
+  while the app is in use and turns off shortly after leaving (UI, setup, guide, README, en.json); `JournalStore` reuses its
+  parsed list only while the file bytes equal the cached bytes (same-stamp corruption is now rejected; test
+  `corruptionWithTheSameStampIsNotServedFromCache`).
+- Kept ADB connection (owner report 2026-10-11): Android posts "무선 디버깅 연결됨" for every new ADB connection, not when
+  wireless debugging is switched on, so holding the switch alone still alerted on each task. Main-screen leases now keep the
+  authenticated `LocalAdbConnection` when every helper exited orderly (`LocalAdbSession.held`, `CloseReceipt.kept`); the next
+  task reuses it; a dead kept connection is replaced only if no helper started yet. `WirelessWork.release` closes it
+  (`closeHeld`) before turning wireless debugging off. Device log: second task "connection: reusing the kept connection".
+- Kept connection fixes (GPT review 2026-10-11): `WirelessWork.release` closes the kept connection for every user, not only
+  with automatic management (it used to return early when the heldOn marker was not set). Turning automatic management
+  off while the app is open runs `releaseNow` first, so wireless debugging the app turned on is switched off before consent
+  is withdrawn. Tests: `KeptConnectionTest` (adopted from the review probe).
 - Not done (suggested later): splitting `MainActivity`, reformatting dense code, moving i18n to
   `strings.xml`, tidying the root research folder (`bluedotOFF_audit.zip`, `bluedotoff_filelist.txt`).
   Not device-tested in this session.

@@ -7,7 +7,10 @@ import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 class HidePipelineTest {
-    internal class Rig(count:Int=8,off:Boolean=false,val readCost:Long=0,val commitCost:Long=0) {
+    // Limits under test; the expectations below scale with them instead of hard-coding 4 and 12.
+    private val F=HideWindowOutcome.MAX_IN_FLIGHT
+    private val W=BatchWindow.MAX_TARGETS
+    internal class Rig(count:Int=HideWindowOutcome.MAX_IN_FLIGHT*2,off:Boolean=false,val readCost:Long=0,val commitCost:Long=0) {
         var clock=0L
         var active=true
         var disconnected=false
@@ -67,14 +70,14 @@ class HidePipelineTest {
         fun engine(wait:(Long)->Unit={clock+=it;onWait(it)})=SafetyEngine(port,journal,{clock},{"boot"},wait=wait,observe={phase,snapshot,wrote->
             phases.add(Triple(snapshot.identity.packageName,phase,clock));onPhase(phase,snapshot,wrote)
         })
-        fun window(names:List<String> = this.names.take(12),onResult:(BatchResult)->Unit={}):HideWindowOutcome =
+        fun window(names:List<String> = this.names.take(BatchWindow.MAX_TARGETS),onResult:(BatchResult)->Unit={}):HideWindowOutcome =
             engine().userHideWindow(names,canStart={active},elapsed={clock},onResult=onResult)
     }
     @Test fun seventyFourAppsOverlapWaitsButKeepEveryCheckDurableOriginalAndWindowBound() {
         val fast=Rig(74,readCost=10,commitCost=3)
         var cursor=0;val fastDurations=mutableListOf<Long>()
         while(cursor<fast.names.size){val start=fast.clock
-            val result=fast.window(fast.names.drop(cursor).take(12)){r->
+            val result=fast.window(fast.names.drop(cursor).take(W)){r->
                 assertTrue(r.success);assertEquals(r.entry,fast.records[r.packageName]);assertTrue(r.entry!!.settlingVerified)
             }
             assertFalse(result.stopped);assertTrue(result.results.all{it.success});cursor+=result.started
@@ -84,7 +87,7 @@ class HidePipelineTest {
         serial.names.forEach{assertEquals(TargetState.APPLIED,serial.engine().userHide(it).state)}
         assertEquals(74,fast.writes.size);assertEquals(serial.snapshots,fast.snapshots)
         assertTrue(fast.records.values.all{it.originalBit==256&&it.settlingVerified})
-        assertTrue(fast.maximumPending<=4);assertEquals(7,fastDurations.size)
+        assertTrue(fast.maximumPending<=F);assertEquals((74+W-1)/W,fastDurations.size)
         assertTrue(fastDurations.all{it<55000})
         fast.names.forEach{pkg->
             val checkpoints=fast.phases.filter{it.first==pkg}.associate{it.second to it.third}
@@ -97,7 +100,7 @@ class HidePipelineTest {
     }
     @Test fun alreadyOffSeventyFourAppsNeverInventOnBitsOrIssueSetters() {
         val rig=Rig(74,off=true);var cursor=0
-        while(cursor<74){val result=rig.window(rig.names.drop(cursor).take(12));cursor+=result.started;assertTrue(result.results.all{it.success})}
+        while(cursor<74){val result=rig.window(rig.names.drop(cursor).take(W));cursor+=result.started;assertTrue(result.results.all{it.success})}
         assertTrue(rig.writes.isEmpty());assertTrue(rig.records.values.all{it.originalBit==0&&!it.changedByUs&&it.settlingVerified})
         rig.names.forEach{rig.engine().userRestore(it)}
         assertTrue(rig.writes.isEmpty());assertTrue(rig.records.values.none{it.enabled})
@@ -114,16 +117,16 @@ class HidePipelineTest {
         val rig=Rig();val first=rig.names.first()
         rig.onPhase={phase,snapshot,_->if(phase=="immediate"&&snapshot.identity.packageName==first)rig.snapshots[first]=snapshot.copy(fineFlags=snapshot.fineFlags or 16)}
         val result=rig.window()
-        assertTrue(result.stopped);assertEquals(4,result.started);assertEquals(rig.names.take(4),result.results.map{it.packageName})
+        assertTrue(result.stopped);assertEquals(F,result.started);assertEquals(rig.names.take(F),result.results.map{it.packageName})
         assertEquals(TargetState.FAILED_ROLLBACK,rig.records[first]!!.state)
-        assertTrue(result.results.drop(1).all{it.success});assertTrue(rig.names.drop(4).none{it in rig.records})
+        assertTrue(result.results.drop(1).all{it.success});assertTrue(rig.names.drop(F).none{it in rig.records})
         assertEquals(16,rig.snapshots[first]!!.fineFlags and 16)
     }
     @Test fun delayedResetAtFinalStageIsNotPublishedAsAppliedAndStopsTheNextWave() {
         val rig=Rig();val first=rig.names.first()
         rig.onPhase={phase,snapshot,_->if(phase=="settled_500ms"&&snapshot.identity.packageName==first)rig.snapshots[first]=snapshot.copy(fineFlags=snapshot.fineFlags or 256)}
         val result=rig.window()
-        assertTrue(result.stopped);assertEquals(4,result.started);assertFalse(result.results.first().success)
+        assertTrue(result.stopped);assertEquals(F,result.started);assertFalse(result.results.first().success)
         assertEquals(TargetState.FAILED_SAFE,rig.records[first]!!.state);assertFalse(rig.records[first]!!.settlingVerified)
         assertEquals(1,rig.writes.count{it.first==first})
     }
@@ -152,11 +155,11 @@ class HidePipelineTest {
     @Test fun disconnectWithFourPendingWritesPreservesEveryOriginalAndNeverRetries() {
         val rig=Rig();rig.onWait={rig.disconnected=true}
         val result=rig.window()
-        assertTrue(result.stopped);assertEquals(4,result.started);assertEquals(4,rig.writes.size)
+        assertTrue(result.stopped);assertEquals(F,result.started);assertEquals(F,rig.writes.size)
         assertTrue(result.results.none{it.success});assertTrue(rig.records.values.all{it.originalBit==256&&it.state==TargetState.FAILED_ROLLBACK})
         rig.disconnected=false
         result.results.forEach{assertEquals(TargetState.FAILED_ROLLBACK,Reconcile.read(rig.records[it.packageName]!!,rig.snapshots[it.packageName],rig.firmware.key,"boot").state)}
-        assertEquals(4,rig.writes.size)
+        assertEquals(F,rig.writes.size)
     }
     @Test fun ambiguousSetterReplyOnSecondTargetRestoresOnlyThatTargetAndDrainsFirst() {
         val rig=Rig();val second=rig.names[1]
@@ -182,7 +185,7 @@ class HidePipelineTest {
     @Test fun failedFinalDurableCommitLeavesAllFourPendingAndNeverIssuesNewSetters() {
         val rig=Rig();rig.onCommit={if(it.state==TargetState.APPLIED)rig.failStorage=true}
         val result=rig.window()
-        assertTrue(result.stopped);assertEquals(4,result.started);assertEquals(4,rig.writes.size)
+        assertTrue(result.stopped);assertEquals(F,result.started);assertEquals(F,rig.writes.size)
         assertTrue(result.results.none{it.success});assertTrue(rig.records.values.all{it.state==TargetState.PENDING_HIDE&&it.originalBit==256&&!it.settlingVerified})
     }
     @Test fun failedRollbackCommitStopsDrainWritesAndLeavesDurablePendingEvidence() {
@@ -191,7 +194,7 @@ class HidePipelineTest {
         rig.onCommit={if(it.state==TargetState.FAILED_ROLLBACK)rig.failStorage=true}
         val result=rig.window();assertTrue(result.stopped)
         assertTrue(rig.records.values.all{it.state==TargetState.PENDING_HIDE})
-        assertTrue(result.results.none{it.success});assertEquals(4,rig.writes.size) // denied mode blocks even rollback's fresh guard
+        assertTrue(result.results.none{it.success});assertEquals(F,rig.writes.size) // denied mode blocks even rollback's fresh guard
     }
     @Test fun backgroundBeforeStartDoesNotCreateRecordsOrSetters() {
         val rig=Rig();rig.active=false
@@ -213,17 +216,17 @@ class HidePipelineTest {
     }
     @Test fun failedWaitSafelyResolvesEveryStartedOriginalWithoutNewTargets() {
         val rig=Rig();val result=rig.engine(wait={throw InterruptedException("cancelled")}).userHideWindow(rig.names,elapsed={rig.clock})
-        assertTrue(result.stopped);assertEquals(4,result.started);assertTrue(result.results.none{it.success})
-        assertTrue(rig.snapshots.values.all{it.bit==256});assertEquals(8,rig.writes.size)
+        assertTrue(result.stopped);assertEquals(F,result.started);assertTrue(result.results.none{it.success})
+        assertTrue(rig.snapshots.values.all{it.bit==256});assertEquals(F*2,rig.writes.size)
     }
     @Test fun callbackFailureDoesNotAbandonStartedOperationsOrAllowNewAdmissions() {
         val rig=Rig();val result=rig.window{throw IllegalStateException("observer failed")}
-        assertTrue(result.stopped);assertEquals(4,result.started);assertTrue(result.results.all{it.success})
-        assertTrue(rig.records.values.all{it.settlingVerified});assertEquals(4,rig.writes.size)
+        assertTrue(result.stopped);assertEquals(F,result.started);assertTrue(result.results.all{it.success})
+        assertTrue(rig.records.values.all{it.settlingVerified});assertEquals(F,rig.writes.size)
     }
     @Test fun elapsedBudgetStopsAdmissionButAlwaysDrainsStartedChecks() {
-        val rig=Rig(12,readCost=1000);val result=rig.window()
-        assertFalse(result.stopped);assertTrue(result.started in 1..11)
+        val rig=Rig(W,readCost=1000);val result=rig.window()
+        assertFalse(result.stopped);assertTrue(result.started in 1 until W)
         assertEquals(result.started,result.results.size);assertTrue(result.results.all{it.success})
         assertTrue(rig.records.values.all{it.settlingVerified})
     }
@@ -234,7 +237,7 @@ class HidePipelineTest {
         assertEquals(1,rig.writes.size);assertFalse(second in rig.records);assertTrue(result.results.first().success)
     }
     @Test fun duplicatesAndOversizedWindowsAreRejectedWithoutReadingOrWriting() {
-        val rig=Rig(13)
+        val rig=Rig(W+1)
         listOf(listOf(rig.names[0],rig.names[0]),rig.names).forEach{names->
             try{rig.window(names);fail("expected rejection")}catch(_:IllegalArgumentException){}
         }
@@ -263,15 +266,15 @@ class HidePipelineTest {
     }
     @Test fun thrownFinalCommitIsTreatedLikeFailedFsyncWithoutFurtherMutation() {
         val rig=Rig();rig.onCommit={if(it.state==TargetState.APPLIED)rig.throwCommit=true}
-        val result=rig.window();assertTrue(result.stopped);assertEquals(4,result.started)
-        assertEquals(4,rig.writes.size);assertTrue(result.results.none{it.success})
+        val result=rig.window();assertTrue(result.stopped);assertEquals(F,result.started)
+        assertEquals(F,rig.writes.size);assertTrue(result.results.none{it.success})
         assertTrue(rig.records.values.all{it.state==TargetState.PENDING_HIDE})
     }
     @Test fun storageFaultDuringInterruptedDrainPreventsEveryRemainingRollbackSetter() {
         val rig=Rig();rig.onCommit={if(it.state==TargetState.FAILED_SAFE)rig.failStorage=true}
         val result=rig.engine(wait={throw InterruptedException("cancelled")}).userHideWindow(rig.names,elapsed={rig.clock})
-        assertTrue(result.stopped);assertEquals(4,result.started);assertTrue(result.results.none{it.success})
-        assertEquals(5,rig.writes.size);assertEquals(1,rig.writes.count{it.second==256})
+        assertTrue(result.stopped);assertEquals(F,result.started);assertTrue(result.results.none{it.success})
+        assertEquals(F+1,rig.writes.size);assertEquals(1,rig.writes.count{it.second==256})
         assertTrue(rig.records.values.all{it.state==TargetState.PENDING_HIDE})
     }
 }

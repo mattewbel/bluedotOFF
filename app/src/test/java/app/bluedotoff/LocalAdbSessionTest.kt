@@ -18,6 +18,13 @@ import java.nio.ByteOrder
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk=[34],application=Application::class)
 class LocalAdbSessionTest {
+    /** A refused start (wireless off, no automatic management) must not leave the "this app is connecting" flag set. */
+    @Test fun refusedWirelessStartReleasesTheLeasingFlag(){
+        val app=ApplicationProvider.getApplicationContext<Application>()
+        android.provider.Settings.Global.putInt(app.contentResolver,"adb_wifi_enabled",0)
+        try{WirelessWork.run(app,true){fail("backend must not open")};fail("start must be refused")}catch(_:IllegalStateException){}
+        assertFalse(WirelessWork.leasing)
+    }
     private class Wire:AdbWire {
         val incoming=java.util.ArrayDeque<Byte>()
         val sent=mutableListOf<AdbPacket>()

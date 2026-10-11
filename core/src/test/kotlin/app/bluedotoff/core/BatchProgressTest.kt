@@ -10,8 +10,8 @@ class BatchProgressTest {
         assertEquals(100,BatchProgress(70,70,BatchPhase.FINISHED).percent)
     }
     @Test fun countAndElapsedBothBoundTheNextTarget(){
-        assertTrue(BatchWindow.next(11,54000))
-        assertFalse(BatchWindow.next(12,100))
+        assertTrue(BatchWindow.next(47,54000))
+        assertFalse(BatchWindow.next(48,100))
         assertFalse(BatchWindow.next(1,55000))
         assertTrue(BatchWindow.next(0,55000))
     }

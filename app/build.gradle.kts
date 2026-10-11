@@ -9,7 +9,7 @@ android {
     compileSdk = 37
     compileSdkMinor = 0
     ndkVersion = "27.2.12479018"
-    defaultConfig { applicationId = "app.bluedotoff"; minSdk = 30; targetSdk = 37; versionCode = 27; versionName = "1.0.0" }
+    defaultConfig { applicationId = "app.bluedotoff"; minSdk = 30; targetSdk = 37; versionCode = 28; versionName = "1.0.1" }
     flavorDimensions += "transport"
     productFlavors {
         create("local") { dimension = "transport" }

@@ -2,6 +2,8 @@ package app.bluedotoff.core
 
 /** An explicit whole-UID transaction. The individual write gate remains closed. */
 object SharedGroupPolicy {
+    /** No member may use precise location: the group never shows the blue indicator, so it is skipped silently. */
+    const val NO_LOCATION="정확한 위치 권한이 허용된 앱이 묶음에 없습니다."
     const val MAX_MEMBERS=128
     const val STANDARD_MAX_MEMBERS=8
     fun validate(members:List<Snapshot>) {
@@ -22,7 +24,7 @@ object SharedGroupPolicy {
             // not granted or allowed. One genuinely usable member is mandatory.
             if(scope!=ApplicationScope.ALL&&s.fineDeclared&&(!s.fineGranted||!s.coarseDeclared||!s.coarseGranted||s.fineMode !in listOf(0,4)||s.coarseMode !in listOf(0,4)))throw SafetyException("공유 앱의 위치 권한 상태를 안전하게 확인하지 못했습니다.")
         }
-        if(members.none{it.fineDeclared&&it.fineGranted&&it.coarseDeclared&&it.coarseGranted&&it.fineMode in listOf(0,4)&&it.coarseMode in listOf(0,4)})throw SafetyException("정확한 위치 권한이 허용된 앱이 묶음에 없습니다.")
+        if(members.none{it.fineDeclared&&it.fineGranted&&it.coarseDeclared&&it.coarseGranted&&it.fineMode in listOf(0,4)&&it.coarseMode in listOf(0,4)})throw SafetyException(NO_LOCATION)
     }
     fun representative(members:List<Snapshot>)=members.first{it.fineDeclared&&it.fineGranted&&it.coarseDeclared&&it.coarseGranted&&it.fineMode in listOf(0,4)&&it.coarseMode in listOf(0,4)}
     fun same(before:List<Snapshot>,after:List<Snapshot>,wanted:Int)=before.size==after.size&&before.zip(after).all{(a,b)->a.invariantEquals(b,wanted)}
@@ -84,7 +86,7 @@ class SharedGroupEngine(private val port:TargetPort,private val journal:Journal,
                 }
             }catch(_:Exception){false}
             val state=if(changed)TargetState.NEEDS_REVIEW else if(restored)TargetState.FAILED_SAFE else TargetState.FAILED_ROLLBACK
-            val failed=pending.map{it.copy(state=state,error=e.message?:"공유 앱 묶음 확인이 필요합니다.")}
+            val failed=pending.map{it.copy(state=state,error=e.message?:"공유 앱 묶음을 확인해야 해요.")}
             durable(failed);failed
         }
     }

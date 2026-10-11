@@ -36,8 +36,8 @@ class WirelessManagementTest {
     @Test fun partialSelectionIsIndeterminate(){assertEquals(SelectionState.SOME,PickerSelection.state(listOf(row(1),row(2)),setOf("test.app1")))}
     @Test fun cacheIsInvalidAfterPackagesBuildTtlOrClockReset(){
         val stamp=ScanStamp("build",3,100)
-        assertTrue(stamp.valid("build",3,299999));assertFalse(stamp.valid("other",3,101))
-        assertFalse(stamp.valid("build",4,101));assertFalse(stamp.valid("build",3,300100));assertFalse(stamp.valid("build",3,99))
+        assertTrue(stamp.valid("build",3,1_800_099));assertFalse(stamp.valid("other",3,101))
+        assertFalse(stamp.valid("build",4,101));assertFalse(stamp.valid("build",3,1_800_100));assertFalse(stamp.valid("build",3,99))
     }
     @Test fun futureSetupIsSeparateFromAbiVerification(){
         assertTrue(FirmwareSupport.setup("Samsung",37,"90000"));assertTrue(FirmwareSupport.setup("samsung",38,"91000"))

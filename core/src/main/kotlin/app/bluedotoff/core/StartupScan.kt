@@ -8,10 +8,10 @@ object StartupScan {
              discover:((Snapshot)->Unit)->DiscoveryResult,read:(String)->Snapshot?,
              reconcile:(Map<String,Snapshot?>,Firmware)->List<Entry>,boot:String,
              current:()->Boolean):PreparedStartupScan {
-        fun checkCurrent(){if(!current())throw java.util.concurrent.CancellationException("앱 확인이 중단됐습니다. 다시 연결해주세요.")}
+        fun checkCurrent(){if(!current())throw java.util.concurrent.CancellationException("앱 확인이 중단됐어요. 다시 연결해주세요.")}
         checkCurrent()
         val firmware=verify()
-        check(firmware.osSupported&&firmware.abiProfile.isNotBlank()){"지원 여부를 확인하지 못했습니다."}
+        check(firmware.osSupported&&firmware.abiProfile.isNotBlank()){"지원 여부를 확인하지 못했어요."}
         checkCurrent()
         val registered=entries().map{it.identity.packageName}.toSet()
         val snapshots=linkedMapOf<String,Snapshot?>()

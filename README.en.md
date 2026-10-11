@@ -2,7 +2,7 @@
 
 [한국어](README.md) | **English**
 
-**[⬇ Download the latest APK](https://github.com/mattewbel/bluedotOFF/releases/latest)** — get `bluedotOFF-1.0.0-release.apk` under Assets.
+**[⬇ Download the latest APK](https://github.com/mattewbel/bluedotOFF/releases/latest)** — get `bluedotOFF-1.0.1-release.apk` under Assets.
 
 An app for Samsung One UI 9 (Android 17) phones that **hides the blue location indicator (Blue Dot) only for the apps you choose**.
 Location permissions and location history stay as they are. bluedotOFF changes a single setting that controls the status bar indicator, and you can undo it at any time.
@@ -43,12 +43,12 @@ bluedotOFF has one goal:
 - **Only one device has been verified.** It has been tested only on the Galaxy Z Fold7 (One UI 9). Other models work only if their internals are identical; otherwise the app stops without changing anything.
 - **US models** have an extra location indicator path, so the dot may not be hidden.
 - **It does not work while Auto Blocker is on.** Auto Blocker blocks wireless debugging. Turn it off in Settings → Security and privacy → Auto Blocker when you use the app. New Galaxy phones have it on by default, and with “Turn on automatically” it turns back on after 30 minutes. With automatic management, the app notices the block and tells you how to turn it off.
-- **Developer options and Wireless debugging are required.** Wireless debugging is turned on briefly for each operation, and Android may show a "Wireless debugging connected" notification.
+- **Developer options and Wireless debugging are required.** With automatic management, Wireless debugging stays on while you use the app (Android may show a "Wireless debugging connected" notification once when it opens) and turns off shortly after you leave.
 - **Restore everything before uninstalling.** If you just uninstall, the hidden apps may stay hidden.
 
 ## Install
 
-Download the latest APK (`bluedotOFF-1.0.0-release.apk`) from [Releases](../../releases) and install it. You may need to allow "Install unknown apps" the first time.
+Download the latest APK (`bluedotOFF-1.0.1-release.apk`) from [Releases](../../releases) and install it. You may need to allow "Install unknown apps" the first time.
 
 ## Requirements
 
@@ -76,8 +76,9 @@ Pairing is needed only once.
 ## Using the app
 
 - **Hide:** Home → **Add apps** → find apps with search and filters → **Add N**. You can also hide apps that recently used location from **History**.
-- **Restore:** Home → **Restore apps** → **Restore all** or **Choose apps**. You can also restore one app from its detail screen with **Unhide · restore original setting**.
+- **Restore:** Home → **Restore apps** → **Restore all**, or **Choose apps** (also Home → **Edit**) to pick apps with search and Select all like Add apps, then **Restore N**. You can also restore one app from its detail screen with **Unhide · restore original setting**.
 - **Reapply:** After a restart or an app update, Android may turn the indicator back on. When Home shows **reapply needed**, tap it to apply again. The app does not reapply on its own.
+- **Check again:** Tap ↻ next to **Last checked N min ago** on Home to recheck your registered apps right away.
 
 ### Scope
 
@@ -86,20 +87,20 @@ Pairing is needed only once.
 | Standard mode | Low | Regular apps that have their own location setting (including preinstalled apps that pass the checks) |
 | All apps mode | Medium | Standard + app groups that share a location setting with other apps, system apps, apps without a home screen icon |
 
-- Apps that share a setting with other apps are hidden and restored together as a group.
+- Apps that share a setting with other apps are hidden and restored together as a group. Large groups (10 or more apps) and Android system groups (e.g. Find My Mobile) ask once more before they are selected. Groups in which no app uses location are not listed.
 - Lowering the scope first restores the apps that fall outside the new scope, then changes the scope.
 - Risk is a rough guide for understanding, not a failure rate.
 
 ### Manage wireless debugging automatically
 
-When on, the app turns Wireless debugging on only while you use it and turns it off when the work is done. For this, the app is given permission to change system settings once. The permission is used only to turn Wireless debugging on and off.
+When on, the app keeps Wireless debugging on only while you use it and turns it off shortly after you leave the app. For this, the app is given permission to change system settings once. The permission is used only to turn Wireless debugging on and off.
 To stop, turn off **Settings → Manage wireless debugging automatically** or tap **Settings → Advanced settings → Remove automatic management permission**. Without automatic management, you can turn it off yourself with **Settings → Turn off wireless debugging** after you are done.
 
 ## Good to know
 
 - **Restore all apps before uninstalling bluedotOFF.** Uninstalling or clearing app data alone does not bring back the original state.
 - Android sometimes turns the indicator back on (restart, app update, OS policy). The app detects this and shows **reapply needed**.
-- There is no real-time monitoring. **When you open the app again**, it checks which apps need reapplying. While bluedotOFF is fully closed, reapply notifications cannot report app updates right away.
+- There is no real-time monitoring. **When you open the app again**, it rechecks only the apps Android reported as changed (update, install, component change), or all registered apps if 10 minutes have passed. Tap ↻ next to **Last checked** on Home to check at any time. While bluedotOFF is fully closed, reapply notifications cannot report app updates right away.
 - If the connection drops or the state cannot be confirmed, the app does not report success and stops changing things. If you see **Restore needs review**, do not clear app data; connect again and recheck.
 - **Reset this app's pairing** only clears this app's connection data. To remove the phone's record, go to Wireless debugging → Paired devices → bluedotOFF → Forget.
 - Apps whose indicator was already off stay off after restoring.

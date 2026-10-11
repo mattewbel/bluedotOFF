@@ -14,25 +14,35 @@ import java.nio.file.StandardCopyOption
 /** Checked fsync + atomic rename, then exact reread. Corruption never means an empty journal. */
 class JournalStore(context: Context) : Journal {
     private val base = File(context.noBackupFilesDir, "original-bit-journal.json")
-    companion object { private val lock = Any() }
-    override fun entries(): List<Entry> = synchronized(lock) { read() }
+    // Parsing ~200 entries took ~67 ms and every commit parsed twice (measured 2026-10-11: 184 ms per commit, 74% of a
+    // restore). The last parsed or written list is reused only while the file still holds exactly the bytes it came
+    // from (reading and comparing ~100 KB is cheap); any difference, including corruption, falls back to a full parse
+    // with the checksum check.
+    companion object { private val lock = Any(); private var cached:List<Entry>?=null; private var cachedBytes:ByteArray?=null; private var serialized=HashMap<Entry,String>() }
+    override fun entries(): List<Entry> = synchronized(lock) { val t=System.nanoTime(); read().also{Perf.add("journalRead",t)} }
     private fun read(): List<Entry> {
         if (!base.exists()) return emptyList()
-        val root = base.bufferedReader().use { JSONObject(it.readText()) }
+        val stored=base.readBytes()
+        cached?.let{list->if(cachedBytes?.contentEquals(stored)==true)return list}
+        val root = JSONObject(String(stored,Charsets.UTF_8))
         check(root.getInt("schema") == 1) { "복원 기록 형식을 확인할 수 없습니다. 변경을 차단했습니다." }
         val payload = root.getString("payload")
         check(BinderBackend.digest(payload.toByteArray()) == root.getString("checksum")) { "복원 기록이 손상되어 변경을 차단했습니다." }
         val items = JSONArray(payload)
+        return parse(items).also{cached=it;cachedBytes=stored}
+    }
+    private fun parse(items:JSONArray):List<Entry> {
         return (0 until items.length()).map { index ->
             val o = items.getJSONObject(index); val signers = o.getJSONArray("signers")
             Entry(Identity(o.getString("packageName"), o.getInt("userId"), o.getInt("uid"), (0 until signers.length()).map { signers.getString(it) }, o.getLong("firstInstallTime"), o.getLong("versionCode"), o.getLong("lastUpdateTime")), o.getString("label"), o.getInt("originalBit"), o.getBoolean("enabled"), TargetState.valueOf(o.getString("state")), o.getLong("verifiedAt"), o.getString("firmware"), o.getString("boot"), o.getBoolean("changedByUs"), o.optString("error"), o.optString("invariantDigest"), o.optBoolean("settlingVerified",false),if(o.isNull("sharedUserId"))null else o.optString("sharedUserId").takeIf{it.isNotBlank()},o.optJSONArray("groupIdentities")?.let{group->(0 until group.length()).map{n->val g=group.getJSONObject(n);val ss=g.getJSONArray("signers");Identity(g.getString("packageName"),g.getInt("userId"),g.getInt("uid"),(0 until ss.length()).map{ss.getString(it)},g.getLong("firstInstallTime"),g.getLong("versionCode"),g.getLong("lastUpdateTime"))}}?:emptyList())
         }
     }
     override fun commit(entry: Entry): Boolean = synchronized(lock) {
+        val t=System.nanoTime()
         try {
             val all = read().filterNot { it.identity.packageName == entry.identity.packageName && it.identity.userId == entry.identity.userId } + entry
             write(all)
-        } catch (_: Exception) { false }
+        } catch (_: Exception) { false }.also{Perf.add("journalCommit",t)}
     }
     override fun commitGroup(entries:List<Entry>):Boolean=synchronized(lock){try{
         require(entries.size in 2..SharedGroupPolicy.MAX_MEMBERS&&entries.map{it.identity.packageName}.distinct().size==entries.size)
@@ -41,22 +51,33 @@ class JournalStore(context: Context) : Journal {
     }catch(_:Exception){false}}
     fun transform(action: (Entry) -> Entry): Boolean = synchronized(lock) { try { write(read().map(action)) } catch (_: Exception) { false } }
     private fun write(items: List<Entry>): Boolean {
-        val array = JSONArray()
-        for (e in items) array.put(JSONObject().apply {
+        // Unchanged entries reuse their JSON text from the previous write; the payload is byte-identical to
+        // JSONArray(objects).toString() (elements joined by ",", object keys in insertion order).
+        val previous=serialized;val next=HashMap<Entry,String>(items.size*2)
+        val payload=items.joinToString(",","[","]"){e->(previous[e]?:entryJson(e).toString()).also{next[e]=it}}
+        serialized=next
+        return publish(items,payload)
+    }
+    private fun entryJson(e:Entry)=JSONObject().apply {
             put("packageName", e.identity.packageName); put("userId", e.identity.userId); put("uid", e.identity.uid); put("signers", JSONArray(e.identity.signers)); put("firstInstallTime", e.identity.firstInstallTime); put("versionCode", e.identity.versionCode); put("lastUpdateTime", e.identity.lastUpdateTime)
             put("label", e.label); put("originalBit", e.originalBit); put("enabled", e.enabled); put("state", e.state.name); put("verifiedAt", e.lastVerifiedTime); put("firmware", e.firmware); put("boot", e.bootSession); put("changedByUs", e.changedByUs); put("error", e.error)
             put("invariantDigest",e.invariantDigest)
             if(e.groupIdentities.isNotEmpty())put("groupIdentities",JSONArray(e.groupIdentities.map{id->JSONObject().put("packageName",id.packageName).put("userId",id.userId).put("uid",id.uid).put("signers",JSONArray(id.signers)).put("firstInstallTime",id.firstInstallTime).put("versionCode",id.versionCode).put("lastUpdateTime",id.lastUpdateTime)}))
             put("settlingVerified",e.settlingVerified);put("sharedUserId",e.sharedUserId?:JSONObject.NULL)
-        })
-        val payload = array.toString()
+        }
+    private fun publish(items:List<Entry>,payload:String): Boolean {
         val root = JSONObject().put("schema", 1).put("payload", payload).put("checksum", BinderBackend.digest(payload.toByteArray())).toString()
         base.parentFile!!.mkdirs()
         val next=File(base.path+".new")
-        FileOutputStream(next).use { it.write(root.toByteArray());it.flush();it.fd.sync() }
+        val bytes=root.toByteArray()
+        cached=null;cachedBytes=null
+        FileOutputStream(next).use { it.write(bytes);it.flush();it.fd.sync() }
         // No non-atomic fallback: unsupported filesystems stop before any permission write.
         Files.move(next.toPath(),base.toPath(),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING)
-        check(read()==items) { "복원 기록 저장 확인 실패" }
+        // Exact reread: the stored bytes must be exactly the bytes serialized from [items] (the parser round-trip is
+        // covered by JournalStoreTest), which is cheaper than parsing the whole journal again.
+        check(base.readBytes().contentEquals(bytes)) { "복원 기록 저장 확인 실패" }
+        cached=items.toList();cachedBytes=bytes
         return true
     }
 }

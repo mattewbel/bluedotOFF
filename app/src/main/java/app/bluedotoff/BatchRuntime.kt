@@ -22,7 +22,7 @@ object BatchRuntime {
         mutable.value=BatchUiState(id,BatchProgress(0,total),hide=hide)
         scope.launch {
             val outcome=try {work {progress->mutable.value=BatchUiState(id,progress,hide=hide)}}
-                catch(_:Exception){BatchOutcome(hide,emptyList(),emptyList(),emptyList(),error="작업 결과를 확인하지 못했습니다. 등록 기록을 유지했습니다.")}
+                catch(_:Exception){BatchOutcome(hide,emptyList(),emptyList(),emptyList(),error="작업 결과를 확인하지 못했어요. 등록 기록은 그대로예요.")}
             mutable.value=BatchUiState(id,BatchProgress(total,total,BatchPhase.FINISHED),outcome.copy(completedAt=System.nanoTime()/1_000_000),hide)
         }
         return true
@@ -33,7 +33,7 @@ fun BatchOutcome.summary():String {
     val success=results.count{it.success}
     val failed=results.size-success
     return if(failed==0&&error.isBlank()) {
-        if(hide)"${success}개 앱에 bluedotOFF 적용완료" else "${success}개 앱을 원래 표시 상태로 복원했습니다."
+        if(hide)"${success}개 앱에 bluedotOFF 적용 완료" else "${success}개 앱을 원래 표시 상태로 복원했어요."
     } else {
         if(hide)"bluedotOFF 적용 ${success}개 · 확인 필요 ${failed}개" else "원래 상태 복원 ${success}개 · 확인 필요 ${failed}개"
     }

@@ -48,7 +48,7 @@ class PairingLifetimeService:Service() {
             val open=PendingIntent.getActivity(this,ID,Intent(this,LocalAdbSetupActivity::class.java),PendingIntent.FLAG_IMMUTABLE)
             val notice=Notification.Builder(this,CHANNEL).setSmallIcon(R.drawable.ic_dot)
                 .setContentTitle(app.bluedotoff.UiText.text(this,"bluedotOFF 연결 준비 중"))
-                .setContentText(app.bluedotoff.UiText.text(this,"설정에서 페어링 코드를 입력하세요. 잠시 후 자동으로 종료됩니다."))
+                .setContentText(app.bluedotoff.UiText.text(this,"설정에서 페어링 코드를 입력하세요. 잠시 후 자동으로 사라져요."))
                 .setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true).setVisibility(Notification.VISIBILITY_SECRET).build()
             startForeground(ID,notice,ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE)
             handler.postDelayed(timeout,LIMIT_MS)

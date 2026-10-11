@@ -75,7 +75,7 @@ object ScopeDialogs {
                     targets==null->Copy("등록 앱의 적용 범위를 확인하고 있어요.",small=true)
                     targets!!.isEmpty()->Copy("원복할 등록 앱이 없어요. 앱의 표시 설정은 그대로 유지해요.",small=true)
                     else->{
-                        Copy("등록한 앱 중 ${targets!!.size}개가 새 범위에서 제외되어 원복됩니다.")
+                        Copy("등록한 앱 중 ${targets!!.size}개가 새 범위에서 빠져서 원래 상태로 돌아가요.")
                         Copy("모두 복원되면 범위를 바꿔요. 실패하면 현재 범위를 유지해요.",small=true)
                         TextButton(onClick={expanded=!expanded}){Copy(if(expanded)"대상 앱 접기" else "복원 대상 ${targets!!.size}개 보기")}
                         if(expanded)targets!!.forEach{(label,pkg)->HorizontalDivider();Text(label,style=MaterialTheme.typography.bodyMedium);Text(pkg,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}

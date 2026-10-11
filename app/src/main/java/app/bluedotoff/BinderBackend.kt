@@ -145,7 +145,8 @@ abstract class BinderBackend(private val context: Context) : TargetPort {
     private fun packagesForUid(uid: Int): List<String> = transact("package", PM, "getPackagesForUid", { it.writeInt(uid) }, { it.createStringArray()?.sorted()?.toList() ?: error("앱 묶음 정보를 확인하지 못했습니다.") })
     private fun flags(pkg: String, permission: String): Int = transact("permissionmgr", PERMISSION, "getPermissionFlags", { it.writeString(pkg); it.writeString(permission); it.writeString("default:0"); it.writeInt(0) }, { it.readInt() })
     private fun mode(pkg: String, uid: Int, op: Int): Int = transact("appops", OPS, "checkOperationRaw", { it.writeInt(op); it.writeInt(uid); it.writeString(pkg); it.writeString(null) }, { it.readInt() })
-    override fun read(packageName: String): Snapshot {
+    override fun read(packageName: String): Snapshot = app.bluedotoff.Perf.time("read"){readOnce(packageName)}
+    private fun readOnce(packageName: String): Snapshot {
         val firmware=compatibleFirmware()
         require(packageName.matches(Regex("[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*")))
         val info = packageInfo(packageName) ?: throw PackageManager.NameNotFoundException(packageName)

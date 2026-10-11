@@ -93,7 +93,7 @@ class ScopeDialogsTest {
         compose.runOnIdle{result!!(listOf("전화" to "demo.phone"),"")}
         shadowOf(Looper.getMainLooper()).idle()
         compose.onNodeWithText("복원 후 범위 변경").assertIsEnabled()
-        compose.onNodeWithText("등록한 앱 중 1개가 새 범위에서 제외되어 원복됩니다.").assertExists()
+        compose.onNodeWithText("등록한 앱 중 1개가 새 범위에서 빠져서 원래 상태로 돌아가요.").assertExists()
         compose.onNodeWithText("취소").performClick();Assert.assertFalse(confirmed)
     }
     @Test fun failedScopePreviewKeepsConfirmationDisabled(){

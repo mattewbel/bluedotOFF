@@ -125,7 +125,7 @@ internal class AndroidSetupRuntime(private val context:Context):SetupRuntime {
                 },boot,valid)
         }
         if(!valid())throw java.util.concurrent.CancellationException()
-        check(cache.publish(revision,prepared)){"앱 설치 상태가 바뀌었습니다. 다시 확인해주세요."}
+        check(cache.publish(revision,prepared)){"앱 설치 상태가 바뀌었어요. 다시 확인해주세요."}
     }
     override fun cancelPairing()=LocalAdbSession.cancelPairing()
     override fun debugReadOnly(port:Int,interrupt:Boolean) {

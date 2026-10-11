@@ -22,5 +22,5 @@ object PickerSelection {
         if(state(rows,selected)==SelectionState.ALL)selected-scope(rows)else selected+scope(rows)
 }
 data class ScanStamp(val build:String,val packageEpoch:Long,val created:Long) {
-    fun valid(build:String,packageEpoch:Long,now:Long)=this.build==build&&this.packageEpoch==packageEpoch&&now>=created&&now-created<300000
+    fun valid(build:String,packageEpoch:Long,now:Long)=this.build==build&&this.packageEpoch==packageEpoch&&now>=created&&now-created<1_800_000
 }

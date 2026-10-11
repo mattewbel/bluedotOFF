@@ -53,11 +53,11 @@ object ReapplyNotification {
         if (android.os.Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val manager = context.getSystemService(NotificationManager::class.java)
         if(!manager.areNotificationsEnabled())return
-        manager.createNotificationChannel(NotificationChannel(CHANNEL, app.bluedotoff.UiText.text(context,"재적용 안내"), NotificationManager.IMPORTANCE_DEFAULT).apply { description = app.bluedotoff.UiText.text(context,"휴대폰 재시작과 등록 앱 업데이트 때만 알려드립니다.") })
+        manager.createNotificationChannel(NotificationChannel(CHANNEL, app.bluedotoff.UiText.text(context,"재적용 안내"), NotificationManager.IMPORTANCE_DEFAULT).apply { description = app.bluedotoff.UiText.text(context,"휴대폰 재시작과 등록 앱 업데이트 때만 알려드려요.") })
         val intent = Intent(context, MainActivity::class.java).setAction("app.bluedotoff.REAPPLY").putExtra("target", target?.identity?.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         val id = target?.identity?.packageName?.hashCode() ?: 4101
         val content = PendingIntent.getActivity(context, id, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val notification = Notification.Builder(context, CHANNEL).setSmallIcon(R.drawable.ic_dot).setContentTitle(app.bluedotoff.UiText.text(context,"Blue Dot 설정을 다시 확인해주세요")).setContentText(if (target == null) app.bluedotoff.UiText.text(context,"재부팅 후에는 무선 디버깅을 잠시 켜고 등록 앱을 확인해주세요.") else app.bluedotoff.UiText.text(context,"${target.label} 업데이트 후 설정을 다시 확인해주세요.")).setContentIntent(content).setAutoCancel(true).addAction(Notification.Action.Builder(null,app.bluedotoff.UiText.text(context,"설정 확인"),content).build()).build()
+        val notification = Notification.Builder(context, CHANNEL).setSmallIcon(R.drawable.ic_dot).setContentTitle(app.bluedotoff.UiText.text(context,"파란 위치 표시 설정을 다시 확인해주세요")).setContentText(if (target == null) app.bluedotoff.UiText.text(context,"재부팅 후에는 무선 디버깅을 잠시 켜고 등록 앱을 확인해주세요.") else app.bluedotoff.UiText.text(context,"${target.label} 업데이트 후 설정을 다시 확인해주세요.")).setContentIntent(content).setAutoCancel(true).addAction(Notification.Action.Builder(null,app.bluedotoff.UiText.text(context,"설정 확인"),content).build()).build()
         try { manager.notify(id, notification) } catch (_: SecurityException) { /* Notifications optional; journal already durable. */ }
     }
 }

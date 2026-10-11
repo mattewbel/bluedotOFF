@@ -94,7 +94,7 @@ class SetupSession internal constructor(private val context:Context,private val 
     }
     fun chooseScope(scope:ApplicationScope){
         if(SetupFlow.stage(facts)!=SetupStage.APPLICATION_SCOPE)return
-        check(app.bluedotoff.ScopePreferences(context).selectInitial(scope)){"적용 범위를 저장하지 못했습니다."}
+        check(app.bluedotoff.ScopePreferences(context).selectInitial(scope)){"적용 범위를 저장하지 못했어요."}
         app.bluedotoff.StartupScanHandoff.cache.invalidate();refresh()
     }
     fun skipManagement(){if(managing||!verified)return;runtime.skipManagement();managementError="";refresh()}
@@ -106,7 +106,7 @@ class SetupSession internal constructor(private val context:Context,private val 
         worker.execute{
             if(closed||epoch!=operationEpoch||!verified)return@execute
             try {runtime.enableManagement(port);main.post{if(!closed&&operationEpoch==epoch){managing=false;refresh()}}}
-            catch(_:Exception){main.post{if(!closed&&operationEpoch==epoch){managing=false;managementError="자동 관리를 켜지 못했습니다. 수동 연결은 계속 사용할 수 있어요.";refresh()}}}
+            catch(_:Exception){main.post{if(!closed&&operationEpoch==epoch){managing=false;managementError="자동 관리를 켜지 못했어요. 직접 연결하는 방식은 계속 쓸 수 있어요.";refresh()}}}
         }
     }
     fun skipNearby(){nearbyAsked();permissionsChanged();manual=true;refresh()}

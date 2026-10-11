@@ -14,7 +14,7 @@ object PairingNotifications {
     fun prepare(context:Context) {
         val manager=context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel(CHANNEL,app.bluedotoff.UiText.text(context,"기기 연결 준비"),NotificationManager.IMPORTANCE_HIGH).apply{
-            description=app.bluedotoff.UiText.text(context,"설정 화면에서 페어링 코드를 입력할 때만 사용합니다.")
+            description=app.bluedotoff.UiText.text(context,"설정 화면에서 페어링 코드를 입력할 때만 써요.")
             enableVibration(false)
         })
     }
@@ -46,7 +46,7 @@ object PairingNotifications {
         val reply=PendingIntent.getBroadcast(context,(generation and 0x7fffffff).toInt(),intent,PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_MUTABLE)
         val action=Notification.Action.Builder(null,app.bluedotoff.UiText.text(context,"코드 입력"),reply).addRemoteInput(RemoteInput.Builder(REPLY).setLabel(app.bluedotoff.UiText.text(context,"6자리 페어링 코드")).build()).setAllowGeneratedReplies(false).build()
         val n=builder(context).setContentTitle(if(invalid)app.bluedotoff.UiText.text(context,"6자리 숫자를 입력해주세요") else app.bluedotoff.UiText.text(context,"페어링 코드를 입력하세요"))
-            .setContentText(app.bluedotoff.UiText.text(context,"화면의 6자리 코드를 입력하고 전송하면 자동으로 연결합니다.")).setOnlyAlertOnce(invalid).addAction(action).build()
+            .setContentText(app.bluedotoff.UiText.text(context,"화면의 6자리 코드를 입력하고 전송하면 자동으로 연결해요.")).setOnlyAlertOnce(invalid).addAction(action).build()
         post(context,n)
     }
 }

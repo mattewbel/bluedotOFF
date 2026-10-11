@@ -45,10 +45,11 @@ import app.bluedotoff.core.*
 import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private val DotBlue = BlueDotAppearance.dotBlue
 fun TargetState.label(): String = when(this) {
-    TargetState.APPLIED -> "bluedotOFF 적용중"
+    TargetState.APPLIED -> "bluedotOFF 적용 중"
     TargetState.NOT_APPLIED -> "적용 안 됨"
     TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE -> "확인 필요"
     TargetState.NEEDS_REAPPLY_BOOT -> "재부팅 · 재적용 필요"
@@ -67,7 +68,7 @@ fun TargetState.label(): String = when(this) {
 private fun Snapshot.blockReason(): String = rejectionReason()
 
 @Composable
-fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, hide: (String)->Unit, restore: (String)->Unit, hideAll: ()->Unit, restoreAll: ()->Unit, openBackend: ()->Unit, setupBackend: ()->Unit, authorize: ()->Unit, refresh: ()->Unit, allowNotifications: ()->Unit, dismissNotifications: ()->Unit, begin: ()->Unit, loadApps: ()->Unit, clearNotice: ()->Unit, togglePick:(String)->Unit={}, addSelected:()->Unit={}, queryChanged:(String)->Unit={},filterChanged:(AppFilter)->Unit={},editHome:()->Unit={},toggleHome:(String)->Unit={},restoreSelected:()->Unit={},contentShown:()->Unit={},pickerRevision:Long=0L,historyViewChanged:(HistoryView)->Unit={},pickerViewChanged:(PickerView)->Unit={},wirelessExit:()->Unit={},toggleAll:()->Unit={},managementChanged:(Boolean)->Unit={},removeManagementPermission:()->Unit={},sharedInspect:(String)->Unit={},sharedAccept:()->Unit={},sharedDismiss:()->Unit={},scopeChange:()->Unit={},reapplyNeeded:(List<String>)->Unit={},notificationChanged:(Boolean)->Unit={}) {
+fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, hide: (String)->Unit, restore: (String)->Unit, hideAll: ()->Unit, restoreAll: ()->Unit, openBackend: ()->Unit, setupBackend: ()->Unit, authorize: ()->Unit, refresh: ()->Unit, allowNotifications: ()->Unit, dismissNotifications: ()->Unit, begin: ()->Unit, loadApps: ()->Unit, clearNotice: ()->Unit, togglePick:(String)->Unit={}, addSelected:()->Unit={}, queryChanged:(String)->Unit={},filterChanged:(AppFilter)->Unit={},editHome:()->Unit={},toggleHome:(String)->Unit={},restoreSelected:()->Unit={},contentShown:()->Unit={},pickerRevision:Long=0L,historyViewChanged:(HistoryView)->Unit={},pickerViewChanged:(PickerView)->Unit={},wirelessExit:()->Unit={},toggleAll:()->Unit={},managementChanged:(Boolean)->Unit={},removeManagementPermission:()->Unit={},sharedInspect:(String)->Unit={},sharedAccept:()->Unit={},sharedDismiss:()->Unit={},scopeChange:()->Unit={},reapplyNeeded:(List<String>)->Unit={},notificationChanged:(Boolean)->Unit={},recheck:()->Unit={},bigGroupsAccept:()->Unit={},bigGroupsDismiss:()->Unit={},restorePickAll:(List<String>)->Unit={},rejectedDismiss:()->Unit={}) {
     val context = LocalContext.current
     val dark = isSystemInDarkTheme()
     val motion = ValueAnimator.areAnimatorsEnabled()
@@ -91,8 +92,11 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
         if(model.reapplyCount==0||model.busy||model.page!=Page.HOME||model.gate!=Gate.READY)showReapplyNeeded=false
     }
     val snackbars = remember { SnackbarHostState() }
+    val snackScope = rememberCoroutineScope()
     var showAutoBlocker by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(model.notice,model.busy) { if(model.notice==app.bluedotoff.adb.AutoBlocker.MESSAGE&&!model.busy){showAutoBlocker=true;clearNotice()} else if(model.notice.isNotBlank()&&!model.busy){snackbars.showSnackbar(UiText.text(context,UiText.error(model.notice)),duration=SnackbarDuration.Short);clearNotice()} }
+    LaunchedEffect(model.notice,model.busy) { if(model.notice==app.bluedotoff.adb.AutoBlocker.MESSAGE&&!model.busy){showAutoBlocker=true;clearNotice()} else if(model.notice.isNotBlank()&&!model.busy){val text=UiText.text(context,UiText.error(model.notice));clearNotice()
+        // Shown for 5 s in its own scope: clearing or replacing the notice right after must not cut it short (it looked like ~1 s).
+        snackScope.launch{snackbars.currentSnackbarData?.dismiss();val shown=launch{snackbars.showSnackbar(text,duration=SnackbarDuration.Indefinite)};kotlinx.coroutines.delay(5000);shown.cancel()}} }
     MaterialTheme(colorScheme=scheme) {
         BackHandler(enabled=model.busy) {}
         BackHandler(enabled=model.page!=Page.HOME&&!model.busy) { navigate(Page.HOME) }
@@ -110,8 +114,15 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
                 Column(Modifier.fillMaxSize().then(pageVisibility).padding(horizontal=if(wide)BlueDotAppearance.WIDE_GUTTER.dp else BlueDotAppearance.PAGE_GUTTER.dp)) {
                     Row(Modifier.fillMaxWidth().heightIn(min=BlueDotAppearance.HEADER_HEIGHT.dp),verticalAlignment=Alignment.CenterVertically) {
                         Text(androidx.compose.ui.res.stringResource(R.string.brand_name),style=MaterialTheme.typography.headlineSmall,letterSpacing=(-0.8).sp,modifier=Modifier.weight(1f))
-                        if(model.page in listOf(Page.PICK,Page.DETAIL,Page.REAPPLY,Page.HELP)) TextButton(onClick={navigate(Page.HOME)},enabled=!model.busy){Text("홈")}
+                        if(model.page in listOf(Page.PICK,Page.RESTORE,Page.DETAIL,Page.REAPPLY,Page.HELP)) TextButton(onClick={navigate(Page.HOME)},enabled=!model.busy){Text("홈")}
                         Box(Modifier.padding(start=12.dp).size(18.dp).background(DotBlue,CircleShape).semantics { contentDescription=UiText.text(context,"bluedotOFF 아이콘") })
+                    }
+                    if(model.rechecking&&model.gate==Gate.READY&&!model.busy&&!(model.page==Page.PICK&&model.loadingApps)){
+                        val sp=model.scanProgress
+                        Column(Modifier.fillMaxWidth().padding(bottom=8.dp),verticalArrangement=Arrangement.spacedBy(4.dp)){
+                            if(sp!=null)LinearProgressIndicator(progress={sp.percent/100f},modifier=Modifier.fillMaxWidth()) else LinearProgressIndicator(Modifier.fillMaxWidth())
+                            Text(if(sp!=null)"앱 상태 확인 중 · ${sp.completed} / ${sp.total}" else "앱 상태 확인 중…",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                     if(!model.busy&&(!expires||completionVisible))model.completion?.takeUnless{it.hide&&it.error.isBlank()&&it.cleanupWarning.isBlank()&&it.results.isNotEmpty()&&it.results.all{r->r.success}}?.let{done->
                         Surface(Modifier.fillMaxWidth().padding(bottom=8.dp),shape=RoundedCornerShape(12.dp),color=MaterialTheme.colorScheme.secondaryContainer){
@@ -127,10 +138,11 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
                     }
                     Box(Modifier.weight(1f)) {
                     if(model.page==Page.HELP) HelpScreen(openBackend,setupBackend)
-                    else if(model.gate!=Gate.READY) Wizard(model,openBackend,setupBackend,authorize,refresh,begin,{navigate(Page.HELP)})
+                    else if(model.gate!=Gate.READY) Wizard(model,openBackend,begin,{navigate(Page.HELP)})
                     else when(model.page) {
-                        Page.HOME -> HomeScreen(model,wide,{navigate(Page.PICK)},{showRestoreMenu=true},select,openBackend,{navigate(Page.HISTORY)},hide,editHome,toggleHome,restoreSelected,wirelessExit,{showReapplyNeeded=true})
+                        Page.HOME -> HomeScreen(model,wide,{navigate(Page.PICK)},{showRestoreMenu=true},select,openBackend,{navigate(Page.HISTORY)},hide,editHome,toggleHome,restoreSelected,wirelessExit,{showReapplyNeeded=true},recheck)
                         Page.HISTORY -> HistoryScreen(model,hide,openBackend,historyViewChanged)
+                        Page.RESTORE -> RestoreScreen(model,toggleHome,restorePickAll,restoreSelected)
                         Page.PICK -> PickerScreen(model,togglePick,addSelected,queryChanged,loadApps,openBackend,filterChanged,pickerViewChanged,toggleAll,sharedInspect)
                         Page.DETAIL -> DetailScreen(model,hide,restore,openBackend)
                         Page.REAPPLY -> ReapplyScreen(model,hideAll,openBackend,select)
@@ -152,9 +164,9 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
                     Column(Modifier.padding(24.dp).semantics { liveRegion=LiveRegionMode.Polite },horizontalAlignment=Alignment.CenterHorizontally) {
                         val p=model.progress
                         CircularProgressIndicator();Spacer(Modifier.height(24.dp))
-                        Text(when(p?.phase){BatchPhase.CONNECTING->"연결을 준비하고 있습니다";BatchPhase.CLOSING->"결과를 저장하고 연결을 마무리합니다";else->if(model.operationHide)"안전하게 적용을 확인하고 있습니다" else "안전하게 복원을 확인하고 있습니다"},style=MaterialTheme.typography.titleMedium)
+                        Text(when(p?.phase){BatchPhase.CONNECTING->"연결을 준비하고 있어요";BatchPhase.CLOSING->"결과를 저장하고 연결을 마무리하고 있어요";else->if(model.operationHide)"적용하고 안전하게 확인하고 있어요" else "복원하고 안전하게 확인하고 있어요"},style=MaterialTheme.typography.titleMedium)
                         if(p!=null){Spacer(Modifier.height(20.dp));LinearProgressIndicator(progress={p.percent/100f},modifier=Modifier.fillMaxWidth());Spacer(Modifier.height(12.dp));Text(if(p.phase==BatchPhase.CLOSING)"${p.completed} / ${p.total}개 확인 · 마무리 중…" else "${p.completed} / ${p.total}개 확인 · ${p.percent}%",style=MaterialTheme.typography.titleLarge)}
-                        Spacer(Modifier.height(12.dp));Text("확인이 끝난 뒤 결과를 알려드립니다.",textAlign=androidx.compose.ui.text.style.TextAlign.Center,color=scheme.onSurfaceVariant)
+                        Spacer(Modifier.height(12.dp));Text("확인이 끝나면 결과를 알려드려요.",textAlign=androidx.compose.ui.text.style.TextAlign.Center,color=scheme.onSurfaceVariant)
                         if(p!=null)Text("작업이 끝날 때까지 이 화면을 열어 두세요.",Modifier.padding(top=8.dp),style=MaterialTheme.typography.bodySmall,color=scheme.onSurfaceVariant)
                         if(model.operationHide)Text("일부 앱은 Android가 파란 위치 표시를 다시 켤 수 있어요. 적용 직후에도 풀릴 수 있으니, 필요하면 홈에서 다시 적용해주세요.",Modifier.padding(top=12.dp),style=MaterialTheme.typography.bodySmall,color=scheme.onSurfaceVariant,textAlign=androidx.compose.ui.text.style.TextAlign.Center)
                     }
@@ -167,15 +179,32 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
         if(showAutoBlocker&&!model.busy) AlertDialog(onDismissRequest={showAutoBlocker=false},title={Text("보안 위험 자동 차단을 꺼주세요")},
             text={Column(verticalArrangement=Arrangement.spacedBy(12.dp)){Column(Modifier.weight(1f,fill=false).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(16.dp)){Text("이 기능이 켜져 있으면 휴대폰이 무선 디버깅을 막아서 bluedotOFF가 연결할 수 없어요. 아래 순서대로 끈 뒤 다시 시도해주세요.");GuideCard(GuideSelection(GuideStep.AUTO_BLOCKER));GuideCard(GuideSelection(GuideStep.AUTO_BLOCKER_OFF))};Primary("보안 설정 열기",{showAutoBlocker=false;SettingsEntrypoints.autoBlocker(context)})}},
             confirmButton={TextButton(onClick={showAutoBlocker=false}){Text("확인")}})
-        if(model.notificationOffer&&model.gate==Gate.READY&&!model.busy) AlertDialog(onDismissRequest=dismissNotifications,title={Text("재적용 알림")},text={Text("휴대폰 재시작이나 등록 앱 업데이트로 숨김이 해제될 수 있을 때 알려드립니다. 광고나 상시 알림은 없습니다. 알림 없이도 핵심 기능은 사용할 수 있습니다.")},confirmButton={TextButton(onClick=allowNotifications){Text("알림 허용")}},dismissButton={TextButton(onClick=dismissNotifications){Text("나중에")}})
+        if(model.notificationOffer&&model.gate==Gate.READY&&!model.busy) AlertDialog(onDismissRequest=dismissNotifications,title={Text("재적용 알림")},text={Text("휴대폰 재시작이나 등록 앱 업데이트로 숨김이 풀릴 수 있을 때 알려드려요. 광고나 상시 알림은 없어요. 알림 없이도 핵심 기능은 쓸 수 있어요.")},confirmButton={TextButton(onClick=allowNotifications){Text("알림 허용")}},dismissButton={TextButton(onClick=dismissNotifications){Text("나중에")}})
+        if(model.rejectedGroupList.isNotEmpty()&&model.bigGroups.isEmpty()&&!model.busy) AlertDialog(onDismissRequest=rejectedDismiss,title={Text("선택하지 않은 앱 묶음")},
+            text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)){
+                Text("아래 묶음은 안전하게 함께 바꿀 수 있는지 확인하지 못해서 선택하지 않았어요. 다른 앱 선택에는 영향이 없어요.")
+                model.rejectedGroupList.forEach{g->Column{
+                    Text(if(g.size>1)"${g.label} 외 ${g.size-1}개 앱" else g.label,style=MaterialTheme.typography.titleSmall,translate=g.size>1)
+                    Text(g.reason,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                }}
+            }},confirmButton={TextButton(onClick=rejectedDismiss){Text("확인")}})
+        if(model.bigGroups.isNotEmpty()&&!model.busy) AlertDialog(onDismissRequest=bigGroupsDismiss,title={Text("큰 앱 묶음을 함께 선택할까요?")},
+            text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)){
+                Text("아래 묶음은 여러 앱이 위치 설정 하나를 함께 써요. 하나만 고를 수 없어서, 선택하면 묶음 전체가 함께 숨겨지고 함께 복원돼요.")
+                model.bigGroups.forEach{g->Column{
+                    Text("${g.label} 외 ${g.names.size-1}개 앱",style=MaterialTheme.typography.titleSmall)
+                    if(g.system)Text("Android 시스템 앱 포함",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
+                }}
+            }},
+            confirmButton={TextButton(onClick=bigGroupsAccept){Text("함께 선택")}},dismissButton={TextButton(onClick=bigGroupsDismiss){Text("선택 안 함")}})
         model.sharedOffer?.let{offer->
             AlertDialog(onDismissRequest=sharedDismiss,title={Text("위치 설정을 함께 쓰는 앱")},text={
                 Column(Modifier.heightIn(max=420.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)){
-                    Text("아래 앱은 위치 표시 설정을 공유해요. 하나만 따로 변경할 수 없고, 함께 숨기거나 함께 복원합니다.")
+                    Text("아래 앱은 위치 표시 설정을 공유해요. 하나만 따로 바꿀 수 없고, 함께 숨기거나 함께 복원해요.")
                     if(offer.loading)CircularProgressIndicator()
                     offer.members.forEach{s->Surface(shape=RoundedCornerShape(12.dp),color=MaterialTheme.colorScheme.surfaceContainerHigh){Column(Modifier.fillMaxWidth().padding(12.dp)){Text(s.label,translate=false,style=MaterialTheme.typography.titleSmall);Text(s.identity.packageName,translate=false,style=MaterialTheme.typography.bodySmall)}}}
                     if(offer.error.isNotBlank())Text(UiText.error(offer.error),color=MaterialTheme.colorScheme.error)
-                    if(!offer.loading&&offer.error.isBlank())Text("앱의 위치 권한은 유지합니다. 묶음 전체의 원래 표시 상태를 저장하고, 구성원이 바뀌면 추가 변경을 중지합니다.",style=MaterialTheme.typography.bodySmall)
+                    if(!offer.loading&&offer.error.isBlank())Text("앱의 위치 권한은 그대로예요. 묶음 전체의 원래 표시 상태를 저장하고, 구성원이 바뀌면 더 이상 바꾸지 않아요.",style=MaterialTheme.typography.bodySmall)
                 }
             },confirmButton={if(!offer.loading&&offer.error.isBlank())TextButton(onClick=sharedAccept){Text(if(!offer.hide)"함께 복원" else if(offer.direct)"함께 재적용" else "묶음 전체 선택")}},dismissButton={TextButton(onClick=sharedDismiss){Text("취소")}})
         }
@@ -183,21 +212,23 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
         if(showRestoreMenu) AlertDialog(onDismissRequest={showRestoreMenu=false},title={Text("앱 복원")},
             text={Text("숨긴 앱을 원래 표시 상태로 되돌려요. 위치 권한과 사용 기록은 그대로예요. 앱을 지우기 전에는 모두 복원해 주세요.")},
             confirmButton={TextButton(onClick={showRestoreMenu=false;showRestoreAll=true},enabled=model.canOperate){Text("모두 복원")}},
-            dismissButton={TextButton(onClick={showRestoreMenu=false;if(!model.editing)editHome()}){Text("골라서 복원")}})
+            dismissButton={TextButton(onClick={showRestoreMenu=false;editHome()}){Text("골라서 복원")}})
         if(showRestoreAll) RestoreAllDialog(model.entries.count{it.enabled},{showRestoreAll=false},{showRestoreAll=false;restoreAll()})
     }
 }
 
-@Composable private fun Wizard(m:UiModel,open:()->Unit,install:()->Unit,authorize:()->Unit,refresh:()->Unit,begin:()->Unit,help:()->Unit) {
-    val step=when(m.gate){Gate.WELCOME,Gate.UNSUPPORTED->1;Gate.MISSING,Gate.NOT_RUNNING,Gate.AUTHORIZATION,Gate.WRONG_MODE->6;Gate.CHECKING->11;else->8}
+@Composable private fun Wizard(m:UiModel,open:()->Unit,begin:()->Unit,help:()->Unit) {
+    val step=when(m.gate){Gate.WELCOME,Gate.UNSUPPORTED->1;Gate.NOT_RUNNING->6;Gate.CHECKING->11;else->8}
     Box(Modifier.fillMaxSize(),contentAlignment=Alignment.TopCenter) {
     Column(Modifier.widthIn(max=BlueDotAppearance.SETUP_WIDTH.dp).fillMaxWidth().verticalScroll(rememberScrollState()).padding(top=24.dp,bottom=48.dp),verticalArrangement=Arrangement.spacedBy(BlueDotAppearance.SECTION_GAP.dp)) {
         Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
             Text(BlueDotAppearance.setupProgress(LocalContext.current,step),color=MaterialTheme.colorScheme.primary,style=MaterialTheme.typography.labelLarge)
-            LinearProgressIndicator(progress={step/11f},modifier=Modifier.fillMaxWidth())
+            Row(Modifier.fillMaxWidth().height(6.dp),horizontalArrangement=Arrangement.spacedBy(3.dp)){
+                repeat(11){i->Box(Modifier.weight(1f).fillMaxHeight().background(when{i+1==step->BlueDotAppearance.dotBlue;i+1<step->MaterialTheme.colorScheme.primary;else->MaterialTheme.colorScheme.outlineVariant},RoundedCornerShape(2.dp)))}
+            }
         }
-        Text(when(m.gate){Gate.WELCOME->"믿는 앱만,\nBlue Dot 없이.";Gate.UNSUPPORTED->"이 기기는 지원하지 않습니다";Gate.MISSING->"기기 연결이 필요합니다";Gate.NOT_RUNNING->"무선 디버깅으로 연결해 주세요";Gate.AUTHORIZATION->"기기 페어링을 완료해 주세요";Gate.WRONG_MODE->"일반 ADB 모드가 필요합니다";Gate.ABI_FAILED->"안전한 적용을 확인할 수 없습니다";Gate.CHECKING->if(m.checkingRegistered)"등록한 앱의 상태를 확인하고 있어요" else "기기를 확인하고 있습니다";else->"기기를 확인하고 있습니다"},style=MaterialTheme.typography.headlineMedium)
-        Text(when(m.gate){Gate.WELCOME->"신뢰하는 앱의 위치 기능과 사용 기록은 유지하고, 위치 표시만 숨깁니다.";Gate.UNSUPPORTED->"Samsung One UI 9 이상 · Android 17 이상 기기에서 호환성을 확인합니다. 지원되지 않는 환경은 변경하지 않습니다.";Gate.MISSING->"연결 설정에서 개발자 옵션과 무선 디버깅을 확인하고, 이 기기를 한 번 페어링해 주세요.";Gate.NOT_RUNNING->"연결 설정에서 무선 디버깅을 켜고 기기를 연결해 주세요. 돌아오면 자동으로 확인합니다.";Gate.AUTHORIZATION->"설정을 읽고 선택한 앱에만 적용하기 위해 권한이 필요합니다. 거절했다면 다시 요청할 수 있습니다.";Gate.WRONG_MODE->"이 기기의 일반 ADB shell 연결만 지원합니다.";Gate.ABI_FAILED->m.notice.ifBlank{"현재 기기/앱에서는 안전한 적용을 확인할 수 없습니다. 변경된 내용은 없습니다."};Gate.CHECKING->if(m.checkingRegistered)"앱 목록은 그대로 사용하고, 등록한 앱의 현재 상태만 확인해요. 설정은 변경하지 않아요." else "읽기 전용 검사입니다. 대상 앱의 설정은 변경하지 않습니다.";else->"읽기 전용 검사입니다. 대상 앱의 설정은 변경하지 않습니다."},style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(when(m.gate){Gate.WELCOME->"믿는 앱만,\nBlue Dot 없이.";Gate.UNSUPPORTED->"이 기기는 지원하지 않아요";Gate.NOT_RUNNING->"무선 디버깅으로 연결해 주세요";Gate.CHECKING->if(m.checkingRegistered)"등록한 앱의 상태를 확인하고 있어요" else "기기를 확인하고 있어요";else->"기기를 확인하고 있어요"},style=MaterialTheme.typography.headlineMedium)
+        Text(when(m.gate){Gate.WELCOME->"믿는 앱의 위치 기능과 사용 기록은 그대로 두고, 파란 위치 표시만 숨겨요.";Gate.UNSUPPORTED->"Samsung One UI 9 이상, Android 17 이상 기기에서 쓸 수 있어요. 지원하지 않는 기기에서는 아무것도 바꾸지 않아요.";Gate.NOT_RUNNING->"연결 설정에서 무선 디버깅을 켜고 기기를 연결해 주세요. 돌아오면 자동으로 확인해요.";Gate.CHECKING->if(m.checkingRegistered)"앱 목록은 그대로 사용하고, 등록한 앱의 현재 상태만 확인해요. 설정은 변경하지 않아요." else "기기와 앱 상태를 확인만 해요. 아무것도 바꾸지 않아요.";else->"기기와 앱 상태를 확인만 해요. 아무것도 바꾸지 않아요."},style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
         if(m.gate==Gate.CHECKING){
             val scan=m.scanProgress
             if(scan==null)CircularProgressIndicator()
@@ -217,11 +248,7 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
         }
         when(m.gate){
             Gate.WELCOME->Primary("시작하기",begin)
-            Gate.MISSING->Primary("연결 설정 열기",install)
             Gate.NOT_RUNNING->Primary("연결 설정 열기",open)
-            Gate.AUTHORIZATION->Primary("다시 요청",authorize)
-            Gate.WRONG_MODE->Primary("연결 설정 열기",open)
-            Gate.ABI_FAILED->Primary("다시 확인",refresh)
             else->Unit
         }
         TextButton(onClick=help){Text("설정 도움말")}
@@ -229,14 +256,14 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
     }
 }
 
-@Composable private fun HomeScreen(m:UiModel,wide:Boolean,add:()->Unit,restoreMenu:()->Unit,select:(String)->Unit,open:()->Unit,history:()->Unit,hide:(String)->Unit,edit:()->Unit,toggle:(String)->Unit,restoreSelected:()->Unit,wirelessExit:()->Unit,showNeeded:()->Unit) {
+@Composable private fun HomeScreen(m:UiModel,wide:Boolean,add:()->Unit,restoreMenu:()->Unit,select:(String)->Unit,open:()->Unit,history:()->Unit,hide:(String)->Unit,edit:()->Unit,toggle:(String)->Unit,restoreSelected:()->Unit,wirelessExit:()->Unit,showNeeded:()->Unit,recheck:()->Unit={}) {
     val context=LocalContext.current
     @Composable fun Hero() {
         Column(Modifier.padding(top=10.dp,bottom=20.dp),verticalArrangement=Arrangement.spacedBy(18.dp)) {
             if(m.usModel)Surface(shape=RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.tertiaryContainer,contentColor=MaterialTheme.colorScheme.onTertiaryContainer,border=BorderStroke(1.dp,MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha=0.18f))){
                 Column(Modifier.fillMaxWidth().padding(18.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
                     Text("미국 판매 모델 안내",style=MaterialTheme.typography.titleMedium)
-                    Text("미국 판매 모델은 위치 표시를 띄우는 방식이 하나 더 있어서, 적용해도 파란 점이 사라지지 않을 수 있어요. 위치 권한과 사용 기록은 그대로이고, 언제든 원래 상태로 복원할 수 있어요.",style=MaterialTheme.typography.bodyMedium)
+                    Text("미국 판매 모델은 위치 표시를 띄우는 방식이 하나 더 있어서, 적용해도 파란 위치 표시가 사라지지 않을 수 있어요. 위치 권한과 사용 기록은 그대로이고, 언제든 원래 상태로 복원할 수 있어요.",style=MaterialTheme.typography.bodyMedium)
                 }
             }
             if(!m.connected&&!m.automaticReady)Surface(shape=RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.tertiaryContainer,contentColor=MaterialTheme.colorScheme.onTertiaryContainer,border=BorderStroke(1.dp,MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha=0.18f))){
@@ -246,14 +273,19 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
                     TextButton(onClick=open){Text("연결 준비")}
                 }
             }
-            Text(when{m.allLastVerifiedApplied->"bluedotOFF\n적용완료";m.reapplyCount>0->"일부 앱의\n재적용이 필요해요";m.visibleEntries.any{it.enabled}->"일부 앱의\n상태 확인이 필요해요";else->"bluedotOFF\n미적용"},style=MaterialTheme.typography.displaySmall)
-            if(m.allLastVerifiedApplied)Text("${m.lastVerifiedAppliedCount}개 앱 bluedotOFF 적용중",style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(when{m.allLastVerifiedApplied->"bluedotOFF\n적용 완료";m.reapplyCount>0->"일부 앱의\n재적용이 필요해요";m.visibleEntries.any{it.enabled}->"일부 앱의\n상태 확인이 필요해요";else->"bluedotOFF\n미적용"},style=MaterialTheme.typography.displaySmall)
+            if(m.allLastVerifiedApplied)Text("${m.lastVerifiedAppliedCount}개 앱 bluedotOFF 적용 중",style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
             else if(m.visibleEntries.any{it.enabled}){
-                Text("${m.lastVerifiedAppliedCount}개 앱 bluedotOFF 적용중",style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("${m.lastVerifiedAppliedCount}개 앱 bluedotOFF 적용 중",style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 if(m.reapplyCount>0)Text("${m.reapplyCount}개 앱 · 재적용 필요",Modifier.fillMaxWidth().heightIn(min=48.dp).clip(RoundedCornerShape(12.dp)).clickable(role=androidx.compose.ui.semantics.Role.Button,onClick=showNeeded).padding(vertical=12.dp),style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.primary)
                 if(m.otherCheckCount>0)Text("${m.otherCheckCount}개 앱 · 상태 확인 필요",style=MaterialTheme.typography.bodyMedium)
                 Text("완료된 앱은 유지하고, 필요한 앱만 확인해주세요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             }else Text("신뢰하는 앱을 골라\n위치 표시만 가볍게 숨기세요.",style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            if(m.lastCheckedAt>0L&&m.visibleEntries.any{it.enabled})Row(verticalAlignment=Alignment.CenterVertically){
+                val ctx=LocalContext.current
+                Text("${UiText.text(ctx,"마지막 확인")} ${UiText.text(ctx,accessAge(m.lastCheckedAt))}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,translate=false)
+                RefreshButton(m.rechecking,!m.busy&&m.canOperate,recheck)
+            }
             m.recentHistoryApp?.let{a->
                 Surface(shape=RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.surfaceContainer) {
                     Column(Modifier.fillMaxWidth().padding(16.dp)){
@@ -265,17 +297,16 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
             }
             Primary("앱 추가",add)
             if(m.successToken>0&&!m.busy&&m.connected&&!m.autoManagement){Text("작업을 마쳤다면 무선 디버깅을 꺼두세요.",style=MaterialTheme.typography.bodySmall);TextButton(onClick=wirelessExit){Text("무선 디버깅 끄기")}}
-            if(m.visibleEntries.any{it.enabled}&&!m.editing)OutlinedButton(onClick=restoreMenu,enabled=!m.busy,modifier=Modifier.fillMaxWidth().heightIn(min=52.dp)){Text("앱 복원")}
+            if(m.visibleEntries.any{it.enabled})OutlinedButton(onClick=restoreMenu,enabled=!m.busy,modifier=Modifier.fillMaxWidth().heightIn(min=52.dp)){Text("앱 복원")}
         }
     }
     @Composable fun Registered() {
         Column(Modifier.fillMaxWidth().padding(top=20.dp)) {
             if(m.connected&&m.visibleEntries.isEmpty()){Text("준비 완료",color=MaterialTheme.colorScheme.primary);Spacer(Modifier.height(16.dp))}
-            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text("등록한 앱 · ${m.visibleEntries.count{it.enabled}}개",style=MaterialTheme.typography.titleMedium,modifier=Modifier.weight(1f));if(m.visibleEntries.isNotEmpty())TextButton(onClick=edit){Text(if(m.editing)"완료" else "편집")}}
-            if(m.editing){Primary("선택한 ${m.homePicked.size}개 숨김 해제",restoreSelected,m.homePicked.isNotEmpty()&&m.canOperate&&!m.busy)}
+            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text("등록한 앱 · ${m.visibleEntries.count{it.enabled}}개",style=MaterialTheme.typography.titleMedium,modifier=Modifier.weight(1f));if(m.visibleEntries.isNotEmpty())TextButton(onClick=edit){Text("편집")}}
             Spacer(Modifier.height(12.dp))
-            if(m.visibleEntries.isEmpty())Text("아직 등록한 앱이 없습니다.",Modifier.padding(vertical=24.dp),color=MaterialTheme.colorScheme.onSurfaceVariant)
-            else Surface(shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surfaceContainerLow,border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant)) { LazyColumn(Modifier.heightIn(max=460.dp).padding(horizontal=12.dp)) { items(m.registeredDisplayEntries,key={it.identity.packageName}) { e -> if(m.editing)Row(Modifier.fillMaxWidth().clickable{toggle(e.identity.packageName)},verticalAlignment=Alignment.CenterVertically){Checkbox(e.identity.packageName in m.homePicked,{toggle(e.identity.packageName)});Column(Modifier.weight(1f).padding(vertical=12.dp)){Text(e.label,translate=false);Text(m.status(e),style=MaterialTheme.typography.bodySmall)}}else AppRow(e.identity.packageName,e.label,m.status(e),{select(e.identity.packageName)});HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant.copy(alpha=0.55f)) } } }
+            if(m.visibleEntries.isEmpty())Text("아직 등록한 앱이 없어요.",Modifier.padding(vertical=24.dp),color=MaterialTheme.colorScheme.onSurfaceVariant)
+            else Surface(shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surfaceContainerLow,border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant)) { LazyColumn(Modifier.heightIn(max=460.dp).padding(horizontal=12.dp)) { items(m.registeredDisplayEntries,key={it.identity.packageName}) { e -> AppRow(e.identity.packageName,e.label,m.status(e),{select(e.identity.packageName)});HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant.copy(alpha=0.55f)) } } }
             Text("총 ${m.visibleEntries.count{it.enabled}}개 앱 등록",Modifier.padding(top=12.dp),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -283,16 +314,50 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
     else Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom=36.dp)) { Hero();Registered() }
 }
 
+/** Same layout as "앱 추가": search, select all, checkboxes, and one button at the bottom. Checked = restore. */
+@Composable private fun RestoreScreen(m:UiModel,toggle:(String)->Unit,toggleAll:(List<String>)->Unit,restore:()->Unit) {
+    var query by rememberSaveable{mutableStateOf("")}
+    Column(Modifier.fillMaxSize(),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
+            Text("앱 복원",Modifier.weight(1f),style=MaterialTheme.typography.titleLarge)
+            Text("${m.homePicked.size}개 선택됨",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
+        }
+        val rows=m.registeredDisplayEntries.filter{e->query.isBlank()||e.label.contains(query.trim(),true)||e.identity.packageName.contains(query.trim(),true)}
+        val names=rows.map{it.identity.packageName}
+        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
+            val searchHeight=(32f+20f*LocalDensity.current.fontScale).coerceAtLeast(52f).dp
+            OutlinedTextField(query,{query=it},modifier=Modifier.weight(1f).height(searchHeight),singleLine=true,placeholder={Text("앱 검색",style=MaterialTheme.typography.bodyMedium)},textStyle=MaterialTheme.typography.bodyMedium,shape=RoundedCornerShape(14.dp))
+            Row(verticalAlignment=Alignment.CenterVertically){
+                val picked=names.count{it in m.homePicked}
+                Text("전체 선택",Modifier.clickable(enabled=!m.busy&&names.isNotEmpty()){toggleAll(names)},style=MaterialTheme.typography.bodySmall)
+                TriStateCheckbox(state=when{picked==0->androidx.compose.ui.state.ToggleableState.Off;picked==names.size->androidx.compose.ui.state.ToggleableState.On;else->androidx.compose.ui.state.ToggleableState.Indeterminate},onClick={toggleAll(names)},enabled=!m.busy&&names.isNotEmpty())
+            }
+        }
+        LazyColumn(Modifier.weight(1f)) {
+            items(rows,key={it.identity.packageName}){e->
+                Row(Modifier.fillMaxWidth().heightIn(min=56.dp).clickable(enabled=!m.busy){toggle(e.identity.packageName)}.padding(vertical=4.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
+                    AppIcon(e.identity.packageName,e.label,32)
+                    Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)){Text(e.label,translate=false,style=MaterialTheme.typography.titleSmall,maxLines=2,overflow=TextOverflow.Ellipsis);Text(m.status(e),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+                    Checkbox(checked=e.identity.packageName in m.homePicked,onCheckedChange={toggle(e.identity.packageName)},enabled=!m.busy)
+                }
+                HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant.copy(alpha=0.35f))
+            }
+        }
+        if(rows.isEmpty())Text("조건에 맞는 앱이 없어요.",style=MaterialTheme.typography.bodySmall)
+        Column(Modifier.fillMaxWidth().padding(bottom=8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){Text("선택한 앱을 원래 표시 상태로 되돌려요. 위치 권한과 사용 기록은 그대로예요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);Primary("${m.homePicked.size}개 복원",restore,enabled=m.homePicked.isNotEmpty()&&m.canOperate&&!m.busy)}
+    }
+}
+
 private fun pickerReason(a:DiscoveredApp,scope:ApplicationScope=ApplicationScope.GROUPS):String=when {
     scope!=ApplicationScope.NORMAL&&a.uidPeers.size>1->"다른 앱과 묶여 있어요 · 함께 선택돼요"
     scope==ApplicationScope.ALL&&a.block.isNotEmpty()->a.block
     a.check==CandidateCheck.NEEDS_CHECK->"앱의 권한과 설치 정보를 다시 확인해주세요."
     a.uidClass==UidClass.MULTI_PACKAGE_SHARED_UID->"다른 앱과 묶여 있어요 · 함께 선택돼요"
-    a.uidClass==UidClass.SINGLETON_SHARED_USER->"이 기기에서 공유 권한 구조의 안전성을 확인하지 못했습니다."
-    a.uidClass in setOf(UidClass.CORE_UID,UidClass.PERSISTENT_CORE,UidClass.CRITICAL_PACKAGE)->"핵심 시스템 구성 요소여서 변경할 수 없습니다."
-    a.block.contains("UID")->"앱의 권한과 설치 정보를 안전하게 확인하지 못했습니다."
+    a.uidClass==UidClass.SINGLETON_SHARED_USER->"이 기기에서 공유 권한 구조가 안전한지 확인하지 못했어요."
+    a.uidClass in setOf(UidClass.CORE_UID,UidClass.PERSISTENT_CORE,UidClass.CRITICAL_PACKAGE)->"핵심 시스템 구성 요소라 바꿀 수 없어요."
+    a.block.contains("UID")->"앱의 권한과 설치 정보를 안전하게 확인하지 못했어요."
     a.block.isNotEmpty()->a.block
-    else->"현재 설정에서 안전한 변경을 확인할 수 없습니다."
+    else->"지금 설정에서는 안전하게 바꿀 수 있는지 확인할 수 없어요."
 }
 @Composable private fun PickerScreen(m:UiModel,toggle:(String)->Unit,add:()->Unit,queryChanged:(String)->Unit,load:()->Unit,open:()->Unit,filterChanged:(AppFilter)->Unit,viewChanged:(PickerView)->Unit,toggleAll:()->Unit,sharedInspect:(String)->Unit) {
     Column(Modifier.fillMaxSize(),verticalArrangement=Arrangement.spacedBy(8.dp)) {
@@ -330,22 +395,39 @@ private fun pickerReason(a:DiscoveredApp,scope:ApplicationScope=ApplicationScope
                     AppIcon(a.packageName,a.label,32)
                     if(safe){
                         Text(a.label,translate=false,modifier=Modifier.weight(1f),style=MaterialTheme.typography.titleSmall,maxLines=2,overflow=TextOverflow.Ellipsis)
-                        Text(when{m.isApplied(a.packageName)->"적용중";a.packageName in m.managedPackages->"등록한 앱";PickerPolicy.alreadyNotSensitive(a)->"이미 적용된 앱";else->"적용 가능"},style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(when{m.isApplied(a.packageName)->"적용 중";a.packageName in m.managedPackages->"등록한 앱";PickerPolicy.alreadyNotSensitive(a)->"이미 표시 꺼짐";else->"적용 가능"},style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     }else{
                         Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)){Text(a.label,translate=false,style=MaterialTheme.typography.titleSmall);Text(pickerReason(a,m.applicationScope),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
                     }
-                    Checkbox(checked=a.packageName in m.picked,onCheckedChange={if(group)sharedInspect(a.packageName)else toggle(a.packageName)},enabled=(selectable||a.packageName in m.picked)&&!m.busy&&!m.loadingApps)
+                    // Already hidden apps cannot be picked again; a filled blue box reads as "on" instead of an empty box that ignores taps.
+                    val applied=m.isApplied(a.packageName)
+                    if(applied)Checkbox(checked=true,onCheckedChange=null,enabled=false,colors=CheckboxDefaults.colors(disabledCheckedColor=BlueDotAppearance.dotBlue,checkmarkColor=Color.White))
+                    else Checkbox(checked=a.packageName in m.picked,onCheckedChange={if(group)sharedInspect(a.packageName)else toggle(a.packageName)},enabled=(selectable||a.packageName in m.picked)&&!m.busy&&!m.loadingApps)
                 }
                 HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant.copy(alpha=0.35f))
             }}
             appRows(available)
         }
         reason?.let{message->AlertDialog(onDismissRequest={reason=null},title={Text("앱 확인 결과")},text={Text(message)},confirmButton={TextButton(onClick={reason=null}){Text("확인")}})}
-        if(available.isEmpty()&&!m.loadingApps)Text("조건에 맞는 앱이 없습니다.",style=MaterialTheme.typography.bodySmall)
-        Column(Modifier.fillMaxWidth().padding(bottom=8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){Text(if(unmanagedNotSensitive)"이미 적용된 앱은 위치 표시가 꺼져 있어요. 새로 등록하면 이 꺼짐 상태가 복원 기준이 돼요." else "선택한 앱을 등록하고 위치 표시 숨김을 적용합니다.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);Primary("${m.picked.size}개 추가",add,enabled=m.picked.isNotEmpty()&&!m.busy)}
+        if(available.isEmpty()&&!m.loadingApps)Text("조건에 맞는 앱이 없어요.",style=MaterialTheme.typography.bodySmall)
+        Column(Modifier.fillMaxWidth().padding(bottom=8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){Text(if(unmanagedNotSensitive)"‘이미 표시 꺼짐’은 지금 파란 위치 표시가 이미 꺼져 있는 앱이에요. 등록하면 이 꺼진 상태가 복원 기준이 돼서, 복원해도 꺼진 채로 남아요." else "선택한 앱을 등록하고 파란 위치 표시를 숨겨요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);Primary("${m.picked.size}개 추가",add,enabled=m.picked.isNotEmpty()&&!m.busy)}
     }
 }
 
+/** Small circular-arrow button; spins while the registered apps are being re-read. */
+@Composable private fun RefreshButton(spinning:Boolean,enabled:Boolean,onClick:()->Unit){
+    val ctx=LocalContext.current;val color=MaterialTheme.colorScheme.primary
+    IconButton(onClick=onClick,enabled=enabled&&!spinning,modifier=Modifier.semantics{contentDescription=UiText.text(ctx,"다시 확인")}){
+        if(spinning)CircularProgressIndicator(Modifier.size(18.dp),strokeWidth=2.dp)
+        else androidx.compose.foundation.Canvas(Modifier.size(20.dp).alpha(if(enabled)1f else 0.38f)){
+            val stroke=2.dp.toPx();val r=size.minDimension/2f-stroke*1.5f;val c=center
+            drawArc(color,startAngle=-60f,sweepAngle=290f,useCenter=false,topLeft=androidx.compose.ui.geometry.Offset(c.x-r,c.y-r),size=androidx.compose.ui.geometry.Size(r*2,r*2),style=androidx.compose.ui.graphics.drawscope.Stroke(stroke,cap=androidx.compose.ui.graphics.StrokeCap.Round))
+            // Arrowhead at the arc start (-60 degrees), pointing along the turning direction.
+            val a=Math.toRadians(-60.0);val tip=androidx.compose.ui.geometry.Offset(c.x+(r*Math.cos(a)).toFloat(),c.y+(r*Math.sin(a)).toFloat());val h=stroke*2.2f
+            drawPath(androidx.compose.ui.graphics.Path().apply{moveTo(tip.x+h,tip.y-h*0.2f);lineTo(tip.x-h*0.2f,tip.y-h*1.2f);lineTo(tip.x-h*0.3f,tip.y+h*0.6f);close()},color)
+        }
+    }
+}
 fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
     if(time==null)return "위치 기록 없음"
     val seconds=((now-time).coerceAtLeast(0)/1000)
@@ -354,11 +436,12 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
 @Composable private fun HistoryScreen(m:UiModel,hide:(String)->Unit,open:()->Unit,viewChanged:(HistoryView)->Unit) {
     Column(Modifier.fillMaxSize(),verticalArrangement=Arrangement.spacedBy(12.dp)){
         Text("최근 위치 사용",style=MaterialTheme.typography.headlineMedium)
-        Text(if(m.historyView==HistoryView.APPS)"사용자 앱 중심으로 정리된 기록입니다. 등록한 숨김 앱도 유지하며, 내부 서비스는 전체 위치 사용에서 확인할 수 있습니다." else "시스템·내부 서비스를 포함한 실제 위치 접근 기록입니다. Blue Dot 표시 여부와 동일하지 않을 수 있습니다.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(if(m.historyView==HistoryView.APPS)"최근 위치를 쓴 앱이에요. 시스템 서비스까지 보려면 ‘전체 위치 사용’을 누르세요." else "시스템 서비스까지 포함한 위치 사용 기록이에요. 파란 위치 표시가 뜬 것과는 다를 수 있어요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){HistoryView.entries.forEach{view->FilterChip(selected=m.historyView==view,onClick={viewChanged(view)},label={Text(view.label)})}}
-        if(!m.connected){Text("현재 기록을 확인하려면 무선 디버깅으로 연결해 주세요.");TextButton(onClick=open){Text("연결 설정 열기")}}
+        // With automatic management the app connects by itself when the tab opens; only manual users must connect first.
+        if(!m.connected&&!m.automaticReady){Text("현재 기록을 확인하려면 무선 디버깅으로 연결해 주세요.");TextButton(onClick=open){Text("연결 설정 열기")}}
         if(m.loadingApps||m.busy)LinearProgressIndicator(Modifier.fillMaxWidth())
-        if(m.historyApps.isEmpty()&&!m.loadingApps)Text(if(m.historyAvailable)"최근 위치 사용 기록이 없습니다." else "사용 기록을 확인하지 못했습니다.",Modifier.padding(vertical=24.dp),color=MaterialTheme.colorScheme.onSurfaceVariant)
+        if(m.historyApps.isEmpty()&&!m.loadingApps)Text(if(m.historyAvailable)"최근 위치 사용 기록이 없어요." else "사용 기록을 확인하지 못했어요.",Modifier.padding(vertical=24.dp),color=MaterialTheme.colorScheme.onSurfaceVariant)
         LazyColumn(Modifier.weight(1f)){items(m.historyApps,key={it.packageName}){a->
             val status=m.historyStatus(a)
             val applied=m.entries.any{it.enabled&&it.identity.packageName==a.packageName&&it.state==TargetState.APPLIED&&it.settlingVerified}
@@ -369,8 +452,8 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
                 Box(Modifier.size(18.dp),contentAlignment=Alignment.Center){Box(Modifier.size(8.dp).alpha(blue).background(dotColor,CircleShape));if(applied)Text("✓",color=MaterialTheme.colorScheme.primary)}
                 Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)){
                     Text(a.label,translate=false,style=MaterialTheme.typography.titleSmall)
-                    Text("${UiText.text(LocalContext.current,accessAge(a.access.latest))} 위치를 사용했습니다 · ${UiText.text(LocalContext.current,if(a.access.fine!=null&&a.access.fine==a.access.latest)"정확한 위치" else "대략적인 위치")}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(if(applied&&m.connected&&a.packageName in m.freshPackages)"bluedotOFF 적용중 ✓" else status,style=MaterialTheme.typography.bodySmall,color=if(applied)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${UiText.text(LocalContext.current,accessAge(a.access.latest))} 위치를 사용했어요 · ${UiText.text(LocalContext.current,if(a.access.fine!=null&&a.access.fine==a.access.latest)"정확한 위치" else "대략적인 위치")}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(if(applied&&m.connected&&a.packageName in m.freshPackages)"bluedotOFF 적용 중 ✓" else status,style=MaterialTheme.typography.bodySmall,color=if(applied)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if(m.canActFromHistory(a)&&!applied)TextButton(onClick={hide(a.packageName)},enabled=m.canOperate&&!m.busy){Text(if(needs)"재적용" else "숨기기")}
             }
@@ -390,20 +473,20 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
         if(e?.error?.isNotBlank()==true)Surface(shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.errorContainer){Text(UiText.error(e.error),Modifier.padding(16.dp),color=MaterialTheme.colorScheme.onErrorContainer)}
         HorizontalDivider()
         Text("위치 권한",style=MaterialTheme.typography.labelLarge)
-        Text(if(s==null)"기기 연결 시 현재 상태를 확인할 수 있습니다." else if(grouped&&!s.fineDeclared)"이 앱은 위치 권한을 직접 요청하지 않으며 묶음의 표시 설정을 공유합니다." else if(!s.fineGranted)"정확한 위치 허용 안 됨" else if(s.backgroundGranted)"정확한 위치 · 항상 허용" else "정확한 위치 · 사용 중 허용",style=MaterialTheme.typography.bodyLarge)
+        Text(if(s==null)"기기를 연결하면 현재 상태를 확인할 수 있어요." else if(grouped&&!s.fineDeclared)"이 앱은 위치 권한을 직접 요청하지 않고, 묶음의 표시 설정을 함께 써요." else if(!s.fineGranted)"정확한 위치 허용 안 됨" else if(s.backgroundGranted)"정확한 위치 · 항상 허용" else "정확한 위치 · 사용 중 허용",style=MaterialTheme.typography.bodyLarge)
         if(e!=null)Text("마지막 확인  ${DateFormat.getDateTimeInstance(DateFormat.SHORT,DateFormat.SHORT).format(Date(e.lastVerifiedTime))}",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
-        if(e?.originalBit==0)Text("등록할 때부터 표시가 꺼져 있던 앱입니다. 복원해도 등록 당시의 표시 꺼짐 상태를 유지합니다.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-        if(grouped)Text("공유 앱 묶음 · 함께 숨기고 함께 복원합니다.",style=MaterialTheme.typography.bodyMedium)
+        if(e?.originalBit==0)Text("등록할 때부터 표시가 꺼져 있던 앱이에요. 복원해도 꺼진 상태 그대로예요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        if(grouped)Text("공유 앱 묶음 · 함께 숨기고 함께 복원해요.",style=MaterialTheme.typography.bodyMedium)
         val blocked=s?.takeIf{!it.safe()&&!grouped}?.blockReason()
         if(blocked!=null)Text(blocked,color=MaterialTheme.colorScheme.onSurfaceVariant)
         if(!m.canOperate)Primary("연결 설정 열기",open)
-        else if(e?.state in listOf(TargetState.FAILED_ROLLBACK,TargetState.SHARED_UID_CHANGED,TargetState.NEEDS_REVIEW))Text("안전성 검토가 필요해 추가 변경을 차단했습니다. 진단과 복구 안내를 확인해 주세요.",color=MaterialTheme.colorScheme.error)
+        else if(e?.state in listOf(TargetState.FAILED_ROLLBACK,TargetState.SHARED_UID_CHANGED,TargetState.NEEDS_REVIEW))Text("안전한지 다시 확인해야 해서 더 이상 바꾸지 않았어요. 도움말의 복구 안내를 확인해 주세요.",color=MaterialTheme.colorScheme.error)
         else {
             if(m.loadingDetail)LinearProgressIndicator(Modifier.fillMaxWidth())
             Primary(if(e?.state==TargetState.INACTIVE_INSTALL)"새로 등록 · bluedotOFF 적용" else if(e?.enabled==true&&e.state!=TargetState.APPLIED)"bluedotOFF 재적용" else "bluedotOFF 적용",{hide(pkg)},enabled=s!=null&&blocked==null&&pkg.isNotBlank()&&!m.loadingDetail)
             if(e?.enabled==true)OutlinedButton(onClick={restore(pkg)},modifier=Modifier.fillMaxWidth().heightIn(min=52.dp),enabled=s!=null&&blocked==null&&!m.loadingDetail){Text(if(grouped)"묶음 원래 상태로 복원" else "숨김 해제 · 원래 상태로 복원")}
         }
-        Text("위치 권한이나 앱의 사용 기록은 바꾸지 않습니다.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("위치 권한이나 앱의 사용 기록은 바꾸지 않아요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         var advanced by remember { mutableStateOf(false) }
         TextButton(onClick={advanced=!advanced}){Text(if(advanced)"상세 정보 접기" else "고급 정보")}
         if(advanced)Text("Package: $pkg\nUID: ${s?.identity?.uid?:e?.identity?.uid?:"미확인"}\n${m.compatibility}\n원본 표시 bit: ${e?.originalBit?:"등록 전"}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -413,11 +496,11 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
 @Composable private fun ReapplyScreen(m:UiModel,apply:()->Unit,open:()->Unit,select:(String)->Unit) {
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(top=22.dp,bottom=48.dp),verticalArrangement=Arrangement.spacedBy(20.dp)) {
         Text("숨김 다시 적용",style=MaterialTheme.typography.headlineLarge)
-        Text("등록 앱을 하나씩 다시 확인합니다. 변경할 수 없는 앱은 건너뛰고 결과는 상단에서 안내합니다.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("등록 앱을 하나씩 다시 확인해요. 바꿀 수 없는 앱은 건너뛰고, 결과는 위쪽에 보여드려요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         m.registeredDisplayEntries.filter{it.enabled}.forEach { e->AppRow(e.identity.packageName,e.label,m.status(e),{select(e.identity.packageName)}) }
         Text(if(m.connected)"기기 연결 확인됨" else "기기 연결 필요",style=MaterialTheme.typography.titleSmall)
         if(m.canOperate)Primary("모두 재적용",apply,enabled=m.entries.any{it.enabled})else Primary("연결 설정 열기",open)
-        Text("재부팅과 업데이트 때 자동으로 시스템 설정을 바꾸지 않습니다.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("재부팅이나 업데이트 때 저절로 설정을 바꾸지는 않아요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -432,7 +515,7 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
     var open by remember{mutableStateOf<String?>(null)}
     AlertDialog(onDismissRequest=close,title={Text("오픈소스 라이선스")},confirmButton={TextButton(onClick=close){Text("닫기")}},text={
         Column(Modifier.heightIn(max=480.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)){
-            Text("bluedotOFF는 아래 오픈소스를 사용합니다. AndroidX와 Kotlin 표준 라이브러리도 Apache License 2.0으로 배포됩니다.",style=MaterialTheme.typography.bodySmall)
+            Text("bluedotOFF는 아래 오픈소스를 사용해요. AndroidX와 Kotlin 표준 라이브러리도 Apache License 2.0으로 배포돼요.",style=MaterialTheme.typography.bodySmall)
             items.forEach{(name,license,body)->
                 TextButton(onClick={open=if(open==name)null else name}){Text("$name · $license",translate=false)}
                 if(open==name)Text(body,translate=false,style=MaterialTheme.typography.bodySmall.copy(fontFamily=androidx.compose.ui.text.font.FontFamily.Monospace))
@@ -447,7 +530,7 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
     var advancedSettings by rememberSaveable{mutableStateOf(false)}
     var showLicenses by rememberSaveable{mutableStateOf(false)}
     if(showLicenses)OpenSourceLicenses{showLicenses=false}
-    if(autoConsent)AlertDialog(onDismissRequest={autoConsent=false},title={Text("무선 디버깅 자동 관리")},text={Text("bluedotOFF를 사용할 때만 무선 디버깅을 켜고, 작업이 끝나면 다시 끕니다. Android 시스템 설정을 변경할 수 있는 권한을 최초 한 번 사용하며, 이 앱에서는 무선 디버깅 ON/OFF에만 사용합니다. 다른 무선 디버깅 연결도 종료될 수 있습니다.")},confirmButton={TextButton(onClick={autoConsent=false;managementChanged(true)}){Text("자동 관리 사용")}},dismissButton={TextButton(onClick={autoConsent=false}){Text("취소")}})
+    if(autoConsent)AlertDialog(onDismissRequest={autoConsent=false},title={Text("무선 디버깅 자동 관리")},text={Text("bluedotOFF를 쓰는 동안만 무선 디버깅을 켜 두고, 앱을 나가면 잠시 후 꺼요. 이를 위해 시스템 설정 변경 권한을 처음 한 번 받고, 무선 디버깅을 켜고 끄는 데만 써요. 다른 무선 디버깅 연결도 함께 끊길 수 있어요.")},confirmButton={TextButton(onClick={autoConsent=false;managementChanged(true)}){Text("자동 관리 사용")}},dismissButton={TextButton(onClick={autoConsent=false}){Text("취소")}})
     @Composable fun LinkRow(label:String,detail:String="",onClick:()->Unit){
         Row(Modifier.fillMaxWidth().heightIn(min=52.dp).clip(RoundedCornerShape(12.dp)).clickable(onClick=onClick).padding(vertical=8.dp),verticalAlignment=Alignment.CenterVertically){
             Text(label,Modifier.weight(1f),style=MaterialTheme.typography.bodyLarge)
@@ -466,7 +549,7 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
         OutlinedButton(onClick=scopeChange,enabled=!m.busy){Text("적용 범위 변경")}
         HorizontalDivider()
         Row(Modifier.toggleable(value=m.autoManagement,enabled=!m.busy||m.autoManagement,role=androidx.compose.ui.semantics.Role.Switch,onValueChange={if(it)autoConsent=true else managementChanged(false)}),verticalAlignment=Alignment.CenterVertically){Text("무선 디버깅 자동 관리",Modifier.weight(1f),style=MaterialTheme.typography.titleMedium);Switch(checked=m.autoManagement,onCheckedChange=null,enabled=!m.busy||m.autoManagement)}
-        Text("bluedotOFF를 사용할 때만 무선 디버깅을 켜고, 작업이 끝나면 자동으로 다시 끕니다.",style=MaterialTheme.typography.bodySmall)
+        Text("앱을 사용하는 동안 연결을 유지하고, 앱을 나가면 잠시 후 무선 디버깅을 꺼요.",style=MaterialTheme.typography.bodySmall)
         if(!m.autoManagement){
             Text("작업이 끝나면 무선 디버깅을 꺼두세요. 적용 상태와 복원 기록은 유지돼요.",style=MaterialTheme.typography.bodySmall)
             TextButton(onClick=wirelessExit,enabled=!m.busy){Text("무선 디버깅 끄기")}
@@ -514,8 +597,8 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
         Text("복원 확인이 필요할 때",style=MaterialTheme.typography.titleMedium)
         Text("실패 기록을 지우려고 앱 데이터를 초기화하거나 앱을 삭제하지 마세요. 기기를 연결해 현재 상태를 읽은 뒤, GitHub의 bluedotOFF 저장소 Issues에 문의해 주세요. 상태가 확실하지 않은 앱은 bluedotOFF가 스스로 다시 바꾸지 않아요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         Text("위치 사용 기록",style=MaterialTheme.typography.titleMedium)
-        Text("앱 기록은 최근 위치 사용을 사용자 앱 중심으로 정리한 목록입니다. 전체 위치 사용에서는 시스템·내부 서비스도 볼 수 있습니다. 삼성 설정의 권한 사용 현황과는 데이터 출처가 다릅니다. 숨김이 적용돼도 위치 사용 기록은 남으며, 기록 자체가 파란 표시를 띄웠다는 뜻은 아닙니다.",color=MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("루팅이나 부트로더 해제는 필요 없습니다. 휴대폰의 무선 디버깅 기능만 사용하며, 앱의 위치 권한과 보안 설정은 바꾸지 않습니다. 네트워크 권한은 휴대폰 안의 무선 디버깅 연결에만 사용합니다. 외부 서버 통신·광고·분석·추적 기능은 없습니다.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("앱 기록은 최근 위치를 쓴 앱 목록이에요. ‘전체 위치 사용’에서는 시스템 서비스도 볼 수 있어요. 삼성 설정의 권한 사용 기록과는 출처가 달라요. 숨김을 적용해도 위치 사용 기록은 남고, 기록이 있다고 파란 위치 표시가 떴다는 뜻은 아니에요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("루팅이나 부트로더 해제는 필요 없어요. 휴대폰의 무선 디버깅 기능만 쓰고, 앱의 위치 권한과 보안 설정은 바꾸지 않아요. 네트워크 권한은 휴대폰 안의 무선 디버깅 연결에만 써요. 외부 서버 통신·광고·분석·추적 기능은 없어요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 @Composable private fun Primary(label:String,action:()->Unit,enabled:Boolean=true) { Button(onClick=action,enabled=enabled,modifier=Modifier.fillMaxWidth().heightIn(min=BlueDotAppearance.BUTTON_HEIGHT.dp),shape=RoundedCornerShape(BlueDotAppearance.BUTTON_RADIUS.dp)){Text(label,style=MaterialTheme.typography.titleSmall)} }
@@ -536,7 +619,6 @@ private fun demo(applied:Boolean=false,gate:Gate=Gate.READY,page:Page=Page.HOME)
 }
 @Composable private fun Demo(m:UiModel){BlueDotApp(m,{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})}
 @Preview(name="01 Welcome",showBackground=true) @Composable fun WelcomePreview(){Demo(demo(gate=Gate.WELCOME))}
-@Preview(name="02 Missing",showBackground=true) @Composable fun MissingPreview(){Demo(demo(gate=Gate.MISSING))}
 @Preview(name="03 Not running",showBackground=true) @Composable fun NotRunningPreview(){Demo(demo(gate=Gate.NOT_RUNNING))}
 @Preview(name="04 Compatibility",showBackground=true) @Composable fun CompatibilityPreview(){Demo(demo(gate=Gate.CHECKING))}
 @Preview(name="05 Blue home",showBackground=true) @Composable fun BlueHomePreview(){Demo(demo())}

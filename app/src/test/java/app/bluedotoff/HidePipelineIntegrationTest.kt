@@ -92,7 +92,7 @@ class HidePipelineIntegrationTest {
         device.onImmediate={pkg->if(pkg==device.names[2])device.active=false}
         val result=device.engine().userHideWindow(device.names,canStart={device.active},elapsed={device.clock})
         assertTrue(result.stopped);assertEquals(3,result.started);assertTrue(result.results.all{it.success})
-        val all=result.results+device.names.drop(result.started).map{BatchResult(it,error="작업을 중단해 이 앱은 변경하지 않았습니다.")}
+        val all=result.results+device.names.drop(result.started).map{BatchResult(it,error="작업을 멈춰서 이 앱은 바꾸지 않았어요.")}
         assertEquals(8,all.size);assertEquals(3,all.count{it.success});assertEquals(3,store.entries().size)
         assertTrue(store.entries().all{it.settlingVerified});assertTrue(device.names.drop(3).all{device.snapshots[it]!!.bit==256})
     }

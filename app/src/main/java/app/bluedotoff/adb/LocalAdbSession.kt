@@ -12,7 +12,16 @@ object LocalAdbSession {
         @Volatile var helperExited=false;internal set
         @Volatile var streamClosed=false;internal set
         @Volatile var socketClosed=false;internal set
+        /** The authenticated connection was kept open (all helpers exited) for the next task on a visible screen. */
+        @Volatile var kept=false;internal set
     }
+    // Android shows "무선 디버깅 연결됨" for every new ADB connection, so a visible main screen keeps one authenticated
+    // connection between tasks. Only an idle connection whose helpers all exited is kept; closeHeld() ends it when
+    // the app is left, before wireless debugging is turned off.
+    private var held:LocalAdbConnection?=null
+    private var heldPort=-1
+    val holdsConnection get()=synchronized(lock){held!=null}
+    fun closeHeld()=synchronized(lock){check(!busy);held?.let{runCatching{it.close()}};held=null;heldPort=-1}
     @Volatile var busy=false; private set
     @Volatile var generation=0L; private set
     @Volatile private var pairingHandle=0L
@@ -34,17 +43,26 @@ object LocalAdbSession {
     fun <T> withBackend(context:Context,port:Int,receipt:CloseReceipt=CloseReceipt(),block:(LocalAdbBackend)->T):T =
         withConnection(context,port,receipt){it.run(CloseReceipt(),block)}
 
-    /** Authentication is leased to one foreground operation, never to an idle background service. */
-    internal fun <T> withConnection(context:Context,port:Int,receipt:CloseReceipt,block:(HelperConnection)->T):T=exclusive {
+    /** Authentication is leased to foreground work only: kept between tasks while a main screen is visible, never for a
+     *  background service. */
+    internal fun <T> withConnection(context:Context,port:Int,receipt:CloseReceipt,keep:Boolean=false,block:(HelperConnection)->T):T=exclusive {
         requirePaired(context)
+        val reuse=held?.takeIf{heldPort==port};if(held!=null&&reuse==null)closeHeldLocked();held=null;heldPort=-1
+        if(reuse!=null){
+            // A connection that died meanwhile fails at the first helper start, before anything ran: reconnect then.
+            var started=false
+            android.util.Log.i("bluedotOFF","connection: reusing the kept connection")
+            try{return@exclusive useAuthenticated(context,reuse,receipt,"reused",keep,port,{started=it},block)}
+            catch(e:Exception){if(started)throw e;android.util.Log.i("bluedotOFF","connection: kept connection unusable, reconnecting");receipt.helperExited=false;receipt.streamClosed=false;receipt.socketClosed=false;receipt.kept=false}
+        }
         val id=java.util.UUID.randomUUID().toString()
         val start=SystemClock.elapsedRealtime()
         val event=JSONObject().put("connectionId",id).put("time",System.currentTimeMillis()).put("port",port).put("targetSdk",context.applicationInfo.targetSdkVersion).put("transport","local-adb").put("socketDestination","127.0.0.1").put("pairedKeyReused",true)
         try {
             AdbHostIdentity(context).loadOrCreate().use{key->
-                LocalAdbConnection(open(port,key)).use{c->
-                    stage(app.bluedotoff.core.LocalAdbState.ADB_AUTHENTICATION_FAILED){c.authenticate()};event.put("reconnectMs",SystemClock.elapsedRealtime()-start)
-                    useAuthenticated(context,c,receipt,id,block).also{event.put("completed",true)}
+                LocalAdbConnection(open(port,key)).let{c->
+                    try{stage(app.bluedotoff.core.LocalAdbState.ADB_AUTHENTICATION_FAILED){c.authenticate()}}catch(e:Exception){runCatching{c.close()};throw e};event.put("reconnectMs",SystemClock.elapsedRealtime()-start)
+                    useAuthenticated(context,c,receipt,id,keep,port,{},block).also{event.put("completed",true)}
                 }
             }
         }catch(e:Exception){event.put("completed",false).put("errorClass",e.javaClass.simpleName);throw e}
@@ -54,14 +72,18 @@ object LocalAdbSession {
         }
     }
 
-    internal fun <T> useAuthenticated(context:Context,c:LocalAdbConnection,receipt:CloseReceipt,id:String,block:(HelperConnection)->T):T {
+    private fun closeHeldLocked(){held?.let{runCatching{it.close()}}}
+    internal fun <T> useAuthenticated(context:Context,c:LocalAdbConnection,receipt:CloseReceipt,id:String,keep:Boolean=false,port:Int=-1,onStarted:(Boolean)->Unit={},block:(HelperConnection)->T):T {
         check(busy)
         val helpers=HelperConnection(context,c,id)
-        try{return block(helpers)}finally{
+        var ok=false
+        try{return block(helpers).also{ok=true}}finally{
+            onStarted(helpers.anyStarted)
             receipt.helperExited=helpers.orderly
             receipt.streamClosed=helpers.orderly
+            if(keep&&ok&&helpers.orderly){held=c;heldPort=port;receipt.kept=true}
             // This final physical close must happen before WirelessWork considers automatic OFF.
-            runCatching{c.close();receipt.socketClosed=true}
+            else runCatching{c.close();receipt.socketClosed=true}
         }
     }
 
@@ -69,6 +91,7 @@ object LocalAdbSession {
         private var attempted=false
         private var failed=false
         internal var orderly=false;private set
+        internal var anyStarted=false;private set
         fun <T> run(receipt:CloseReceipt,block:(LocalAdbBackend)->T):T {
             check(busy&&!failed&&(!attempted||orderly)){"Previous helper did not finish safely"}
             attempted=true;orderly=false;generation++
@@ -77,10 +100,10 @@ object LocalAdbSession {
             val event=JSONObject().put("sessionId",id).put("connectionId",connectionId).put("generation",generation).put("time",System.currentTimeMillis()).put("transport","local-adb")
             var started=false
             try {
-                stage(app.bluedotoff.core.LocalAdbState.HELPER_START_FAILED){c.startHelper(context.applicationInfo.sourceDir)};started=true
+                stage(app.bluedotoff.core.LocalAdbState.HELPER_START_FAILED){c.startHelper(context.applicationInfo.sourceDir)};started=true;anyStarted=true
                 val profile=stage(app.bluedotoff.core.LocalAdbState.HELPER_PROTOCOL_FAILED){c.exchange(JSONObject().put("op","PROFILE"))};rememberRegion(context,profile)
                 event.put("helperStartupAndProfileMs",SystemClock.elapsedRealtime()-start).put("helperPid",profile.getInt("pid")).put("shellUid",profile.getInt("uid")).put("selinux",profile.getString("selinux")).put("profileId",profile.getString("profileId"))
-                val operationStart=SystemClock.elapsedRealtime()
+                val operationStart=SystemClock.elapsedRealtime();app.bluedotoff.Perf.reset()
                 val result=block(LocalAdbBackend(context,c,profile,id))
                 event.put("batchMs",SystemClock.elapsedRealtime()-operationStart)
                 c.finishHelper();receipt.helperExited=true;receipt.streamClosed=true
@@ -93,6 +116,9 @@ object LocalAdbSession {
                 if(started&&!receipt.streamClosed)runCatching{c.finishHelper();receipt.helperExited=true;receipt.streamClosed=true}.onFailure{event.put("helperCloseError",it.javaClass.simpleName)}
                 event.put("helperExited",receipt.helperExited).put("streamClosed",receipt.streamClosed).put("closed",false).put("totalMs",SystemClock.elapsedRealtime()-start)
                 appendEvent(context,"local-adb-batches.jsonl",event)
+                // Timing only (no package names), readable over USB for speed measurements.
+                android.util.Log.i("bluedotOFF","perf: ${app.bluedotoff.Perf.summary()}")
+                android.util.Log.i("bluedotOFF","helper: startup=${event.optLong("helperStartupAndProfileMs",-1)}ms work=${event.optLong("batchMs",-1)}ms total=${event.optLong("totalMs",-1)}ms completed=${event.optBoolean("completed")}")
             }
         }
     }

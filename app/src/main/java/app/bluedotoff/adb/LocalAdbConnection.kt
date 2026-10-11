@@ -92,7 +92,8 @@ class LocalAdbConnection(private val wire:AdbWire):AutoCloseable {
             else->throw IOException("Unexpected ADB stream packet")
         }
     }
-    @Synchronized fun exchange(request:JSONObject):JSONObject=protocol {
+    @Synchronized fun exchange(request:JSONObject):JSONObject=app.bluedotoff.Perf.time("rpc"){exchangeOnce(request)}
+    private fun exchangeOnce(request:JSONObject):JSONObject=protocol {
         check(authenticated&&remote!=0&&!ended&&!streamClosed)
         val bytes=HelperFrames.request(request.toString().toByteArray())
         val shell=ByteBuffer.allocate(5+bytes.size).order(ByteOrder.LITTLE_ENDIAN).put(0).putInt(bytes.size).put(bytes).array()

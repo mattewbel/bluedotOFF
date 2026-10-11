@@ -9,6 +9,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -175,7 +176,13 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
                     }
                     }
                 }
-                SnackbarHost(snackbars,modifier=Modifier.align(Alignment.BottomCenter).padding(16.dp))
+                // Follows the system theme (Material's default is the inverse colour) and closes on a tap.
+                SnackbarHost(snackbars,modifier=Modifier.align(Alignment.BottomCenter).padding(16.dp)){data->
+                    val shape=RoundedCornerShape(14.dp)
+                    // The content form adds no outer padding of its own, so the border sits on the box itself.
+                    Snackbar(modifier=Modifier.padding(12.dp).clip(shape).border(1.dp,MaterialTheme.colorScheme.outlineVariant,shape).clickable(onClickLabel=UiText.text(context,"닫기")){data.dismiss()},
+                        shape=shape,containerColor=MaterialTheme.colorScheme.surfaceContainerHighest,contentColor=MaterialTheme.colorScheme.onSurface){Text(data.visuals.message,translate=false)}
+                }
             }
         }
         if(showAutoBlocker&&!model.busy) AlertDialog(onDismissRequest={showAutoBlocker=false},title={Text("보안 위험 자동 차단을 꺼주세요")},

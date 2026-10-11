@@ -383,6 +383,24 @@ class UiRenderTest {
     @Test fun reapply(){render("08-reapply",model(page=Page.REAPPLY));compose.onNodeWithText("모두 재적용").assertExists()}
     @Test @Config(qualifiers="ko-rKR-w412dp-h915dp-night-xxhdpi") fun dark(){render("09-dark",model(applied=true))}
     @Test @Config(qualifiers="ko-rKR-w960dp-h750dp-xhdpi") fun fold(){render("10-fold-wide",model(applied=true))}
+    private val notice="선택한 앱은 지금 복원할 수 없어요. 앱을 하나씩 열어 상태를 확인해주세요."
+    /** The notice is drawn in the system theme's colours (not inverted) and closes as soon as it is tapped. */
+    private fun noticeShot(name:String){
+        compose.mainClock.autoAdvance=false
+        controller.get().setContent { BlueDotApp(model(applied=true).copy(notice=notice),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}) }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithText(notice).assertExists()
+        val view=controller.get().window.decorView
+        val image=Bitmap.createBitmap(view.width,view.height,Bitmap.Config.ARGB_8888);compose.runOnIdle{view.draw(Canvas(image))}
+        val dir=File(checkNotNull(System.getProperty("screenshotDir")));dir.mkdirs()
+        File(dir,"$name.png").outputStream().use{check(image.compress(Bitmap.CompressFormat.PNG,100,it))}
+    }
+    @Test fun noticeUsesTheLightThemeAndClosesOnTap(){
+        noticeShot("92-notice-light")
+        compose.onNodeWithText(notice).performClick();compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithText(notice).assertDoesNotExist()
+    }
+    @Test @Config(qualifiers="ko-rKR-w412dp-h915dp-night-xxhdpi") fun noticeUsesTheDarkTheme(){noticeShot("92-notice-dark")}
     @Test fun autoBlockerOpensACenteredGuideInsteadOfASnackbar(){
         controller.get().setContent { BlueDotApp(model(applied=true).copy(notice=app.bluedotoff.adb.AutoBlocker.MESSAGE),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}) }
         compose.waitForIdle()

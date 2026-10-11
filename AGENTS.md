@@ -205,6 +205,7 @@ those files; bump `versionName`/`versionCode` in `app/build.gradle.kts` first.
   with automatic management (it used to return early when the heldOn marker was not set). Turning automatic management
   off while the app is open runs `releaseNow` first, so wireless debugging the app turned on is switched off before consent
   is withdrawn. Tests: `KeptConnectionTest` (adopted from the review probe).
+- Recheck timer (GPT final review 2026-10-11): a partial check of changed apps reset the 10-minute full-check timer, so an app that changes often (Toss) could postpone the other apps' recheck forever. `RecheckClock` (MainActivity.kt) now resets only on a check of all registered apps, and an expired timer wins over a partial check; "마지막 확인" shows the last full check. Test `RecheckClockTest`.
 - Not done (suggested later): splitting `MainActivity`, reformatting dense code, moving i18n to
   `strings.xml`, tidying the root research folder (`bluedotOFF_audit.zip`, `bluedotoff_filelist.txt`).
   Not device-tested in this session.

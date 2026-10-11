@@ -47,10 +47,9 @@ class MainActivity : ComponentActivity() {
     @Volatile private var packageEpoch=0L
     /** Packages Android reported as installed, updated, removed or with toggled components since they were last read. */
     private val changedPackages=java.util.Collections.synchronizedSet(mutableSetOf<String>())
-    private var lastCheckedElapsed=0L
+    private val clock=RecheckClock(10*60_000L)
     private var lastHistoryElapsed=0L
     private var checkOnResume=false
-    private val recheckMs=10*60_000L
     private val BIG_GROUP=10
     private var wifiObserver:AutoCloseable?=null
     private val controls by lazy {WirelessControls(this)}
@@ -66,15 +65,15 @@ class MainActivity : ComponentActivity() {
     private fun refreshFromUser(){invalidateScan();refresh(true)}
     private enum class Check { AUTO, LOCAL, REGISTERED, HISTORY, FULL }
     /** Coming back to the app reconnects only when needed: Android reported a change to a registered app, the last check
-     *  is older than [recheckMs], or the app is not ready yet. Every write still re-reads its target first. */
+     *  is older than ten minutes ([RecheckClock]), or the app is not ready yet. Every write still re-reads its target first. */
     private fun resumeCheck(){
         val registered=model.entries.filter{it.enabled}.flatMap{e->listOf(e.identity.packageName)+e.groupIdentities.map{it.packageName}}.toSet()
         val touched=synchronized(changedPackages){changedPackages.filter{it in registered}.toSet()}
+        val plan=clock.plan(android.os.SystemClock.elapsedRealtime(),touched)
         when{
-            checkOnResume||model.gate!=Gate.READY||lastCheckedElapsed==0L->{checkOnResume=false;refresh(true)}
-            touched.isNotEmpty()->refresh(true,Check.REGISTERED,touched)
-            android.os.SystemClock.elapsedRealtime()-lastCheckedElapsed>=recheckMs->refresh(true,Check.REGISTERED)
-            else->refresh(true,Check.LOCAL)
+            checkOnResume||model.gate!=Gate.READY||!clock.started->{checkOnResume=false;refresh(true)}
+            plan==null->refresh(true,Check.LOCAL)
+            else->refresh(true,Check.REGISTERED,plan)
         }
     }
     /** Home refresh icon: all registered apps, not the whole app inventory. */
@@ -201,7 +200,7 @@ class MainActivity : ComponentActivity() {
                 val prepared=withContext(Dispatchers.IO){StartupScanHandoff.cache.take(Build.FINGERPRINT,BootSession.current(this@MainActivity),entries)}
                 if(prepared!=null){
                     startupScanAdopted=true;changedPackages.clear()
-                    lastCheckedElapsed=android.os.SystemClock.elapsedRealtime();lastHistoryElapsed=lastCheckedElapsed
+                    lastHistoryElapsed=android.os.SystemClock.elapsedRealtime();clock.fullChecked(lastHistoryElapsed)
                     val scan=prepared.discovery
                     scanStamp=ScanStamp(Build.FINGERPRINT,packageEpoch,android.os.SystemClock.elapsedRealtime())
                     model=model.copy(gate=Gate.READY,entries=entries,candidates=prepared.snapshots,discovered=scan.apps,
@@ -269,10 +268,11 @@ class MainActivity : ComponentActivity() {
                     }
                 }}
                 val checkedNow=android.os.SystemClock.elapsedRealtime();lastHistoryElapsed=checkedNow
-                if(mode!=Check.HISTORY)lastCheckedElapsed=checkedNow
+                val fullCheck=mode!=Check.HISTORY&&only.isEmpty()
+                if(fullCheck)clock.fullChecked(checkedNow)
                 if(scan!=null){changedPackages.clear();scanStamp=ScanStamp(Build.FINGERPRINT,epoch,android.os.SystemClock.elapsedRealtime());model=model.copy(discovered=scan.apps,historyAvailable=scan.historyAvailable,metrics=scan.metrics)}
                 else refreshedHistory?.let{if(epoch==packageEpoch&&model.discovered===knownApps)model=model.copy(discovered=it,historyAvailable=true)}
-                model=model.copy(gate=Gate.READY,scanProgress=null,rechecking=false,lastCheckedAt=if(mode==Check.HISTORY)model.lastCheckedAt else System.currentTimeMillis(),entries=store.entries(),candidates=if(mode==Check.HISTORY||only.isNotEmpty())model.candidates.filterNot{c->snapshots.any{it.identity.packageName==c.identity.packageName}}+snapshots else snapshots,loadingApps=false,connected=controls.wireless,automaticReady=automaticReady(),freshPackages=if(!controls.wireless)emptySet() else if(mode==Check.HISTORY||only.isNotEmpty())model.freshPackages+snapshots.map{it.identity.packageName} else snapshots.map{it.identity.packageName}.toSet(),compatibility="앱 확인 완료",notice=cleanupNotice,notificationOffer=!notificationsEnabled()&&!prefs.getBoolean("notificationExplained",false))
+                model=model.copy(gate=Gate.READY,scanProgress=null,rechecking=false,lastCheckedAt=if(fullCheck)System.currentTimeMillis() else model.lastCheckedAt,entries=store.entries(),candidates=if(mode==Check.HISTORY||only.isNotEmpty())model.candidates.filterNot{c->snapshots.any{it.identity.packageName==c.identity.packageName}}+snapshots else snapshots,loadingApps=false,connected=controls.wireless,automaticReady=automaticReady(),freshPackages=if(!controls.wireless)emptySet() else if(mode==Check.HISTORY||only.isNotEmpty())model.freshPackages+snapshots.map{it.identity.packageName} else snapshots.map{it.identity.packageName}.toSet(),compatibility="앱 확인 완료",notice=cleanupNotice,notificationOffer=!notificationsEnabled()&&!prefs.getBoolean("notificationExplained",false))
                 filterPicker()
                 if(model.page==Page.DETAIL&&model.selected!=null&&snapshots.none{it.identity.packageName==model.selected})select(model.selected!!)
             }catch(_:CancellationException){model=model.copy(rechecking=false,scanProgress=null,loadingApps=false)}catch(error:Exception){android.util.Log.w("bluedotOFF","refresh failed: ${error.javaClass.simpleName}: ${error.message?.take(160)}");model=model.copy(gate=if(model.entries.any{it.enabled}||model.automaticReady)Gate.READY else Gate.NOT_RUNNING,rechecking=false,scanProgress=null,loadingApps=false,connected=false,freshPackages=emptySet(),compatibility="현재 기기의 변경 작업을 확인할 수 없어요. 연결 준비에서 다시 확인해주세요.",notice=cleanupNotice)}
@@ -557,4 +557,14 @@ class MainActivity : ComponentActivity() {
         invalidateScan();refresh(true)
     }
     private fun clearNotice() { model=model.copy(notice="") }
+}
+/** When returning to the app re-reads registered apps. Only a check of all registered apps resets the ten-minute timer,
+ *  and an expired timer wins over a partial check, so an app that changes often (e.g. Toss) cannot keep postponing the
+ *  other apps' recheck (GPT review 2026-10-11). */
+internal class RecheckClock(private val periodMs:Long){
+    private var lastFull=0L
+    val started get()=lastFull!=0L
+    /** null: nothing to re-read; empty: all registered apps; otherwise only these changed apps. */
+    fun plan(now:Long,touched:Set<String>):Set<String>?=when{now-lastFull>=periodMs->emptySet();touched.isNotEmpty()->touched;else->null}
+    fun fullChecked(now:Long){lastFull=now}
 }

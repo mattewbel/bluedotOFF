@@ -241,7 +241,7 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
         if(m.gate==Gate.WELCOME)Surface(shape=RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.tertiaryContainer,contentColor=MaterialTheme.colorScheme.onTertiaryContainer,border=BorderStroke(1.dp,MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha=0.18f))){
             Column(Modifier.fillMaxWidth().padding(18.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
                 Text("미리 알아두세요",style=MaterialTheme.typography.titleMedium)
-                listOf("일부 앱은 적용 후 몇 분 만에 숨김이 풀릴 수 있어요.","앱이 스스로 구성을 바꾸거나 업데이트되면 숨김 설정이 기본값으로 돌아가요.","풀린 앱은 홈에 ‘재적용 필요’로 표시돼요. 눌러서 다시 적용하면 돼요.","갤럭시의 ‘보안 위험 자동 차단’이 켜져 있으면 연결할 수 없어요. 연결 안내에서 끄는 방법을 보여드려요.").forEach{line->
+                listOf("앱은 최소한의 권한으로 작동해요. 그래서 일부 앱은 스스로 설정을 바꿔서 숨김이 짧은 주기로 풀릴 수 있어요.","앱이 스스로 구성을 바꾸거나 업데이트되면 숨김 설정이 기본값으로 돌아가요.","풀린 앱은 홈에 ‘재적용 필요’로 표시돼요. 눌러서 다시 적용하면 돼요.","갤럭시의 ‘보안 위험 자동 차단’이 켜져 있으면 연결할 수 없어요. 연결 안내에서 끄는 방법을 보여드려요.").forEach{line->
                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){Text("•",style=MaterialTheme.typography.bodyMedium,translate=false);Text(line,style=MaterialTheme.typography.bodyMedium.copy(lineBreak=androidx.compose.ui.text.style.LineBreak.Paragraph.copy(wordBreak=androidx.compose.ui.text.style.LineBreak.WordBreak.Phrase)))}
                 }
             }
@@ -607,7 +607,7 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
         HorizontalDivider()
         val notifyOn=m.notifications&&m.reapplyNotify
         Row(Modifier.toggleable(value=notifyOn,role=androidx.compose.ui.semantics.Role.Switch,onValueChange=notificationChanged),verticalAlignment=Alignment.CenterVertically){Text("재적용 알림",Modifier.weight(1f),style=MaterialTheme.typography.titleMedium);Switch(checked=notifyOn,onCheckedChange=null)}
-        Text("휴대폰 재시작이나 앱 업데이트로 숨김이 풀리면 알려드려요.",style=MaterialTheme.typography.bodySmall)
+        Text("휴대폰 재시작이나 앱 업데이트로 숨김이 풀리면 알려드려요. 절전 모드에서는 알림이 오지 않을 수 있어요.",style=MaterialTheme.typography.bodySmall)
         HorizontalDivider()
         // Only needed after bluedotOFF was removed and installed again (its records go with it).
         Column(verticalArrangement=Arrangement.spacedBy(2.dp)){

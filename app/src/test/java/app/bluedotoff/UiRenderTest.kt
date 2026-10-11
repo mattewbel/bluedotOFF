@@ -304,7 +304,7 @@ class UiRenderTest {
     @Test fun usModelShowsWarningOnlyWhenFlagged(){render("84-home-us-model",model(applied=true).copy(usModel=true));compose.onNodeWithText("미국 판매 모델 안내").assertExists()}
     @Test fun nonUsModelHasNoRegionWarning(){render("84-home-default",model(applied=true));compose.onNodeWithText("미국 판매 모델 안내").assertDoesNotExist()}
     @Test @Config(qualifiers="en-rUS-w412dp-h915dp-xxhdpi") fun usModelWarningIsEnglishOutsideKorean(){render("84-home-us-model-en",model(applied=true).copy(usModel=true));compose.onNodeWithText("US model notice").assertExists()}
-    @Test fun welcomeWarnsSomeAppsMayLoseHiding(){render("01-welcome-notice",model(gate=Gate.WELCOME));compose.onNodeWithText("미리 알아두세요").assertExists();compose.onNodeWithText("일부 앱은 적용 후 몇 분 만에 숨김이 풀릴 수 있어요.").assertExists()}
+    @Test fun welcomeWarnsSomeAppsMayLoseHiding(){render("01-welcome-notice",model(gate=Gate.WELCOME));compose.onNodeWithText("미리 알아두세요").assertExists();compose.onNodeWithText("앱은 최소한의 권한으로 작동해요. 그래서 일부 앱은 스스로 설정을 바꿔서 숨김이 짧은 주기로 풀릴 수 있어요.").assertExists()}
     @Test @Config(qualifiers="en-rUS-w412dp-h915dp-xxhdpi") fun welcomeNoticeIsEnglishOutsideKorean(){render("01-welcome-notice-en",model(gate=Gate.WELCOME));compose.onNodeWithText("Good to know").assertExists()}
     @Test fun homeHasNoWelcomeNotice(){render("01-home-no-notice",model(applied=true));compose.onNodeWithText("미리 알아두세요").assertDoesNotExist()}
     @Test @Config(qualifiers="ko-rKR-w412dp-h915dp-night-xxhdpi") fun emptyBlueHomeKeepsNavigationOnPageBackground(){render("86-home-empty-blue-dark",model().copy(entries=emptyList()));compose.onNodeWithText("설정").assertExists()}

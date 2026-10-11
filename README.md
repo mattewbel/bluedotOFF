@@ -19,7 +19,7 @@ Samsung One UI 9 (Android 17) 휴대폰에서 **내가 고른 앱의 파란 위�
 | 홈 | 앱 추가 | 설정 |
 |:---:|:---:|:---:|
 | <img src="docs/screenshots/home.png" width="240" alt="홈 화면"> | <img src="docs/screenshots/add-apps.png" width="240" alt="앱 추가 화면"> | <img src="docs/screenshots/settings.png" width="240" alt="설정 화면"> |
-| 적용 현황과 다시 적용할 앱을 한눈에 | 숨길 앱을 골라 한 번에 적용 | 적용 범위, 자동 관리, 재적용 알림 |
+| 적용 현황과 다시 적용할 앱을 한눈에 | 숨길 앱을 골라 한 번에 적용 | 적용 범위, 자동 관리, 재적용 알림, 숨김이 남은 앱 |
 
 <sub>실제 기기(Galaxy Z Fold7) 화면입니다. 설치된 앱 이름과 아이콘은 흐리게 가렸습니다.</sub>
 

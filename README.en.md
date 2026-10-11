@@ -19,7 +19,7 @@ Location permissions and location history stay as they are. bluedotOFF changes a
 | Home | Add apps | Settings |
 |:---:|:---:|:---:|
 | <img src="docs/screenshots/home.png" width="240" alt="Home screen"> | <img src="docs/screenshots/add-apps.png" width="240" alt="Add apps screen"> | <img src="docs/screenshots/settings.png" width="240" alt="Settings screen"> |
-| Applied apps and apps to reapply at a glance | Pick apps to hide and apply at once | Scope, automatic management, reapply notifications |
+| Applied apps and apps to reapply at a glance | Pick apps to hide and apply at once | Scope, automatic management, reapply notifications, apps left hidden |
 
 <sub>Screenshots from a real device (Galaxy Z Fold7), in Korean. Installed app names and icons are blurred. The app shows English on any non-Korean phone.</sub>
 

@@ -72,7 +72,10 @@ object ScopeDialogs {
                 ScopeDetail(scope)
                 when {
                     error.isNotBlank()->Copy(error)
-                    targets==null->Copy("등록 앱의 적용 범위를 확인하고 있어요.",small=true)
+                    // A spinner shows the read-only check of registered apps is still running.
+                    targets==null->Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
+                        CircularProgressIndicator(Modifier.size(20.dp),strokeWidth=2.dp);Copy("등록 앱의 적용 범위를 확인하고 있어요.",small=true)
+                    }
                     targets!!.isEmpty()->Copy("원복할 등록 앱이 없어요. 앱의 표시 설정은 그대로 유지해요.",small=true)
                     else->{
                         Copy("등록한 앱 중 ${targets!!.size}개가 새 범위에서 빠져서 원래 상태로 돌아가요.")

@@ -88,6 +88,7 @@ class ScopeDialogsTest {
         dialog=ScopeDialogs.lowering(controller.get(),ApplicationScope.NORMAL,tint=0f,load={result=it}){confirmed=true}
         compose.onNodeWithText("범위를 낮출까요?").assertIsDisplayed()
         compose.onNodeWithText("등록 앱의 적용 범위를 확인하고 있어요.").assertIsDisplayed()
+        compose.onNode(hasProgressBarRangeInfo(androidx.compose.ui.semantics.ProgressBarRangeInfo.Indeterminate)).assertExists()
         compose.onNodeWithText("이 범위 사용").assertIsNotEnabled()
         Assert.assertFalse(confirmed)
         compose.runOnIdle{result!!(listOf("전화" to "demo.phone"),"")}

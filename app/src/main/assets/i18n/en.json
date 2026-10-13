@@ -773,5 +773,6 @@
   "{0}개 앱 자동 재적용 완료": "Re-applied automatically to {0} apps",
   "1개 앱 자동 재적용 완료": "Re-applied automatically to 1 app",
   "자동 재적용 {0}개 · 확인 필요 {1}개": "Re-applied automatically: {0} · Needs attention: {1}",
-  "bluedotOFF를 열면 숨김을 자동으로 다시 적용해요.": "Opening bluedotOFF hides them again automatically."
+  "bluedotOFF를 열면 숨김을 자동으로 다시 적용해요.": "Opening bluedotOFF hides them again automatically.",
+  "앱 정보 보기": "View app details"
 }

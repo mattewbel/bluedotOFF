@@ -89,7 +89,7 @@ Pairing is needed only once.
 
 ## Using the app
 
-- **Hide:** Home → **Add apps** → find apps with search and filters → **Add N**. You can also hide apps that recently used location from **History**.
+- **Hide:** Home → **Add apps** → find apps with search and filters → **Add N**. You can also hide apps that recently used location from **History**. Tap an app in History to see its details, and tap ↻ to reload the history.
 - **Restore:** Home → **Restore apps** → **Restore all**, or **Choose apps** (also Home → **Edit**) to pick apps with search and Select all like Add apps, then **Restore N**. You can also restore one app from its detail screen with **Unhide · restore original setting**.
 - **Reapply:** After a restart or an app update, Android may turn the indicator back on. With automatic management, opening bluedotOFF re-applies those apps and shows "Re-applied automatically to N apps" (turn it off in Settings → **Re-apply automatically when opened**). After a phone update, or for apps that need checking or were reinstalled, it does not run automatically; tap **reapply needed** on Home.
 - **Check again:** Tap ↻ next to **Last checked N min ago** on Home to recheck your registered apps right away.

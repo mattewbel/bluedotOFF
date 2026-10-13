@@ -459,6 +459,14 @@ class UiRenderTest {
     @Test fun peerReviewHistoryHasNoInlineWriteAction(){val m=history().let{it.copy(entries=it.entries.map{e->e.copy(state=TargetState.NEEDS_REVIEW)})};render("36-history-peer-review",m);compose.onNodeWithText("앱 묶음 변경 · 확인 필요").assertExists();compose.onNodeWithText("숨기기").assertDoesNotExist()}
     @Test fun osSensitivityResetHasAccurateReapplyAction(){val m=history().copy(entries=history().entries.map{it.copy(state=TargetState.NEEDS_REAPPLY_POLICY)});render("37-os-policy-reapply",m);compose.onNodeWithText("표시 설정 변경 · 재적용 필요").assertExists();compose.onNodeWithText("재적용").assertIsEnabled();compose.onNodeWithText("bluedotOFF 적용 중 ✓").assertDoesNotExist()}
     private fun history(applied:Boolean=false)=model(applied=applied,page=Page.HISTORY).let{m->m.copy(discovered=listOf(DiscoveredApp(m.entries.single().identity.packageName,"날씨",10792,launcher=true,access=LocationAccess(fine=System.currentTimeMillis()))),historyAvailable=true)}
+    /** Tapping an app in History opens its detail page; the header has a refresh button. */
+    @Test fun historyRowOpensTheAppAndCanBeRefreshed(){
+        var opened="";var refreshed=false
+        controller.get().setContent{BlueDotApp(history(true),{}, {opened=it}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},refreshHistory={refreshed=true})}
+        compose.waitForIdle()
+        compose.onNodeWithText("날씨").performClick();org.junit.Assert.assertEquals("demo.weather",opened)
+        compose.onNodeWithContentDescription("다시 확인").performClick();org.junit.Assert.assertTrue(refreshed)
+    }
     @Test fun hiddenHistoryShowsVerifiedCheck(){render("19-history-hidden",history(true));compose.onNodeWithText("bluedotOFF 적용 중 ✓").assertExists();compose.onNodeWithText("숨기기").assertDoesNotExist()}
     @Test fun unhiddenHistoryDirectActionStaysInline(){var called="";val m=history().copy(entries=emptyList());render("20-history-action",m){called=it};compose.onNodeWithText("숨기기").performClick();assert(called=="demo.weather");compose.onNodeWithText("최근 위치 사용").assertExists()}
     @Test fun allHistoryUnsupportedStillVisibleWithoutAction(){val m=history().copy(entries=emptyList());render("21-history-core",m.copy(historyView=HistoryView.ALL,discovered=m.discovered.map{it.copy(uid=1000,block="지원되지 않는 시스템 구성요소")}));compose.onNodeWithText("지원되지 않는 시스템 구성요소").assertExists();compose.onNodeWithText("숨기기").assertDoesNotExist()}

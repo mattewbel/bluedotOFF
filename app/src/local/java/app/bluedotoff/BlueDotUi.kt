@@ -70,7 +70,7 @@ fun TargetState.label(): String = when(this) {
 private fun Snapshot.blockReason(): String = rejectionReason()
 
 @Composable
-fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, hide: (String)->Unit, restore: (String)->Unit, hideAll: ()->Unit, restoreAll: ()->Unit, openBackend: ()->Unit, setupBackend: ()->Unit, authorize: ()->Unit, refresh: ()->Unit, allowNotifications: ()->Unit, dismissNotifications: ()->Unit, begin: ()->Unit, loadApps: ()->Unit, clearNotice: ()->Unit, togglePick:(String)->Unit={}, addSelected:()->Unit={}, queryChanged:(String)->Unit={},filterChanged:(AppFilter)->Unit={},editHome:()->Unit={},toggleHome:(String)->Unit={},restoreSelected:()->Unit={},contentShown:()->Unit={},pickerRevision:Long=0L,historyViewChanged:(HistoryView)->Unit={},pickerViewChanged:(PickerView)->Unit={},wirelessExit:()->Unit={},toggleAll:()->Unit={},managementChanged:(Boolean)->Unit={},removeManagementPermission:()->Unit={},sharedInspect:(String)->Unit={},sharedAccept:()->Unit={},sharedDismiss:()->Unit={},scopeChange:()->Unit={},reapplyNeeded:(List<String>)->Unit={},notificationChanged:(Boolean)->Unit={},recheck:()->Unit={},bigGroupsAccept:()->Unit={},bigGroupsDismiss:()->Unit={},restorePickAll:(List<String>)->Unit={},rejectedDismiss:()->Unit={},showPick:(String)->Unit={},showPickAll:(List<String>)->Unit={},showSelected:()->Unit={},autoReapplyChanged:(Boolean)->Unit={},openShow:()->Unit={},beforeUninstall:()->Unit={},uninstallDismiss:()->Unit={},openAppInfo:()->Unit={},copyDiagnostics:()->Unit={}) {
+fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, hide: (String)->Unit, restore: (String)->Unit, hideAll: ()->Unit, restoreAll: ()->Unit, openBackend: ()->Unit, setupBackend: ()->Unit, authorize: ()->Unit, refresh: ()->Unit, allowNotifications: ()->Unit, dismissNotifications: ()->Unit, begin: ()->Unit, loadApps: ()->Unit, clearNotice: ()->Unit, togglePick:(String)->Unit={}, addSelected:()->Unit={}, queryChanged:(String)->Unit={},filterChanged:(AppFilter)->Unit={},editHome:()->Unit={},toggleHome:(String)->Unit={},restoreSelected:()->Unit={},contentShown:()->Unit={},pickerRevision:Long=0L,historyViewChanged:(HistoryView)->Unit={},pickerViewChanged:(PickerView)->Unit={},wirelessExit:()->Unit={},toggleAll:()->Unit={},managementChanged:(Boolean)->Unit={},removeManagementPermission:()->Unit={},sharedInspect:(String)->Unit={},sharedAccept:()->Unit={},sharedDismiss:()->Unit={},scopeChange:()->Unit={},reapplyNeeded:(List<String>)->Unit={},notificationChanged:(Boolean)->Unit={},recheck:()->Unit={},bigGroupsAccept:()->Unit={},bigGroupsDismiss:()->Unit={},restorePickAll:(List<String>)->Unit={},rejectedDismiss:()->Unit={},showPick:(String)->Unit={},showPickAll:(List<String>)->Unit={},showSelected:()->Unit={},refreshHistory:()->Unit={},autoReapplyChanged:(Boolean)->Unit={},openShow:()->Unit={},beforeUninstall:()->Unit={},uninstallDismiss:()->Unit={},openAppInfo:()->Unit={},copyDiagnostics:()->Unit={}) {
     val context = LocalContext.current
     val dark = isSystemInDarkTheme()
     val motion = ValueAnimator.areAnimatorsEnabled()
@@ -101,7 +101,7 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
         snackScope.launch{snackbars.currentSnackbarData?.dismiss();val shown=launch{snackbars.showSnackbar(text,duration=SnackbarDuration.Indefinite)};kotlinx.coroutines.delay(5000);shown.cancel()}} }
     MaterialTheme(colorScheme=scheme) {
         BackHandler(enabled=model.busy) {}
-        BackHandler(enabled=model.page!=Page.HOME&&!model.busy) { navigate(Page.HOME) }
+        BackHandler(enabled=model.page!=Page.HOME&&!model.busy) { navigate(if(model.page==Page.DETAIL)model.detailBack else Page.HOME) }
         Surface(Modifier.fillMaxSize(),color=surface,contentColor=scheme.onSurface) {
             BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding()) {
                 if(model.busy&&!model.scopePreview&&!model.autoReapplying){
@@ -149,7 +149,7 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
                     else if(model.gate!=Gate.READY) Wizard(model,openBackend,begin,{navigate(Page.HELP)})
                     else when(model.page) {
                         Page.HOME -> HomeScreen(model,wide,{navigate(Page.PICK)},{showRestoreMenu=true},select,openBackend,{navigate(Page.HISTORY)},hide,editHome,toggleHome,restoreSelected,wirelessExit,{showReapplyNeeded=true},recheck)
-                        Page.HISTORY -> HistoryScreen(model,hide,openBackend,historyViewChanged)
+                        Page.HISTORY -> HistoryScreen(model,hide,openBackend,historyViewChanged,select,refreshHistory)
                         Page.RESTORE -> RestoreScreen(model,toggleHome,restorePickAll,restoreSelected)
                         Page.SHOW -> ShowScreen(model,showPick,showPickAll,showSelected)
                         Page.PICK -> PickerScreen(model,togglePick,addSelected,queryChanged,loadApps,openBackend,filterChanged,pickerViewChanged,toggleAll,sharedInspect)
@@ -518,9 +518,12 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
     val seconds=((now-time).coerceAtLeast(0)/1000)
     return when{seconds<60->"방금 전";seconds<3600->"${seconds/60}분 전";seconds<86400->"${seconds/3600}시간 전";else->"${seconds/86400}일 전"}
 }
-@Composable private fun HistoryScreen(m:UiModel,hide:(String)->Unit,open:()->Unit,viewChanged:(HistoryView)->Unit) {
+@Composable private fun HistoryScreen(m:UiModel,hide:(String)->Unit,open:()->Unit,viewChanged:(HistoryView)->Unit,select:(String)->Unit={},refresh:()->Unit={}) {
     Column(Modifier.fillMaxSize(),verticalArrangement=Arrangement.spacedBy(12.dp)){
-        Text("최근 위치 사용",style=MaterialTheme.typography.headlineMedium)
+        Row(verticalAlignment=Alignment.CenterVertically){
+            Text("최근 위치 사용",Modifier.weight(1f),style=MaterialTheme.typography.headlineMedium)
+            RefreshButton(m.rechecking||m.loadingApps,!m.busy&&m.canOperate,refresh)
+        }
         Text(if(m.historyView==HistoryView.APPS)"최근 위치를 쓴 앱이에요. 시스템 서비스까지 보려면 ‘전체 위치 사용’을 누르세요." else "시스템 서비스까지 포함한 위치 사용 기록이에요. 파란 위치 표시가 뜬 것과는 다를 수 있어요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){HistoryView.entries.forEach{view->FilterChip(selected=m.historyView==view,onClick={viewChanged(view)},label={Text(view.label)})}}
         // With automatic management the app connects by itself when the tab opens; only manual users must connect first.
@@ -533,7 +536,8 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
             val blue by animateFloatAsState(if(applied)0f else 1f,label="history dot")
             val dotColor=if(a.indicatorHint==FineIndicatorHint.SENSITIVE&&HistoryPolicy.relevant(a,emptySet()))DotBlue else MaterialTheme.colorScheme.onSurfaceVariant
             val needs=m.entries.any{it.identity.packageName==a.packageName&&it.enabled&&it.state in listOf(TargetState.NEEDS_REAPPLY_UPDATE,TargetState.NEEDS_REAPPLY_BOOT,TargetState.NEEDS_REAPPLY_POLICY)}
-            Row(Modifier.fillMaxWidth().padding(vertical=14.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
+            // The whole row opens the app's detail page; the ripple shows the tap.
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(enabled=!m.busy,onClickLabel=UiText.text(LocalContext.current,"앱 정보 보기")){select(a.packageName)}.padding(vertical=14.dp,horizontal=4.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
                 Box(Modifier.size(18.dp),contentAlignment=Alignment.Center){Box(Modifier.size(8.dp).alpha(blue).background(dotColor,CircleShape));if(applied)Text("✓",color=MaterialTheme.colorScheme.primary)}
                 Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)){
                     Text(a.label,translate=false,style=MaterialTheme.typography.titleSmall)
@@ -541,6 +545,7 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
                     Text(if(applied&&m.connected&&a.packageName in m.freshPackages)"bluedotOFF 적용 중 ✓" else status,style=MaterialTheme.typography.bodySmall,color=if(applied)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if(m.canActFromHistory(a)&&!applied)TextButton(onClick={hide(a.packageName)},enabled=m.canOperate&&!m.busy){Text(if(needs)"재적용" else "숨기기")}
+                else Text("›",color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
             HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant.copy(alpha=0.35f))
         }}

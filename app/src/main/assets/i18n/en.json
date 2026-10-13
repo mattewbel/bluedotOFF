@@ -675,7 +675,7 @@
   "미리 알아두세요": "Good to know",
   "앱은 최소한의 권한으로 작동해요. 그래서 일부 앱은 스스로 설정을 바꿔서 숨김이 짧은 주기로 풀릴 수 있어요.": "The app works with minimal permissions. So some apps change their own settings and may undo hiding at short intervals.",
   "앱이 스스로 구성을 바꾸거나 업데이트되면 숨김 설정이 기본값으로 돌아가요.": "When an app changes its own components or updates, the hide setting goes back to its default.",
-  "풀린 앱은 홈에 ‘재적용 필요’로 표시돼요. 눌러서 다시 적용하면 돼요.": "Those apps show “Reapply needed” on Home. Tap it to apply again.",
+  "풀린 앱은 앱을 열 때 자동으로 다시 적용돼요(무선 디버깅 자동 관리를 쓸 때). 홈의 ‘재적용 필요’를 눌러 직접 할 수도 있어요.": "With automatic wireless debugging management, those apps are hidden again when you open the app. You can also tap “Reapply needed” on Home.",
   "{0}개 앱 확인 완료 · 마무리 중…": "{0} apps checked · finishing…",
   "삭제된 앱 · 조치 필요 없음": "Uninstalled · no action needed",
   "삭제된 앱은 복원할 필요가 없어요. 앱을 지우면 위치 표시 설정도 함께 사라져요.": "Uninstalled apps don't need restoring. Their location indicator setting was removed with the app.",
@@ -766,5 +766,12 @@
   "{0}개 앱을 지금 복원하지 못했어요. 홈의 ‘등록한 앱’에서 상태를 확인한 뒤 다시 눌러주세요. 이 앱들이 남아 있는 동안에는 bluedotOFF를 삭제하지 마세요.": "{0} apps could not be restored right now. Check them under Registered apps on Home, then tap this again. Do not uninstall bluedotOFF while they remain.",
   "앱 정보 열기": "Open app info",
   "진단 정보 복사": "Copy diagnostic info",
-  "진단 정보를 복사했어요. GitHub Issues에 문의할 때 붙여넣어 주세요. 설치된 앱 목록이나 위치 기록은 들어 있지 않아요.": "Diagnostic info copied. Paste it when you open a GitHub issue. It does not include your installed apps or location history."
+  "진단 정보를 복사했어요. GitHub Issues에 문의할 때 붙여넣어 주세요. 설치된 앱 목록이나 위치 기록은 들어 있지 않아요.": "Diagnostic info copied. Paste it when you open a GitHub issue. It does not include your installed apps or location history.",
+  "앱을 열 때 자동 재적용": "Re-apply automatically when opened",
+  "숨김이 풀린 앱을 앱을 열 때 자동으로 다시 적용해요. 무선 디버깅 자동 관리를 켠 경우에만 동작해요.": "When you open the app, apps whose hiding wore off are hidden again automatically. Works only with automatic wireless debugging management.",
+  "자동 재적용 중 · {0} / {1}": "Re-applying automatically · {0} / {1}",
+  "{0}개 앱 자동 재적용 완료": "Re-applied automatically to {0} apps",
+  "1개 앱 자동 재적용 완료": "Re-applied automatically to 1 app",
+  "자동 재적용 {0}개 · 확인 필요 {1}개": "Re-applied automatically: {0} · Needs attention: {1}",
+  "bluedotOFF를 열면 숨김을 자동으로 다시 적용해요.": "Opening bluedotOFF hides them again automatically."
 }

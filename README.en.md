@@ -43,7 +43,7 @@ bluedotOFF has one goal:
 
 ## Limitations
 
-- **Some apps lose hiding quickly.** When an app changes its own components, is updated, or the phone restarts, Android resets the indicator setting to its default. Some banking apps, for example, lose it within minutes. Such apps are marked "reapply needed" on Home; bluedotOFF does not reapply automatically (so it does not keep touching your phone).
+- **Some apps lose hiding quickly.** When an app changes its own components, is updated, or the phone restarts, Android resets the indicator setting to its default. Some banking apps, for example, lose it within minutes. With automatic wireless debugging management, such apps are hidden again automatically when you open bluedotOFF (Settings → **Re-apply automatically when opened**, on by default). Nothing changes while the app is not open.
 - **Only a few devices have been tested.** The developer verified the Galaxy Z Fold7, and a user confirmed the Galaxy Z Fold8 ([Tested devices](#tested-devices)). Other models work only if their internals are identical; otherwise the app stops without changing anything.
 - **US models** have an extra location indicator path, so the dot may not be hidden.
 - **It does not work while Auto Blocker is on.** Auto Blocker blocks wireless debugging. Turn it off in Settings → Security and privacy → Auto Blocker when you use the app. New Galaxy phones have it on by default, and with “Turn on automatically” it turns back on after 30 minutes. With automatic management, the app notices the block and tells you how to turn it off.
@@ -91,7 +91,7 @@ Pairing is needed only once.
 
 - **Hide:** Home → **Add apps** → find apps with search and filters → **Add N**. You can also hide apps that recently used location from **History**.
 - **Restore:** Home → **Restore apps** → **Restore all**, or **Choose apps** (also Home → **Edit**) to pick apps with search and Select all like Add apps, then **Restore N**. You can also restore one app from its detail screen with **Unhide · restore original setting**.
-- **Reapply:** After a restart or an app update, Android may turn the indicator back on. When Home shows **reapply needed**, tap it to apply again. The app does not reapply on its own.
+- **Reapply:** After a restart or an app update, Android may turn the indicator back on. With automatic management, opening bluedotOFF re-applies those apps and shows "Re-applied automatically to N apps" (turn it off in Settings → **Re-apply automatically when opened**). After a phone update, or for apps that need checking or were reinstalled, it does not run automatically; tap **reapply needed** on Home.
 - **Check again:** Tap ↻ next to **Last checked N min ago** on Home to recheck your registered apps right away.
 - **Before uninstalling:** Settings → **Restore before uninstalling**. It returns every hidden app to its original state and then tells you whether you can uninstall bluedotOFF.
 - **Keep the screen open while it works.** If you leave the app during apply or restore, the remaining apps are not changed. Apps already done stay as they are.

@@ -187,6 +187,22 @@ class UiRenderTest {
         assertFalse(m.canSelect(leftOffApp))
     }
     /** Settings: "앱 삭제 전 복원" with its explanation, and "진단 정보 복사" under 정보 및 지원. */
+    /** Automatic re-apply keeps Home visible with one progress line (no full-screen overlay). */
+    @Test fun autoReapplyShowsALineAndKeepsHome(){
+        render("94-auto-reapply",model(applied=true).copy(busy=true,autoReapplying=true,progress=BatchProgress(3,8,BatchPhase.CHECKING)))
+        compose.onNodeWithText("자동 재적용 중 · 3 / 8").assertExists()
+        compose.onNodeWithText("앱 추가").assertExists()
+        compose.onNodeWithText("적용하고 안전하게 확인하고 있어요").assertDoesNotExist()
+    }
+    @Test fun settingsHasTheAutoReapplySwitchOnByDefault(){
+        render("88-settings-auto-reapply",model(page=Page.SETTINGS))
+        compose.onNode(androidx.compose.ui.test.isToggleable()and androidx.compose.ui.test.hasText("앱을 열 때 자동 재적용")).performScrollTo().assertIsOn()
+    }
+    @Test fun autoReapplySummarySaysHowManyWereReapplied(){
+        val e=model(applied=true).entries.single();val ok=listOf(BatchResult("a",e),BatchResult("b",e))
+        org.junit.Assert.assertEquals("2개 앱 자동 재적용 완료",BatchOutcome(true,ok,emptyList(),emptyList(),auto=true).summary())
+        org.junit.Assert.assertEquals("자동 재적용 1개 · 확인 필요 1개",BatchOutcome(true,listOf(BatchResult("a",e),BatchResult("b",error="x")),emptyList(),emptyList(),auto=true).summary())
+    }
     @Test fun settingsOffersRestoreBeforeUninstallAndDiagnostics(){
         render("88-settings-uninstall",model(page=Page.SETTINGS))
         compose.onNodeWithText("앱 삭제 전 복원").performScrollTo().assertExists()

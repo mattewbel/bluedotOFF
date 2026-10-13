@@ -70,7 +70,7 @@ fun TargetState.label(): String = when(this) {
 private fun Snapshot.blockReason(): String = rejectionReason()
 
 @Composable
-fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, hide: (String)->Unit, restore: (String)->Unit, hideAll: ()->Unit, restoreAll: ()->Unit, openBackend: ()->Unit, setupBackend: ()->Unit, authorize: ()->Unit, refresh: ()->Unit, allowNotifications: ()->Unit, dismissNotifications: ()->Unit, begin: ()->Unit, loadApps: ()->Unit, clearNotice: ()->Unit, togglePick:(String)->Unit={}, addSelected:()->Unit={}, queryChanged:(String)->Unit={},filterChanged:(AppFilter)->Unit={},editHome:()->Unit={},toggleHome:(String)->Unit={},restoreSelected:()->Unit={},contentShown:()->Unit={},pickerRevision:Long=0L,historyViewChanged:(HistoryView)->Unit={},pickerViewChanged:(PickerView)->Unit={},wirelessExit:()->Unit={},toggleAll:()->Unit={},managementChanged:(Boolean)->Unit={},removeManagementPermission:()->Unit={},sharedInspect:(String)->Unit={},sharedAccept:()->Unit={},sharedDismiss:()->Unit={},scopeChange:()->Unit={},reapplyNeeded:(List<String>)->Unit={},notificationChanged:(Boolean)->Unit={},recheck:()->Unit={},bigGroupsAccept:()->Unit={},bigGroupsDismiss:()->Unit={},restorePickAll:(List<String>)->Unit={},rejectedDismiss:()->Unit={},showPick:(String)->Unit={},showPickAll:(List<String>)->Unit={},showSelected:()->Unit={},openShow:()->Unit={},beforeUninstall:()->Unit={},uninstallDismiss:()->Unit={},openAppInfo:()->Unit={},copyDiagnostics:()->Unit={}) {
+fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, hide: (String)->Unit, restore: (String)->Unit, hideAll: ()->Unit, restoreAll: ()->Unit, openBackend: ()->Unit, setupBackend: ()->Unit, authorize: ()->Unit, refresh: ()->Unit, allowNotifications: ()->Unit, dismissNotifications: ()->Unit, begin: ()->Unit, loadApps: ()->Unit, clearNotice: ()->Unit, togglePick:(String)->Unit={}, addSelected:()->Unit={}, queryChanged:(String)->Unit={},filterChanged:(AppFilter)->Unit={},editHome:()->Unit={},toggleHome:(String)->Unit={},restoreSelected:()->Unit={},contentShown:()->Unit={},pickerRevision:Long=0L,historyViewChanged:(HistoryView)->Unit={},pickerViewChanged:(PickerView)->Unit={},wirelessExit:()->Unit={},toggleAll:()->Unit={},managementChanged:(Boolean)->Unit={},removeManagementPermission:()->Unit={},sharedInspect:(String)->Unit={},sharedAccept:()->Unit={},sharedDismiss:()->Unit={},scopeChange:()->Unit={},reapplyNeeded:(List<String>)->Unit={},notificationChanged:(Boolean)->Unit={},recheck:()->Unit={},bigGroupsAccept:()->Unit={},bigGroupsDismiss:()->Unit={},restorePickAll:(List<String>)->Unit={},rejectedDismiss:()->Unit={},showPick:(String)->Unit={},showPickAll:(List<String>)->Unit={},showSelected:()->Unit={},autoReapplyChanged:(Boolean)->Unit={},openShow:()->Unit={},beforeUninstall:()->Unit={},uninstallDismiss:()->Unit={},openAppInfo:()->Unit={},copyDiagnostics:()->Unit={}) {
     val context = LocalContext.current
     val dark = isSystemInDarkTheme()
     val motion = ValueAnimator.areAnimatorsEnabled()
@@ -104,7 +104,7 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
         BackHandler(enabled=model.page!=Page.HOME&&!model.busy) { navigate(Page.HOME) }
         Surface(Modifier.fillMaxSize(),color=surface,contentColor=scheme.onSurface) {
             BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding()) {
-                if(model.busy&&!model.scopePreview){
+                if(model.busy&&!model.scopePreview&&!model.autoReapplying){
                     val restoring=!model.operationHide
                     if(restoring)Box(Modifier.fillMaxSize().background(DotBlue))
                     BlueWaterBackground(tint,if(restoring)Color(0xFF191C20)else DotBlue,Modifier.fillMaxSize(),moving=motion)
@@ -112,7 +112,7 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
                 val wide=maxWidth>=760.dp
                 // Keep scroll/selection composition alive, but hide the page behind
                 // the work overlay visually and from accessibility services.
-                val pageVisibility=if(model.busy&&!model.scopePreview)Modifier.alpha(0f).clearAndSetSemantics{} else Modifier
+                val pageVisibility=if(model.busy&&!model.scopePreview&&!model.autoReapplying)Modifier.alpha(0f).clearAndSetSemantics{} else Modifier
                 Column(Modifier.fillMaxSize().then(pageVisibility).padding(horizontal=if(wide)BlueDotAppearance.WIDE_GUTTER.dp else BlueDotAppearance.PAGE_GUTTER.dp)) {
                     if(model.page==Page.HOME||model.gate!=Gate.READY)Row(Modifier.fillMaxWidth().heightIn(min=BlueDotAppearance.HEADER_HEIGHT.dp),verticalAlignment=Alignment.CenterVertically) {
                         Text(androidx.compose.ui.res.stringResource(R.string.brand_name),style=MaterialTheme.typography.headlineSmall,letterSpacing=(-0.8).sp,modifier=Modifier.weight(1f))
@@ -120,6 +120,11 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
                         Box(Modifier.padding(start=12.dp).size(18.dp).background(DotBlue,CircleShape).semantics { contentDescription=UiText.text(context,"bluedotOFF 아이콘") })
                     }
                     if(!(model.page==Page.HOME||model.gate!=Gate.READY))Spacer(Modifier.height(16.dp))
+                    // Automatic re-apply keeps the page and shows one progress line.
+                    if(model.busy&&model.autoReapplying)model.progress?.let{p->Column(Modifier.fillMaxWidth().padding(bottom=8.dp),verticalArrangement=Arrangement.spacedBy(4.dp)){
+                        LinearProgressIndicator(progress={p.percent/100f},modifier=Modifier.fillMaxWidth())
+                        Text("자동 재적용 중 · ${p.completed} / ${p.total}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    }}
                     if(model.rechecking&&model.gate==Gate.READY&&!model.busy&&!(model.page==Page.PICK&&model.loadingApps)){
                         val sp=model.scanProgress
                         Column(Modifier.fillMaxWidth().padding(bottom=8.dp),verticalArrangement=Arrangement.spacedBy(4.dp)){
@@ -150,7 +155,7 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
                         Page.PICK -> PickerScreen(model,togglePick,addSelected,queryChanged,loadApps,openBackend,filterChanged,pickerViewChanged,toggleAll,sharedInspect)
                         Page.DETAIL -> DetailScreen(model,hide,restore,openBackend)
                         Page.REAPPLY -> ReapplyScreen(model,hideAll,openBackend,select)
-                        Page.SETTINGS -> SettingsScreen(model,notificationChanged,openBackend,refresh,{navigate(Page.HELP)},wirelessExit,managementChanged,removeManagementPermission,scopeChange,openShow,beforeUninstall,copyDiagnostics)
+                        Page.SETTINGS -> SettingsScreen(model,notificationChanged,openBackend,refresh,{navigate(Page.HELP)},wirelessExit,managementChanged,removeManagementPermission,scopeChange,openShow,beforeUninstall,copyDiagnostics,autoReapplyChanged)
                         Page.HELP -> Unit
                     }
                     }
@@ -162,7 +167,7 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
                         }
                     }
                 }
-                if(model.busy&&!model.scopePreview) Surface(Modifier.fillMaxSize(),color=Color.Transparent) {
+                if(model.busy&&!model.scopePreview&&!model.autoReapplying) Surface(Modifier.fillMaxSize(),color=Color.Transparent) {
                     Box(Modifier.fillMaxSize().padding(24.dp),contentAlignment=Alignment.Center){
                     Surface(shape=RoundedCornerShape(24.dp),color=surface,contentColor=scheme.onSurface,modifier=Modifier.widthIn(max=560.dp)){
                     Column(Modifier.padding(24.dp).semantics { liveRegion=LiveRegionMode.Polite },horizontalAlignment=Alignment.CenterHorizontally) {
@@ -254,7 +259,7 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
         if(m.gate==Gate.WELCOME)Surface(shape=RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.tertiaryContainer,contentColor=MaterialTheme.colorScheme.onTertiaryContainer,border=BorderStroke(1.dp,MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha=0.18f))){
             Column(Modifier.fillMaxWidth().padding(18.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
                 Text("미리 알아두세요",style=MaterialTheme.typography.titleMedium)
-                listOf("앱은 최소한의 권한으로 작동해요. 그래서 일부 앱은 스스로 설정을 바꿔서 숨김이 짧은 주기로 풀릴 수 있어요.","앱이 스스로 구성을 바꾸거나 업데이트되면 숨김 설정이 기본값으로 돌아가요.","풀린 앱은 홈에 ‘재적용 필요’로 표시돼요. 눌러서 다시 적용하면 돼요.","갤럭시의 ‘보안 위험 자동 차단’이 켜져 있으면 연결할 수 없어요. 연결 안내에서 끄는 방법을 보여드려요.").forEach{line->
+                listOf("앱은 최소한의 권한으로 작동해요. 그래서 일부 앱은 스스로 설정을 바꿔서 숨김이 짧은 주기로 풀릴 수 있어요.","앱이 스스로 구성을 바꾸거나 업데이트되면 숨김 설정이 기본값으로 돌아가요.","풀린 앱은 앱을 열 때 자동으로 다시 적용돼요(무선 디버깅 자동 관리를 쓸 때). 홈의 ‘재적용 필요’를 눌러 직접 할 수도 있어요.","갤럭시의 ‘보안 위험 자동 차단’이 켜져 있으면 연결할 수 없어요. 연결 안내에서 끄는 방법을 보여드려요.").forEach{line->
                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){Text("•",style=MaterialTheme.typography.bodyMedium,translate=false);Text(line,style=MaterialTheme.typography.bodyMedium.copy(lineBreak=androidx.compose.ui.text.style.LineBreak.Paragraph.copy(wordBreak=androidx.compose.ui.text.style.LineBreak.WordBreak.Phrase)))}
                 }
             }
@@ -604,7 +609,7 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
     })
 }
 
-@Composable private fun SettingsScreen(m:UiModel,notificationChanged:(Boolean)->Unit,open:()->Unit,refresh:()->Unit,help:()->Unit,wirelessExit:()->Unit,managementChanged:(Boolean)->Unit,removeManagementPermission:()->Unit,scopeChange:()->Unit,openShow:()->Unit={},beforeUninstall:()->Unit={},copyDiagnostics:()->Unit={}) {
+@Composable private fun SettingsScreen(m:UiModel,notificationChanged:(Boolean)->Unit,open:()->Unit,refresh:()->Unit,help:()->Unit,wirelessExit:()->Unit,managementChanged:(Boolean)->Unit,removeManagementPermission:()->Unit,scopeChange:()->Unit,openShow:()->Unit={},beforeUninstall:()->Unit={},copyDiagnostics:()->Unit={},autoReapplyChanged:(Boolean)->Unit={}) {
     var uninstallConfirm by remember{mutableStateOf(false)}
     val toRestore=m.entries.count{it.enabled&&it.state!=TargetState.MISSING_TARGET}
     if(uninstallConfirm)AlertDialog(onDismissRequest={uninstallConfirm=false},title={Text("앱 삭제 전 복원")},
@@ -644,6 +649,9 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
         val notifyOn=m.notifications&&m.reapplyNotify
         Row(Modifier.toggleable(value=notifyOn,role=androidx.compose.ui.semantics.Role.Switch,onValueChange=notificationChanged),verticalAlignment=Alignment.CenterVertically){Text("재적용 알림",Modifier.weight(1f),style=MaterialTheme.typography.titleMedium);Switch(checked=notifyOn,onCheckedChange=null)}
         Text("휴대폰 재시작이나 앱 업데이트로 숨김이 풀리면 알려드려요. 절전 모드에서는 알림이 오지 않을 수 있어요.",style=MaterialTheme.typography.bodySmall)
+        HorizontalDivider()
+        Row(Modifier.toggleable(value=m.autoReapply,role=androidx.compose.ui.semantics.Role.Switch,onValueChange=autoReapplyChanged),verticalAlignment=Alignment.CenterVertically){Text("앱을 열 때 자동 재적용",Modifier.weight(1f),style=MaterialTheme.typography.titleMedium);Switch(checked=m.autoReapply,onCheckedChange=null)}
+        Text("숨김이 풀린 앱을 앱을 열 때 자동으로 다시 적용해요. 무선 디버깅 자동 관리를 켠 경우에만 동작해요.",style=MaterialTheme.typography.bodySmall)
         HorizontalDivider()
         // Only needed after bluedotOFF was removed and installed again (its records go with it).
         Column(verticalArrangement=Arrangement.spacedBy(2.dp)){

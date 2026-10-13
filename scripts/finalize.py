@@ -23,6 +23,7 @@ for variant,suffix,expected in [('localDebug','','3b3b208f92d3d437acf30c333d9a7b
     assert all('shizuku' not in str(e.attrib).lower() for e in manifest.iter())
     assert next(e for e in application.findall('activity') if e.attrib[android+'name'].endswith('LocalAdbSetupActivity')).attrib[android+'exported']=='false'
     assert next(e for e in application.findall('receiver') if e.attrib[android+'name'].endswith('PairingReplyReceiver')).attrib[android+'exported']=='false'
+    assert next(e for e in application.findall('receiver') if e.attrib[android+'name'].endswith('LifecycleReceiver')).attrib[android+'exported']=='false'
     sign=subprocess.run([str(tools/'apksigner.bat'),'verify','--print-certs',str(apk)],capture_output=True,text=True,env=env);assert sign.returncode==0
     cert=next(line.split(': ',1)[1].strip() for line in sign.stdout.splitlines() if 'certificate SHA-256 digest:' in line);assert cert==expected
     align=subprocess.run([str(tools/'zipalign.exe'),'-c','-P','16','4',str(apk)],capture_output=True);assert align.returncode==0
@@ -62,4 +63,7 @@ assert not re.search(r'Settings\.(?:Global|Secure|System)\.put',helper)
 assert not re.search(r'ProcessBuilder|Runtime\.getRuntime|updatePermissionFlags',controls)
 result['mergedPermissions']=sorted(permissions);result['staticAudit']='fixed-loopback, typed allowlist, single narrow FINE setter; pattern/manifest/dex checks, not a formal proof'
 (art/f"build-audit-{result['version']}.json").write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
+# Published next to the release APK so anyone (or any analysis tool) can confirm a file is the official build.
+rel=result['apks']['release'];sig=':'.join(rel['signerSha256'][i:i+2] for i in range(0,64,2)).upper()
+(art/f"bluedotOFF-{result['version']}-checksums.txt").write_text(''.join(line+'\n' for line in [rel['file'],'SHA-256: '+rel['sha256'],'Signing certificate SHA-256: '+sig]),encoding='utf-8')
 print(json.dumps(result,ensure_ascii=False,indent=2))

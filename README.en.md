@@ -2,7 +2,11 @@
 
 [한국어](README.md) | **English**
 
-**[⬇ Download the latest APK](https://github.com/mattewbel/bluedotOFF/releases/latest)** — get `bluedotOFF-1.0.2-release.apk` under Assets.
+**[⬇ Download the latest APK](https://github.com/mattewbel/bluedotOFF/releases/latest)** — get `bluedotOFF-1.0.3-release.apk` under Assets.
+
+> 🔒 **Open source · No ads, analytics or external servers · No root**  
+> The wireless debugging connection stays inside the phone (127.0.0.1). Location permissions are untouched; only one indicator flag (`0x100`) changes.  
+> To confirm a download is the official file, see `checksums.txt` on the release. Signing certificate SHA-256: `61:9F:E1:EC:BD:F5:9D:5D:0B:83:8D:DC:64:20:E5:8B:E9:0F:82:8B:E1:1C:B6:1F:E6:C8:E6:AA:4C:EA:AD:62`
 
 An app for Samsung One UI 9 (Android 17) phones that **hides the blue location indicator (Blue Dot) only for the apps you choose**.
 Location permissions and location history stay as they are. bluedotOFF changes a single setting that controls the status bar indicator, and you can undo it at any time.
@@ -21,7 +25,7 @@ Location permissions and location history stay as they are. bluedotOFF changes a
 | <img src="docs/screenshots/en/home.png" width="240" alt="Home screen"> | <img src="docs/screenshots/en/add-apps.png" width="240" alt="Add apps screen"> | <img src="docs/screenshots/en/settings.png" width="240" alt="Settings screen"> |
 | Applied apps and apps to reapply at a glance | Pick apps to hide and apply at once | Scope, automatic management, reapply notifications, apps left hidden |
 
-<sub>Screenshots from a real device (Galaxy Z Fold7), in Korean. Installed app names and icons are blurred. The app shows English on any non-Korean phone.</sub>
+<sub>Screenshots from a real device (Galaxy Z Fold7). Installed app names and icons are blurred. The app shows English on any non-Korean phone.</sub>
 
 1. Pair the app with your phone once through Wireless debugging (on the phone itself, no computer).
 2. Choose the apps whose blue location dot you want to hide.
@@ -40,22 +44,32 @@ bluedotOFF has one goal:
 ## Limitations
 
 - **Some apps lose hiding quickly.** When an app changes its own components, is updated, or the phone restarts, Android resets the indicator setting to its default. Some banking apps, for example, lose it within minutes. Such apps are marked "reapply needed" on Home; bluedotOFF does not reapply automatically (so it does not keep touching your phone).
-- **Only one device has been verified.** It has been tested only on the Galaxy Z Fold7 (One UI 9). Other models work only if their internals are identical; otherwise the app stops without changing anything.
+- **Only a few devices have been tested.** The developer verified the Galaxy Z Fold7, and a user confirmed the Galaxy Z Fold8 ([Tested devices](#tested-devices)). Other models work only if their internals are identical; otherwise the app stops without changing anything.
 - **US models** have an extra location indicator path, so the dot may not be hidden.
 - **It does not work while Auto Blocker is on.** Auto Blocker blocks wireless debugging. Turn it off in Settings → Security and privacy → Auto Blocker when you use the app. New Galaxy phones have it on by default, and with “Turn on automatically” it turns back on after 30 minutes. With automatic management, the app notices the block and tells you how to turn it off.
 - **Developer options and Wireless debugging are required.** With automatic management, Wireless debugging stays on while you use the app (Android may show a "Wireless debugging connected" notification once when it opens) and turns off shortly after you leave.
-- **Restore everything before uninstalling.** If you just uninstall, the hidden apps may stay hidden. After reinstalling, you can unhide them in Settings → **Apps left hidden (after reinstalling only)**. However, shared app groups and some internal system apps cannot be unhidden there after their records are lost.
+- **Restore everything before uninstalling.** Tap Settings → **Restore before uninstalling**. If you just uninstall, the hidden apps may stay hidden. After reinstalling, you can unhide them in Settings → **Apps left hidden (after reinstalling only)**. However, shared app groups and some internal system apps cannot be unhidden there after their records are lost.
+
+
+## Tested devices
+
+| Device | Model | One UI | Region | Status |
+|---|---|---|---|---|
+| Galaxy Z Fold7 | SM-F966N | 9 | Korea | Verified by the developer |
+| Galaxy Z Fold8 | SM-F971N | 9.0 | Korea (KOO) | User report — apply and restore work in KakaoMap and Naver Map |
+
+If you tried another model, please share the result in [Issues](../../issues) using Settings → **Copy diagnostic info**. Working devices are added to this list too.
 
 ## Install
 
-Download the latest APK (`bluedotOFF-1.0.2-release.apk`) from [Releases](../../releases) and install it. You may need to allow "Install unknown apps" the first time.
+Download the latest APK (`bluedotOFF-1.0.3-release.apk`) from [Releases](../../releases) and install it. You may need to allow "Install unknown apps" the first time.
 
 ## Requirements
 
 - A phone with Samsung One UI 9 or later and Android 17 or later
 - Wi-Fi connection (needed for Wireless debugging; no data is sent over the internet)
 - US models (CSC country code US) can use the app, but Home shows a warning. US models have one more way of showing the location indicator, so the blue dot may remain even after applying.
-- On first connection, the app checks that the phone's internals match verified values. Verified on the Galaxy Z Fold7; other One UI 9 models can be used if they are identical. If not, the app stops as an unsupported device without changing anything.
+- On first connection, the app checks that the phone's internals match verified values. Verified on the Galaxy Z Fold7 and confirmed by a user on the Galaxy Z Fold8; other One UI 9 models can be used if they are identical. If not, the app stops as an unsupported device without changing anything.
 
 ## First-time setup
 
@@ -79,6 +93,7 @@ Pairing is needed only once.
 - **Restore:** Home → **Restore apps** → **Restore all**, or **Choose apps** (also Home → **Edit**) to pick apps with search and Select all like Add apps, then **Restore N**. You can also restore one app from its detail screen with **Unhide · restore original setting**.
 - **Reapply:** After a restart or an app update, Android may turn the indicator back on. When Home shows **reapply needed**, tap it to apply again. The app does not reapply on its own.
 - **Check again:** Tap ↻ next to **Last checked N min ago** on Home to recheck your registered apps right away.
+- **Before uninstalling:** Settings → **Restore before uninstalling**. It returns every hidden app to its original state and then tells you whether you can uninstall bluedotOFF.
 - **Keep the screen open while it works.** If you leave the app during apply or restore, the remaining apps are not changed. Apps already done stay as they are.
 - **Apps left hidden (after reinstalling only):** Only needed if bluedotOFF was removed and installed again. Settings → **Apps left hidden (after reinstalling only)** → pick apps → **Unhide N**. Preinstalled apps may have had the indicator off originally, so Select all skips them; pick them one by one.
 
@@ -100,7 +115,7 @@ To stop, turn off **Settings → Manage wireless debugging automatically** or ta
 
 ## Good to know
 
-- **Restore all apps before uninstalling bluedotOFF.** Uninstalling or clearing app data also removes the record of the original state, so hidden apps stay hidden. After reinstalling, such apps show as "Hidden · no record" and can be unhidden in Settings → **Apps left hidden (after reinstalling only)**. Without a record this turns the indicator setting on rather than restoring an exact original, and apps the system excludes from the indicator may still not show it. However, shared app groups and some internal system apps cannot be unhidden there after their records are lost. Restarting the phone sometimes brings the indicator back, but it depends on the app.
+- **Before uninstalling, tap Settings → Restore before uninstalling.** It returns every app to its original state and then tells you whether it is safe to uninstall. Uninstalling or clearing app data also removes the record of the original state, so hidden apps stay hidden. After reinstalling, such apps show as "Hidden · no record" and can be unhidden in Settings → **Apps left hidden (after reinstalling only)**. Without a record this turns the indicator setting on rather than restoring an exact original, and apps the system excludes from the indicator may still not show it. However, shared app groups and some internal system apps cannot be unhidden there after their records are lost. Restarting the phone sometimes brings the indicator back, but it depends on the app.
 - Android sometimes turns the indicator back on (restart, app update, OS policy). The app detects this and shows **reapply needed**.
 - There is no real-time monitoring. **When you open the app again**, it rechecks only the apps Android reported as changed (update, install, component change), or all registered apps if 10 minutes have passed. Tap ↻ next to **Last checked** on Home to check at any time. While bluedotOFF is fully closed, reapply notifications cannot report app updates right away, and they may not arrive in power saving mode.
 - If the connection drops or the state cannot be confirmed, the app does not report success and stops changing things. If you see **Restore needs review**, do not clear app data; connect again and recheck.
@@ -113,7 +128,7 @@ Korean phones show Korean; every other language (English, Spanish, Chinese, …)
 
 ## Questions and bug reports
 
-Please open an issue in this repository's [Issues](../../issues). If the app stopped making changes (for example **Restore needs review**), do not clear app data; ask in Issues instead. Do not post personal information (phone numbers, accounts, location history screens, etc.).
+Please open an issue in this repository's [Issues](../../issues). If the app stopped making changes (for example **Restore needs review**), do not clear app data; ask in Issues instead. Do not post personal information (phone numbers, accounts, location history screens, etc.). Tapping Settings → About & support → **Copy diagnostic info** and pasting the result helps a lot. It contains only device and version details, not your installed apps or location history.
 
 ## Privacy and security
 

@@ -12,7 +12,8 @@
         <activity android:name=".MainActivity" android:exported="true" >
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity>
-        <receiver android:name=".LifecycleReceiver" android:exported="true">
+        <!-- Only the system sends BOOT_COMPLETED / PACKAGE_FULLY_REMOVED; other apps cannot reach this receiver. -->
+        <receiver android:name=".LifecycleReceiver" android:exported="false">
             <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>
             <intent-filter><action android:name="android.intent.action.PACKAGE_FULLY_REMOVED" /><data android:scheme="package" /></intent-filter>
         </receiver>

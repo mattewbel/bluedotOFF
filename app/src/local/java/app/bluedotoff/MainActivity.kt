@@ -107,6 +107,7 @@ class MainActivity : ComponentActivity() {
                         batchResults=outcome.results,wirelessWarning=outcome.cleanupWarning,
                         notice=if(first){(if(outcome.error.isBlank()&&outcome.results.all{it.success})"" else outcome.error.ifBlank{outcome.summary()}).ifBlank{skipNotice}.also{skipNotice=""}}else model.notice,
                         successToken=if(first&&outcome.hide&&succeeded.isNotEmpty())model.successToken+1 else model.successToken)
+                    if(first&&uninstallRestore&&!outcome.hide&&!outcome.show){uninstallRestore=false;model=model.copy(uninstallCheck=model.entries.count{it.enabled&&it.state!=TargetState.MISSING_TARGET})}
                     // Target results update display hints; they do not change package inventory.
                     // Keep the 30-minute/package-event inventory expiry and fresh write preflights.
                     if(scopeChanged){invalidateScan();scopeSelected()}else{
@@ -145,7 +146,7 @@ class MainActivity : ComponentActivity() {
         else @Suppress("DEPRECATION") registerReceiver(packageChanges,packageFilter)
         wifiObserver=WifiConnection.observe(this){runOnUiThread{model=model.copy(automaticReady=automaticReady());if(ForegroundState.active&&!model.busy)refresh()}}
         navigateNotification(intent)
-        setContent { BlueDotApp(model, ::navigate, ::select, ::requestHide, ::requestRestore, ::batchHide, ::restoreAll, ::openBackend, ::openBackend, ::openBackend, ::refreshFromUser, ::allowNotifications, ::dismissNotificationOffer, ::begin, ::loadApps, ::clearNotice, ::togglePick, ::addSelected, ::changeQuery, ::changeFilter, { model=model.copy(homePicked=emptySet());navigate(Page.RESTORE) }, ::toggleHomePick, ::restoreSelected, ::contentShown, pickerRevision, { model=model.copy(historyView=it) },pickerViewChanged={model=model.copy(pickerView=it,pickerRows=null);filterPicker()},wirelessExit={if(!model.busy)WirelessDebuggingExit.open(this)},toggleAll=::toggleAll,managementChanged=::managementChanged,removeManagementPermission=::removeManagementPermission,sharedInspect={pickGroups(listOf(it))},sharedAccept=::acceptShared,sharedDismiss={sharedGeneration++;model=model.copy(sharedOffer=null)},scopeChange=::chooseScope,reapplyNeeded={perform(it,true)},notificationChanged=::reapplyNotificationChanged,recheck=::recheck,bigGroupsAccept=::acceptBigGroups,bigGroupsDismiss={model=model.copy(bigGroups=emptyList())},rejectedDismiss={model=model.copy(rejectedGroupList=emptyList())},restorePickAll=::toggleAllRestore,showPick=::toggleShowPick,showPickAll=::toggleAllShow,showSelected=::showSelected,openShow={model=model.copy(showPicked=emptySet());navigate(Page.SHOW)}) }
+        setContent { BlueDotApp(model, ::navigate, ::select, ::requestHide, ::requestRestore, ::batchHide, ::restoreAll, ::openBackend, ::openBackend, ::openBackend, ::refreshFromUser, ::allowNotifications, ::dismissNotificationOffer, ::begin, ::loadApps, ::clearNotice, ::togglePick, ::addSelected, ::changeQuery, ::changeFilter, { model=model.copy(homePicked=emptySet());navigate(Page.RESTORE) }, ::toggleHomePick, ::restoreSelected, ::contentShown, pickerRevision, { model=model.copy(historyView=it) },pickerViewChanged={model=model.copy(pickerView=it,pickerRows=null);filterPicker()},wirelessExit={if(!model.busy)WirelessDebuggingExit.open(this)},toggleAll=::toggleAll,managementChanged=::managementChanged,removeManagementPermission=::removeManagementPermission,sharedInspect={pickGroups(listOf(it))},sharedAccept=::acceptShared,sharedDismiss={sharedGeneration++;model=model.copy(sharedOffer=null)},scopeChange=::chooseScope,reapplyNeeded={perform(it,true)},notificationChanged=::reapplyNotificationChanged,recheck=::recheck,bigGroupsAccept=::acceptBigGroups,bigGroupsDismiss={model=model.copy(bigGroups=emptyList())},rejectedDismiss={model=model.copy(rejectedGroupList=emptyList())},restorePickAll=::toggleAllRestore,showPick=::toggleShowPick,showPickAll=::toggleAllShow,showSelected=::showSelected,openShow={model=model.copy(showPicked=emptySet());navigate(Page.SHOW)},beforeUninstall=::beforeUninstall,uninstallDismiss={model=model.copy(uninstallCheck=null)},openAppInfo=::openAppInfo,copyDiagnostics=::copyDiagnostics) }
     }
     // Leaving bluedotOFF turns a held wireless debugging off after a short grace (quick switches back keep it on).
     private val releaseHandler=android.os.Handler(android.os.Looper.getMainLooper())
@@ -315,6 +316,24 @@ class MainActivity : ComponentActivity() {
     private fun toggleShowPick(pkg:String){if(model.busy)return;model=model.copy(showPicked=if(pkg in model.showPicked)model.showPicked-pkg else model.showPicked+pkg)}
     private fun toggleAllShow(pkgs:List<String>){if(model.busy)return;model=model.copy(showPicked=if(pkgs.all{it in model.showPicked})model.showPicked-pkgs.toSet() else model.showPicked+pkgs)}
     private fun showSelected() = perform(model.showPicked.toList(),hide=false,show=true)
+    /** "앱 삭제 전 복원": restores every registered app, then tells whether bluedotOFF can be uninstalled now.
+     *  Uninstalling removes the app's permission and its connection key by itself, so only the restore is needed. */
+    private var uninstallRestore=false
+    private fun beforeUninstall(){if(model.busy)return
+        if(model.entries.none{it.enabled&&it.state!=TargetState.MISSING_TARGET}){model=model.copy(uninstallCheck=0);return}
+        uninstallRestore=true;restoreAll();if(!BatchRuntime.state.value.busy)uninstallRestore=false}
+    private fun openAppInfo()=startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,android.net.Uri.fromParts("package",packageName,null)))
+    /** Device facts for a GitHub issue; no app list, location history or account data. */
+    private fun copyDiagnostics(){
+        fun stored(key:String)=prefs.getString(key,null)?.takeIf{it.isNotBlank()}?:"not checked yet"
+        val text=listOf("bluedotOFF diagnostics","App: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})","Device: ${Build.MANUFACTURER} ${Build.MODEL} (${Build.DEVICE})",
+            "Android: ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})","Build: ${Build.DISPLAY}","One UI: ${stored("deviceOneUi")}","Country: ${stored("deviceCountry")}",
+            "Compatibility check: ${when(model.gate){Gate.READY->"passed";Gate.UNSUPPORTED->"not supported (stopped safely)";else->"not checked yet"}}",
+            "Automatic management: ${if(model.autoManagement)"on" else "off"}","App scope: ${model.applicationScope.name}",
+            "Registered apps: ${model.visibleEntries.count{it.enabled}} (applied ${model.lastVerifiedAppliedCount}, reapply needed ${model.reapplyCount})").joinToString("\n")
+        (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("bluedotOFF diagnostics",text))
+        model=model.copy(notice="진단 정보를 복사했어요. GitHub Issues에 문의할 때 붙여넣어 주세요. 설치된 앱 목록이나 위치 기록은 들어 있지 않아요.")
+    }
     /** "전체 선택" on the restore page: all listed apps (with their shared-group members) on, or all off. */
     private fun toggleAllRestore(pkgs:List<String>){if(model.busy)return
         val all=pkgs.flatMap{p->model.entries.firstOrNull{it.identity.packageName==p}?.groupIdentities?.map{it.packageName}?.takeIf{it.isNotEmpty()}?:listOf(p)}.toSet()

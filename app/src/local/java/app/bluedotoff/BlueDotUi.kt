@@ -70,7 +70,7 @@ fun TargetState.label(): String = when(this) {
 private fun Snapshot.blockReason(): String = rejectionReason()
 
 @Composable
-fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, hide: (String)->Unit, restore: (String)->Unit, hideAll: ()->Unit, restoreAll: ()->Unit, openBackend: ()->Unit, setupBackend: ()->Unit, authorize: ()->Unit, refresh: ()->Unit, allowNotifications: ()->Unit, dismissNotifications: ()->Unit, begin: ()->Unit, loadApps: ()->Unit, clearNotice: ()->Unit, togglePick:(String)->Unit={}, addSelected:()->Unit={}, queryChanged:(String)->Unit={},filterChanged:(AppFilter)->Unit={},editHome:()->Unit={},toggleHome:(String)->Unit={},restoreSelected:()->Unit={},contentShown:()->Unit={},pickerRevision:Long=0L,historyViewChanged:(HistoryView)->Unit={},pickerViewChanged:(PickerView)->Unit={},wirelessExit:()->Unit={},toggleAll:()->Unit={},managementChanged:(Boolean)->Unit={},removeManagementPermission:()->Unit={},sharedInspect:(String)->Unit={},sharedAccept:()->Unit={},sharedDismiss:()->Unit={},scopeChange:()->Unit={},reapplyNeeded:(List<String>)->Unit={},notificationChanged:(Boolean)->Unit={},recheck:()->Unit={},bigGroupsAccept:()->Unit={},bigGroupsDismiss:()->Unit={},restorePickAll:(List<String>)->Unit={},rejectedDismiss:()->Unit={},showPick:(String)->Unit={},showPickAll:(List<String>)->Unit={},showSelected:()->Unit={},openShow:()->Unit={}) {
+fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, hide: (String)->Unit, restore: (String)->Unit, hideAll: ()->Unit, restoreAll: ()->Unit, openBackend: ()->Unit, setupBackend: ()->Unit, authorize: ()->Unit, refresh: ()->Unit, allowNotifications: ()->Unit, dismissNotifications: ()->Unit, begin: ()->Unit, loadApps: ()->Unit, clearNotice: ()->Unit, togglePick:(String)->Unit={}, addSelected:()->Unit={}, queryChanged:(String)->Unit={},filterChanged:(AppFilter)->Unit={},editHome:()->Unit={},toggleHome:(String)->Unit={},restoreSelected:()->Unit={},contentShown:()->Unit={},pickerRevision:Long=0L,historyViewChanged:(HistoryView)->Unit={},pickerViewChanged:(PickerView)->Unit={},wirelessExit:()->Unit={},toggleAll:()->Unit={},managementChanged:(Boolean)->Unit={},removeManagementPermission:()->Unit={},sharedInspect:(String)->Unit={},sharedAccept:()->Unit={},sharedDismiss:()->Unit={},scopeChange:()->Unit={},reapplyNeeded:(List<String>)->Unit={},notificationChanged:(Boolean)->Unit={},recheck:()->Unit={},bigGroupsAccept:()->Unit={},bigGroupsDismiss:()->Unit={},restorePickAll:(List<String>)->Unit={},rejectedDismiss:()->Unit={},showPick:(String)->Unit={},showPickAll:(List<String>)->Unit={},showSelected:()->Unit={},openShow:()->Unit={},beforeUninstall:()->Unit={},uninstallDismiss:()->Unit={},openAppInfo:()->Unit={},copyDiagnostics:()->Unit={}) {
     val context = LocalContext.current
     val dark = isSystemInDarkTheme()
     val motion = ValueAnimator.areAnimatorsEnabled()
@@ -150,7 +150,7 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
                         Page.PICK -> PickerScreen(model,togglePick,addSelected,queryChanged,loadApps,openBackend,filterChanged,pickerViewChanged,toggleAll,sharedInspect)
                         Page.DETAIL -> DetailScreen(model,hide,restore,openBackend)
                         Page.REAPPLY -> ReapplyScreen(model,hideAll,openBackend,select)
-                        Page.SETTINGS -> SettingsScreen(model,notificationChanged,openBackend,refresh,{navigate(Page.HELP)},wirelessExit,managementChanged,removeManagementPermission,scopeChange,openShow)
+                        Page.SETTINGS -> SettingsScreen(model,notificationChanged,openBackend,refresh,{navigate(Page.HELP)},wirelessExit,managementChanged,removeManagementPermission,scopeChange,openShow,beforeUninstall,copyDiagnostics)
                         Page.HELP -> Unit
                     }
                     }
@@ -222,6 +222,10 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
             text={Text("숨긴 앱을 원래 표시 상태로 되돌려요. 위치 권한과 사용 기록은 그대로예요. 앱을 지우기 전에는 모두 복원해 주세요.")},
             confirmButton={TextButton(onClick={showRestoreMenu=false;showRestoreAll=true},enabled=model.canOperate){Text("모두 복원")}},
             dismissButton={TextButton(onClick={showRestoreMenu=false;editHome()}){Text("골라서 복원")}})
+        model.uninstallCheck?.takeIf{!model.busy}?.let{left->AlertDialog(onDismissRequest=uninstallDismiss,title={Text("앱 삭제 전 복원")},
+            text={Text(if(left==0)"숨긴 앱을 모두 원래 상태로 되돌렸어요. 이제 bluedotOFF를 삭제해도 돼요. 앱을 삭제하면 권한과 연결 정보도 함께 지워져요. 무선 디버깅이 켜져 있다면 개발자 옵션에서 꺼주세요." else "${left}개 앱을 지금 복원하지 못했어요. 홈의 ‘등록한 앱’에서 상태를 확인한 뒤 다시 눌러주세요. 이 앱들이 남아 있는 동안에는 bluedotOFF를 삭제하지 마세요.")},
+            confirmButton={if(left==0)TextButton(onClick={uninstallDismiss();openAppInfo()}){Text("앱 정보 열기")} else TextButton(onClick=uninstallDismiss){Text("확인")}},
+            dismissButton={if(left==0)TextButton(onClick=uninstallDismiss){Text("닫기")}})}
         if(showRestoreAll) RestoreAllDialog(model.entries.count{it.enabled},{showRestoreAll=false},{showRestoreAll=false;restoreAll()})
     }
 }
@@ -600,7 +604,12 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
     })
 }
 
-@Composable private fun SettingsScreen(m:UiModel,notificationChanged:(Boolean)->Unit,open:()->Unit,refresh:()->Unit,help:()->Unit,wirelessExit:()->Unit,managementChanged:(Boolean)->Unit,removeManagementPermission:()->Unit,scopeChange:()->Unit,openShow:()->Unit={}) {
+@Composable private fun SettingsScreen(m:UiModel,notificationChanged:(Boolean)->Unit,open:()->Unit,refresh:()->Unit,help:()->Unit,wirelessExit:()->Unit,managementChanged:(Boolean)->Unit,removeManagementPermission:()->Unit,scopeChange:()->Unit,openShow:()->Unit={},beforeUninstall:()->Unit={},copyDiagnostics:()->Unit={}) {
+    var uninstallConfirm by remember{mutableStateOf(false)}
+    val toRestore=m.entries.count{it.enabled&&it.state!=TargetState.MISSING_TARGET}
+    if(uninstallConfirm)AlertDialog(onDismissRequest={uninstallConfirm=false},title={Text("앱 삭제 전 복원")},
+        text={Text("등록한 ${toRestore}개 앱을 모두 원래 표시 상태로 되돌려요. 끝나면 bluedotOFF를 삭제해도 되는지 알려드려요.")},
+        confirmButton={TextButton(onClick={uninstallConfirm=false;beforeUninstall()}){Text("복원 시작")}},dismissButton={TextButton(onClick={uninstallConfirm=false}){Text("취소")}})
     val context=LocalContext.current
     var autoConsent by remember{mutableStateOf(false)}
     var advancedSettings by rememberSaveable{mutableStateOf(false)}
@@ -642,9 +651,16 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
             Text("bluedotOFF를 지웠다가 다시 설치했을 때만 필요해요. 예전에 숨긴 앱이 기록 없이 숨겨진 채 남아 있으면 여기서 숨김을 풀 수 있어요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }
         HorizontalDivider()
+        // Uninstalling or clearing data does not restore anything; this is the one step to take first.
+        Column(verticalArrangement=Arrangement.spacedBy(2.dp)){
+            LinkRow("앱 삭제 전 복원"){if(toRestore==0)beforeUninstall() else uninstallConfirm=true}
+            Text("bluedotOFF를 지우기 전에 눌러주세요. 숨긴 앱을 모두 원래 상태로 되돌려요. 앱 삭제나 데이터 초기화만으로는 숨김이 풀리지 않아요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        HorizontalDivider()
         Column(verticalArrangement=Arrangement.spacedBy(2.dp)){
             Text("정보 및 지원",style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.primary)
             LinkRow("도움말 · 문제 해결",onClick=help)
+            LinkRow("진단 정보 복사",onClick=copyDiagnostics)
             LinkRow(if(advancedSettings)"고급 설정 닫기" else "고급 설정"){advancedSettings=!advancedSettings}
             if(advancedSettings)Column(Modifier.padding(start=12.dp,bottom=8.dp),verticalArrangement=Arrangement.spacedBy(6.dp)){
                 Text("기기 호환성",style=MaterialTheme.typography.titleSmall);Text(m.compatibility,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -679,7 +695,7 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
         Text("복원 확인이 필요할 때",style=MaterialTheme.typography.titleMedium)
         Text("실패 기록을 지우려고 앱 데이터를 초기화하거나 앱을 삭제하지 마세요. 기기를 연결해 현재 상태를 읽은 뒤, GitHub의 bluedotOFF 저장소 Issues에 문의해 주세요. 상태가 확실하지 않은 앱은 bluedotOFF가 스스로 다시 바꾸지 않아요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         Text("bluedotOFF를 지웠다가 다시 설치했을 때",style=MaterialTheme.typography.titleMedium)
-        Text("앱을 지우면 원래 상태 기록도 함께 지워져서, 숨겨 둔 앱이 숨겨진 채로 남을 수 있어요. 이런 앱은 설정 → ‘숨김이 남은 앱’에서 숨김을 풀 수 있어요. 휴대폰을 재시작하면 표시가 돌아오기도 하지만 앱마다 달라요. 지우기 전에는 먼저 모두 복원해 주세요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("앱을 지우면 원래 상태 기록도 함께 지워져서, 숨겨 둔 앱이 숨겨진 채로 남을 수 있어요. 이런 앱은 설정 → ‘숨김이 남은 앱’에서 숨김을 풀 수 있어요. 휴대폰을 재시작하면 표시가 돌아오기도 하지만 앱마다 달라요. 지우기 전에는 설정 → ‘앱 삭제 전 복원’을 눌러주세요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         Text("위치 사용 기록",style=MaterialTheme.typography.titleMedium)
         Text("앱 기록은 최근 위치를 쓴 앱 목록이에요. ‘전체 위치 사용’에서는 시스템 서비스도 볼 수 있어요. 삼성 설정의 권한 사용 기록과는 출처가 달라요. 숨김을 적용해도 위치 사용 기록은 남고, 기록이 있다고 파란 위치 표시가 떴다는 뜻은 아니에요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         Text("루팅이나 부트로더 해제는 필요 없어요. 휴대폰의 무선 디버깅 기능만 쓰고, 앱의 위치 권한과 보안 설정은 바꾸지 않아요. 네트워크 권한은 휴대폰 안의 무선 디버깅 연결에만 써요. 외부 서버 통신·광고·분석·추적 기능은 없어요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)

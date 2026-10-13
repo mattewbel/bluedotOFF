@@ -186,6 +186,23 @@ class UiRenderTest {
         compose.onNodeWithText("‘숨김 남음 · 기록 없음’은 bluedotOFF 기록 없이 이미 숨겨져 있는 앱이에요. 다시 숨길 필요가 없고, 설정 → ‘숨김이 남은 앱’에서 숨김을 풀 수 있어요.").assertExists()
         assertFalse(m.canSelect(leftOffApp))
     }
+    /** Settings: "앱 삭제 전 복원" with its explanation, and "진단 정보 복사" under 정보 및 지원. */
+    @Test fun settingsOffersRestoreBeforeUninstallAndDiagnostics(){
+        render("88-settings-uninstall",model(page=Page.SETTINGS))
+        compose.onNodeWithText("앱 삭제 전 복원").performScrollTo().assertExists()
+        compose.onNodeWithText("bluedotOFF를 지우기 전에 눌러주세요. 숨긴 앱을 모두 원래 상태로 되돌려요. 앱 삭제나 데이터 초기화만으로는 숨김이 풀리지 않아요.").performScrollTo().assertExists()
+        compose.onNodeWithText("진단 정보 복사").performScrollTo().assertExists()
+    }
+    @Test fun restoreBeforeUninstallSaysWhenUninstallingIsSafe(){
+        render("93-uninstall-ready",model(applied=true).copy(entries=emptyList(),uninstallCheck=0))
+        compose.onNodeWithText("숨긴 앱을 모두 원래 상태로 되돌렸어요. 이제 bluedotOFF를 삭제해도 돼요.",substring=true).assertExists()
+        compose.onNodeWithText("앱 정보 열기").assertExists()
+    }
+    @Test fun restoreBeforeUninstallWarnsWhileAppsRemain(){
+        render("93-uninstall-left",model(applied=true).copy(uninstallCheck=3))
+        compose.onNodeWithText("3개 앱을 지금 복원하지 못했어요.",substring=true).assertExists()
+        compose.onNodeWithText("앱 정보 열기").assertDoesNotExist()
+    }
     @Test fun settingsOffersAppsLeftHidden(){
         render("88-settings-turn-back-on",model(page=Page.SETTINGS))
         compose.onNodeWithText("숨김이 남은 앱 (재설치 시에만)").performScrollTo().assertExists()
@@ -377,7 +394,7 @@ class UiRenderTest {
         compose.onNodeWithText("연결 관리").assertDoesNotExist();compose.onNodeWithText("앱 삭제 전 모두 복원").assertDoesNotExist()
         compose.onNodeWithText("현재 적용 범위").assertExists()
         compose.onNodeWithText("읽기 전용으로 다시 확인").assertDoesNotExist()
-        compose.onNodeWithText("고급 설정").performClick()
+        compose.onNodeWithText("고급 설정").performScrollTo().performClick()
         compose.onNodeWithText("읽기 전용으로 다시 확인").performScrollTo().assertExists()
     }
     @Test fun reapply(){render("08-reapply",model(page=Page.REAPPLY));compose.onNodeWithText("모두 재적용").assertExists()}

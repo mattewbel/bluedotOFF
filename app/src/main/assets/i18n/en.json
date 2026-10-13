@@ -756,6 +756,15 @@
   "숨김 풀기 {0}개 · 확인 필요 {1}개": "Unhidden: {0} · Needs attention: {1}",
   "bluedotOFF 기록이 있는 앱이에요. 숨김 풀기 대신 원래대로 복원을 써주세요.": "This app has a bluedotOFF record. Use Restore instead of Unhide.",
   "‘숨김 남음 · 기록 없음’은 bluedotOFF 기록 없이 이미 숨겨져 있는 앱이에요. 다시 숨길 필요가 없고, 설정 → ‘숨김이 남은 앱’에서 숨김을 풀 수 있어요.": "‘Hidden · no record’ apps are already hidden without a bluedotOFF record. There is nothing to hide; you can unhide them in Settings → Apps left hidden.",
-  "앱을 지우면 원래 상태 기록도 함께 지워져서, 숨겨 둔 앱이 숨겨진 채로 남을 수 있어요. 이런 앱은 설정 → ‘숨김이 남은 앱’에서 숨김을 풀 수 있어요. 휴대폰을 재시작하면 표시가 돌아오기도 하지만 앱마다 달라요. 지우기 전에는 먼저 모두 복원해 주세요.": "Removing the app also removes its record of the original state, so apps you hid may stay hidden. You can unhide them in Settings → Apps left hidden. Restarting the phone sometimes brings the indicator back, but it depends on the app. Restore everything before removing bluedotOFF.",
-  "맨 위 스위치를 끄세요. ‘자동으로 켜기’도 끄면 30분 뒤 다시 켜지지 않아요.": "Turn off the switch at the top. Also turn off “Turn on automatically” so it does not come back after 30 minutes."
+  "앱을 지우면 원래 상태 기록도 함께 지워져서, 숨겨 둔 앱이 숨겨진 채로 남을 수 있어요. 이런 앱은 설정 → ‘숨김이 남은 앱’에서 숨김을 풀 수 있어요. 휴대폰을 재시작하면 표시가 돌아오기도 하지만 앱마다 달라요. 지우기 전에는 설정 → ‘앱 삭제 전 복원’을 눌러주세요.": "Removing the app also removes its record of the original state, so apps you hid may stay hidden. You can unhide them in Settings → Apps left hidden. Restarting the phone sometimes brings the indicator back, but it depends on the app. Before removing bluedotOFF, tap Settings → Restore before uninstalling.",
+  "맨 위 스위치를 끄세요. ‘자동으로 켜기’도 끄면 30분 뒤 다시 켜지지 않아요.": "Turn off the switch at the top. Also turn off “Turn on automatically” so it does not come back after 30 minutes.",
+  "앱 삭제 전 복원": "Restore before uninstalling",
+  "bluedotOFF를 지우기 전에 눌러주세요. 숨긴 앱을 모두 원래 상태로 되돌려요. 앱 삭제나 데이터 초기화만으로는 숨김이 풀리지 않아요.": "Tap this before removing bluedotOFF. It returns every hidden app to its original state. Uninstalling or clearing data alone does not undo hiding.",
+  "등록한 {0}개 앱을 모두 원래 표시 상태로 되돌려요. 끝나면 bluedotOFF를 삭제해도 되는지 알려드려요.": "Returns all {0} registered apps to their original indicator setting. When it finishes, you will be told whether bluedotOFF can be uninstalled.",
+  "복원 시작": "Start restore",
+  "숨긴 앱을 모두 원래 상태로 되돌렸어요. 이제 bluedotOFF를 삭제해도 돼요. 앱을 삭제하면 권한과 연결 정보도 함께 지워져요. 무선 디버깅이 켜져 있다면 개발자 옵션에서 꺼주세요.": "All hidden apps are back to their original state. You can now uninstall bluedotOFF. Uninstalling also removes its permission and connection info. If wireless debugging is on, turn it off in Developer options.",
+  "{0}개 앱을 지금 복원하지 못했어요. 홈의 ‘등록한 앱’에서 상태를 확인한 뒤 다시 눌러주세요. 이 앱들이 남아 있는 동안에는 bluedotOFF를 삭제하지 마세요.": "{0} apps could not be restored right now. Check them under Registered apps on Home, then tap this again. Do not uninstall bluedotOFF while they remain.",
+  "앱 정보 열기": "Open app info",
+  "진단 정보 복사": "Copy diagnostic info",
+  "진단 정보를 복사했어요. GitHub Issues에 문의할 때 붙여넣어 주세요. 설치된 앱 목록이나 위치 기록은 들어 있지 않아요.": "Diagnostic info copied. Paste it when you open a GitHub issue. It does not include your installed apps or location history."
 }

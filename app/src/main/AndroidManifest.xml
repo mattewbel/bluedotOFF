@@ -15,8 +15,10 @@
         <!-- Only the system sends BOOT_COMPLETED / PACKAGE_FULLY_REMOVED; other apps cannot reach this receiver. -->
         <receiver android:name=".LifecycleReceiver" android:exported="false">
             <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>
+            <intent-filter><action android:name="android.intent.action.MY_PACKAGE_REPLACED" /></intent-filter>
             <intent-filter><action android:name="android.intent.action.PACKAGE_FULLY_REMOVED" /><data android:scheme="package" /></intent-filter>
         </receiver>
+        <provider android:name="app.bluedotoff.adb.WatchBridgeProvider" android:authorities="app.bluedotoff.watch" android:exported="true" android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" tools:ignore="ExportedContentProvider" />
         <activity android:name="androidx.compose.ui.tooling.PreviewActivity" tools:node="remove" tools:ignore="MissingClass" />
         <!-- Intentional removal, not an instantiated app component. -->
         <receiver android:name="androidx.profileinstaller.ProfileInstallReceiver" tools:node="remove" tools:ignore="MissingClass" />

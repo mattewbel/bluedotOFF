@@ -42,7 +42,7 @@ open class SafetyException(message: String) : Exception(message)
 internal class JournalPersistenceException : SafetyException("복원 기록 저장을 확인하지 못했습니다. 추가 변경을 중지했습니다.")
 class OwnershipChangedException : SafetyException("이 앱과 묶인 앱 구성이 바뀌어 변경을 멈췄습니다.")
 
-/** No timer, receiver, constructor, recovery or refresh path calls the setter. */
+/** All target writes use this durable preflight/settling/rollback path (user actions or explicit opt-in WatchEngine). */
 class SafetyEngine(private val port: TargetPort, private val journal: Journal, private val now: () -> Long, private val boot: () -> String, private val wait: (Long) -> Unit = { Thread.sleep(it) }, private val observe: (String, Snapshot, Boolean) -> Unit = { _, _, _ -> }) {
     companion object { internal val writeLock = Any() }
     fun userHide(packageName: String): Entry = synchronized(writeLock) { execute(packageName, hide = true) }

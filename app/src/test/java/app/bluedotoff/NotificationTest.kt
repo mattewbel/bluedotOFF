@@ -43,4 +43,14 @@ class NotificationTest {
         ForegroundState.started()
         try{ReapplyNotification.show(context,null);assertTrue(shadowOf(manager).allNotifications.isEmpty())}finally{ForegroundState.stopped()}
     }
+    @Test fun reappliedAppsClearTheirRemindersAndTheRestartReminderWhenNothingIsLeft(){
+        shadowOf(context).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        val e=Entry(Identity("test.app",0,10792,listOf("cert"),1,1,1),"Test",256,true,TargetState.NEEDS_REAPPLY_UPDATE,1,"fp","boot",true)
+        ReapplyNotification.show(context,null);ReapplyNotification.show(context,e)
+        assertEquals(2,shadowOf(manager).allNotifications.size)
+        ReapplyNotification.clear(context,listOf("test.app"),nothingLeft=false)
+        assertEquals(1,shadowOf(manager).allNotifications.size)
+        ReapplyNotification.clear(context,emptyList(),nothingLeft=true)
+        assertTrue(shadowOf(manager).allNotifications.isEmpty())
+    }
 }

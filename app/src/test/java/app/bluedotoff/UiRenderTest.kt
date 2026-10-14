@@ -186,7 +186,7 @@ class UiRenderTest {
         compose.onNodeWithText("‘숨김 남음 · 기록 없음’은 bluedotOFF 기록 없이 이미 숨겨져 있는 앱이에요. 다시 숨길 필요가 없고, 설정 → ‘숨김이 남은 앱’에서 숨김을 풀 수 있어요.").assertExists()
         assertFalse(m.canSelect(leftOffApp))
     }
-    /** Settings: "앱 삭제 전 복원" with its explanation, and "진단 정보 복사" under 정보 및 지원. */
+    /** Settings: "앱 삭제 전 복원" with its explanation, and "진단 정보 복사 및 보내기" under 정보 및 지원. */
     /** Automatic re-apply keeps Home visible with one progress line (no full-screen overlay). */
     @Test fun autoReapplyShowsALineAndKeepsHome(){
         render("94-auto-reapply",model(applied=true).copy(busy=true,autoReapplying=true,progress=BatchProgress(3,8,BatchPhase.CHECKING)))
@@ -198,6 +198,67 @@ class UiRenderTest {
         render("88-settings-auto-reapply",model(page=Page.SETTINGS))
         compose.onNode(androidx.compose.ui.test.isToggleable()and androidx.compose.ui.test.hasText("앱을 열 때 자동 재적용")).performScrollTo().assertIsOn()
     }
+    /** Background watch (1.1.0): off by default; the first switch-on asks, and its confirm unlocks after 5 seconds. */
+    @Test fun backgroundWatchAsksFirstWithAFiveSecondWait(){
+        var turnedOn:Boolean?=null
+        controller.get().setContent { BlueDotApp(model(page=Page.SETTINGS),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},backgroundWatchChanged={turnedOn=it}) }
+        val row=compose.onNode(androidx.compose.ui.test.isToggleable()and androidx.compose.ui.test.hasText("백그라운드 감시")).performScrollTo().assertIsOff()
+        // Freeze the clock only after scrolling, so the countdown can be checked step by step.
+        compose.mainClock.autoAdvance=false
+        row.performClick()
+        compose.mainClock.advanceTimeBy(100)
+        compose.onNodeWithText("USB 디버깅을 항상 켜 둬야 해요.").assertExists()
+        compose.onNodeWithText("확인 (5초)").assertIsNotEnabled().performClick()
+        org.junit.Assert.assertNull(turnedOn)
+        compose.mainClock.advanceTimeBy(5100)
+        compose.onNodeWithText("확인").assertIsEnabled().performClick()
+        org.junit.Assert.assertEquals(true,turnedOn)
+    }
+    /** Background watch is the third Settings section: after the scope and wireless debugging, before the reapply notice. */
+    @Test fun backgroundWatchIsTheThirdSettingsSection(){
+        render("89-settings-background-watch",model(page=Page.SETTINGS))
+        fun top(text:String)=compose.onNode(androidx.compose.ui.test.isToggleable()and androidx.compose.ui.test.hasText(text)).fetchSemanticsNode().boundsInRoot.top
+        assertTrue(top("무선 디버깅 자동 관리")<top("백그라운드 감시"));assertTrue(top("백그라운드 감시")<top("재적용 알림"))
+    }
+    /** While watching, automatic management is only the restart path: its switch is locked and explains why. */
+    @Test fun automaticManagementIsLockedWhileWatching(){
+        var changed:Boolean?=null
+        controller.get().setContent { BlueDotApp(model(page=Page.SETTINGS).copy(backgroundWatch=true,autoManagement=true,usbDebugging=false),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},managementChanged={changed=it}) }
+        compose.onNode(androidx.compose.ui.test.isToggleable()and androidx.compose.ui.test.hasText("무선 디버깅 자동 관리")).performScrollTo().performClick()
+        compose.onNodeWithText("백그라운드 감시를 쓰는 중이에요").assertExists()
+        org.junit.Assert.assertNull(changed)
+        compose.onNodeWithText("확인").performClick()
+        compose.onNodeWithText("백그라운드 감시를 쓰는 동안에는 평소에 무선 디버깅을 켜지 않아요. 재부팅이나 업데이트 뒤 감시를 다시 켤 때만 잠깐 켜요.").assertExists()
+        compose.onNodeWithText("USB 디버깅 켜러 가기").performScrollTo().assertExists()
+    }
+    /** Watch chosen but stopped because USB debugging is off: Home says so and offers Developer options. */
+    @Test fun homeSaysWhenBackgroundWatchIsStopped(){
+        var opened=false
+        controller.get().setContent { BlueDotApp(model(applied=true).copy(backgroundWatch=true,watchRunning=false,usbDebugging=false,autoManagement=true),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},openDeveloperOptions={opened=true}) }
+        compose.onNodeWithText("백그라운드 감시가 멈춰 있어요").assertExists()
+        compose.onNodeWithText("USB 디버깅을 다시 켜고, Wi-Fi에 연결된 상태에서 bluedotOFF를 열어주세요.").assertExists()
+        compose.onNodeWithText("USB 디버깅 켜기").performClick();assertTrue(opened)
+    }
+    @Test fun homeHasNoWatchCardWhileWatching(){
+        controller.get().setContent { BlueDotApp(model(applied=true).copy(backgroundWatch=true,watchRunning=true,usbDebugging=true),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}) }
+        compose.onNodeWithText("백그라운드 감시가 멈춰 있어요").assertDoesNotExist()
+    }
+    /** Reapply history rows of registered apps open the detail page, like the location tab. */
+    @Test fun reapplyHistoryRowOpensTheApp(){
+        var opened:String?=null
+        val row=ReapplyHistoryItem("1","demo.weather","demo.weather",System.currentTimeMillis()-60_000,true,ReapplySource.BACKGROUND)
+        controller.get().setContent { BlueDotApp(model(applied=true,page=Page.HISTORY).copy(historyView=HistoryView.REAPPLY,reapplyHistory=listOf(row)),{}, {opened=it}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}) }
+        compose.onNodeWithText("날씨").performClick()
+        org.junit.Assert.assertEquals("demo.weather",opened)
+    }
+    /** Once acknowledged, switching on again does not ask. */
+    @Test fun backgroundWatchDoesNotAskAgainOnceAcknowledged(){
+        var turnedOn:Boolean?=null
+        controller.get().setContent { BlueDotApp(model(page=Page.SETTINGS).copy(watchAcknowledged=true),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},backgroundWatchChanged={turnedOn=it}) }
+        compose.onNode(androidx.compose.ui.test.isToggleable()and androidx.compose.ui.test.hasText("백그라운드 감시")).performScrollTo().performClick()
+        org.junit.Assert.assertEquals(true,turnedOn)
+        compose.onNodeWithText("켜기 전에 꼭 읽어주세요.").assertDoesNotExist()
+    }
     @Test fun autoReapplySummarySaysHowManyWereReapplied(){
         val e=model(applied=true).entries.single();val ok=listOf(BatchResult("a",e),BatchResult("b",e))
         org.junit.Assert.assertEquals("2개 앱 자동 재적용 완료",BatchOutcome(true,ok,emptyList(),emptyList(),auto=true).summary())
@@ -207,7 +268,7 @@ class UiRenderTest {
         render("88-settings-uninstall",model(page=Page.SETTINGS))
         compose.onNodeWithText("앱 삭제 전 복원").performScrollTo().assertExists()
         compose.onNodeWithText("bluedotOFF를 지우기 전에 눌러주세요. 숨긴 앱을 모두 원래 상태로 되돌려요. 앱 삭제나 데이터 초기화만으로는 숨김이 풀리지 않아요.").performScrollTo().assertExists()
-        compose.onNodeWithText("진단 정보 복사").performScrollTo().assertExists()
+        compose.onNodeWithText("진단 정보 복사 및 보내기").performScrollTo().assertExists()
     }
     @Test fun restoreBeforeUninstallSaysWhenUninstallingIsSafe(){
         render("93-uninstall-ready",model(applied=true).copy(entries=emptyList(),uninstallCheck=0))
@@ -341,7 +402,7 @@ class UiRenderTest {
     @Test fun usModelShowsWarningOnlyWhenFlagged(){render("84-home-us-model",model(applied=true).copy(usModel=true));compose.onNodeWithText("미국 판매 모델 안내").assertExists()}
     @Test fun nonUsModelHasNoRegionWarning(){render("84-home-default",model(applied=true));compose.onNodeWithText("미국 판매 모델 안내").assertDoesNotExist()}
     @Test @Config(qualifiers="en-rUS-w412dp-h915dp-xxhdpi") fun usModelWarningIsEnglishOutsideKorean(){render("84-home-us-model-en",model(applied=true).copy(usModel=true));compose.onNodeWithText("US model notice").assertExists()}
-    @Test fun welcomeWarnsSomeAppsMayLoseHiding(){render("01-welcome-notice",model(gate=Gate.WELCOME));compose.onNodeWithText("미리 알아두세요").assertExists();compose.onNodeWithText("앱은 최소한의 권한으로 작동해요. 그래서 일부 앱은 스스로 설정을 바꿔서 숨김이 짧은 주기로 풀릴 수 있어요.").assertExists()}
+    @Test fun welcomeWarnsSomeAppsMayLoseHiding(){render("01-welcome-notice",model(gate=Gate.WELCOME));compose.onNodeWithText("미리 알아두세요").assertExists();compose.onNodeWithText("위치 권한을 ‘정확한 위치’로 허용한 앱만 숨길 수 있어요.").assertExists();compose.onNodeWithText("풀린 앱은 bluedotOFF를 열 때 다시 숨겨요. USB 디버깅을 켜 두면 앱을 열지 않아도 바로 다시 숨겨요.").assertExists()}
     @Test @Config(qualifiers="en-rUS-w412dp-h915dp-xxhdpi") fun welcomeNoticeIsEnglishOutsideKorean(){render("01-welcome-notice-en",model(gate=Gate.WELCOME));compose.onNodeWithText("Good to know").assertExists()}
     @Test fun homeHasNoWelcomeNotice(){render("01-home-no-notice",model(applied=true));compose.onNodeWithText("미리 알아두세요").assertDoesNotExist()}
     @Test @Config(qualifiers="ko-rKR-w412dp-h915dp-night-xxhdpi") fun emptyBlueHomeKeepsNavigationOnPageBackground(){render("86-home-empty-blue-dark",model().copy(entries=emptyList()));compose.onNodeWithText("설정").assertExists()}
@@ -421,8 +482,12 @@ class UiRenderTest {
     private fun noticeShot(name:String){
         compose.mainClock.autoAdvance=false
         controller.get().setContent { BlueDotApp(model(applied=true).copy(notice=notice),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}) }
-        compose.mainClock.advanceTimeBy(1000)
+        // Layout-driven changes (the measured navigation height) need idle passes between frames.
+        repeat(4){compose.mainClock.advanceTimeBy(250);compose.waitForIdle()}
         compose.onNodeWithText(notice).assertExists()
+        // The notice sits above the bottom navigation instead of covering it.
+        val noticeBottom=compose.onNodeWithText(notice).getBoundsInRoot().bottom;val navTop=compose.onNodeWithText("기록").getBoundsInRoot().top
+        assertTrue("notice $noticeBottom nav $navTop",noticeBottom<=navTop)
         val view=controller.get().window.decorView
         val image=Bitmap.createBitmap(view.width,view.height,Bitmap.Config.ARGB_8888);compose.runOnIdle{view.draw(Canvas(image))}
         val dir=File(checkNotNull(System.getProperty("screenshotDir")));dir.mkdirs()
@@ -434,6 +499,15 @@ class UiRenderTest {
         compose.onNodeWithText(notice).assertDoesNotExist()
     }
     @Test @Config(qualifiers="ko-rKR-w412dp-h915dp-night-xxhdpi") fun noticeUsesTheDarkTheme(){noticeShot("92-notice-dark")}
+    /** On pages with pinned bottom buttons the notice sits above those buttons too (large font, small screen). */
+    @Test @Config(qualifiers="ko-rKR-w360dp-h640dp-xhdpi") fun noticeSitsAboveThePageButtons(){
+        org.robolectric.RuntimeEnvironment.setFontScale(1.5f)
+        compose.mainClock.autoAdvance=false
+        controller.get().setContent { BlueDotApp(model(page=Page.RESTORE,applied=true).copy(homePicked=setOf("demo.weather"),notice=notice),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}) }
+        repeat(4){compose.mainClock.advanceTimeBy(250);compose.waitForIdle()}
+        val noticeBottom=compose.onNodeWithText(notice).getBoundsInRoot().bottom;val buttonTop=compose.onNodeWithText("1개 복원").getBoundsInRoot().top
+        assertTrue("notice $noticeBottom button $buttonTop",noticeBottom<=buttonTop)
+    }
     @Test fun autoBlockerOpensACenteredGuideInsteadOfASnackbar(){
         controller.get().setContent { BlueDotApp(model(applied=true).copy(notice=app.bluedotoff.adb.AutoBlocker.MESSAGE),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}) }
         compose.waitForIdle()
@@ -523,5 +597,46 @@ class UiRenderTest {
         compose.onNodeWithText("Android 시스템").assertExists()
         compose.onNodeWithText("앱 기록").performClick()
         compose.onNodeWithText("Android 시스템").assertDoesNotExist()
+    }
+    @Test fun reapplyHistoryHasItsOwnRowsAndNoLocationOrAdbCopy(){
+        val now=System.currentTimeMillis()
+        val m=history().copy(historyView=HistoryView.REAPPLY,connected=false,automaticReady=false,historyAvailable=false,reapplyHistory=listOf(
+            ReapplyHistoryItem("recent","demo.weather","날씨",now,true,ReapplySource.APP_OPEN),
+            ReapplyHistoryItem("older","demo.maps","지도",now-60_000,false,ReapplySource.MANUAL)
+        ))
+        render("92-reapply-history",m)
+        compose.onAllNodesWithText("재적용 기록").assertCountEquals(2)
+        compose.onNodeWithText("날씨").assertExists();compose.onNodeWithText("demo.weather").assertDoesNotExist()
+        compose.onNodeWithText("재적용 완료 · ${ReapplySource.APP_OPEN.label} · 방금 전").assertExists()
+        compose.onNodeWithText("재적용 실패 · ${ReapplySource.MANUAL.label} · 1분 전").assertExists()
+        compose.onNodeWithText("현재 기록을 확인하려면 무선 디버깅으로 연결해 주세요.").assertDoesNotExist()
+        compose.onNodeWithText("최근 위치를 쓴 앱이에요. 시스템 서비스까지 보려면 ‘전체 위치 사용’을 누르세요.").assertDoesNotExist()
+    }
+    @Test fun reapplyHistoryEmptyMessageAndRefreshCannotDuplicate(){
+        val m=history().copy(historyView=HistoryView.REAPPLY,reapplyHistory=emptyList(),rechecking=true)
+        render("92-reapply-empty",m)
+        compose.onNodeWithText("아직 재적용 기록이 없어요.").assertExists()
+        compose.onNodeWithContentDescription("다시 확인").assertIsNotEnabled()
+    }
+    @Test fun reapplyHistoryCanRefreshWithoutAdbConnection(){
+        var refreshed=false
+        val m=history().copy(historyView=HistoryView.REAPPLY,connected=false,automaticReady=false)
+        controller.get().setContent{BlueDotApp(m,{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},refreshHistory={refreshed=true})}
+        compose.onNodeWithContentDescription("다시 확인").assertIsEnabled().performClick()
+        org.junit.Assert.assertTrue(refreshed)
+    }
+    @Test fun pullingDownTheEmptyOfflineHistoryRefreshesOnce(){
+        var refreshes=0
+        val m=history().copy(historyView=HistoryView.REAPPLY,connected=false,automaticReady=false,reapplyHistory=emptyList())
+        controller.get().setContent{BlueDotApp(m,{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},refreshHistory={refreshes++})}
+        compose.onRoot().performTouchInput { swipeDown(startY=height*0.5f,endY=height*0.8f,durationMillis=600) }
+        compose.waitForIdle()
+        assertTrue("Pull refresh should call the local callback once",refreshes==1)
+    }
+    @Test fun importedHistoryUsesKnownAppNamesWithoutAnotherScan(){
+        val m=history().copy(historyView=HistoryView.REAPPLY,discovered=listOf(DiscoveredApp("demo.weather","날씨",12000)),
+            reapplyHistory=listOf(ReapplyHistoryItem("legacy","demo.weather","demo.weather",System.currentTimeMillis(),true,ReapplySource.BACKGROUND)))
+        controller.get().setContent{BlueDotApp(m,{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})}
+        compose.onNodeWithText("날씨").assertExists();compose.onNodeWithText("demo.weather").assertDoesNotExist()
     }
 }

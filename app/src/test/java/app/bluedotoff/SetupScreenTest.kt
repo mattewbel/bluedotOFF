@@ -131,17 +131,18 @@ class SetupScreenTest {
     @Test fun recommendedChoiceIsExplicitAndHasVisibleSkipBeforeHome(){
         runtime.managementChoiceResolved=false;runtime.paired=true;runtime.connectEndpoint=LocalAdbDiscovery.Endpoint("saved",42000)
         val views=show("13-recommended-management")
-        assertEquals(listOf("자동 관리 사용 (권장)"),views.filterIsInstance<Button>().map{it.text.toString()})
+        // Step 9 offers both ways to stay connected, plus a visible skip.
+        assertEquals(listOf("무선 디버깅 자동 관리 (권장)","USB 디버깅으로 유지 (백그라운드 감시)"),views.filterIsInstance<Button>().map{it.text.toString()})
         assertTrue(views.filterIsInstance<TextView>().any{it.text=="지금은 사용하지 않기"})
-        assertTrue(views.filterIsInstance<TextView>().any{it.text.contains("권장 · 선택사항")})
+        assertTrue(views.filterIsInstance<TextView>().any{it.text.contains("일부 은행·결제 앱이 실행되지 않을 수 있어요")})
         assertEquals(0,runtime.managementCalls);assertNull(shadowOf(controller!!.get()).nextStartedActivity)
     }
     @Test @Config(qualifiers="en-rUS-w412dp-h915dp-xxhdpi",fontScale=1.5f) fun englishRecommendationFitsScrollableSharedLayout(){
         runtime.managementChoiceResolved=false;runtime.paired=true;runtime.connectEndpoint=LocalAdbDiscovery.Endpoint("saved",42000)
         val views=show("14-recommended-management-en-large")
-        assertTrue(views.filterIsInstance<TextView>().any{it.text=="We recommend automatic management"})
+        assertTrue(views.filterIsInstance<TextView>().any{it.text=="Choose how to stay connected"})
         assertTrue(views.filterIsInstance<TextView>().any{it.text=="Not now"})
-        assertEquals(listOf("Use automatic management (recommended)"),views.filterIsInstance<Button>().map{it.text.toString()})
+        assertEquals(listOf("Wireless debugging automatic management (recommended)","Keep through USB debugging (background watch)"),views.filterIsInstance<Button>().map{it.text.toString()})
     }
     @Test fun greyedOutWirelessSwitchLeadsToAutoBlockerGuide(){
         runtime.paired=true;runtime.wireless=false;val views=show("09-wireless-off-auto-blocker-hint")

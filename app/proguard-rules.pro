@@ -4,6 +4,9 @@
 -keep class app.bluedotoff.adb.MinimalPrivilegedHelper {
     public static void main(java.lang.String[]);
 }
+-keep class app.bluedotoff.adb.ResidentWatchHelper {
+    public static void main(java.lang.String[]);
+}
 
 # Readable stack traces when combined with build/outputs/mapping/localRelease/mapping.txt.
 -keepattributes SourceFile,LineNumberTable

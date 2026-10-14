@@ -39,6 +39,13 @@ object SettingsEntrypoints {
         for(action in listOf(Settings.ACTION_SECURITY_SETTINGS,Settings.ACTION_SETTINGS))
             if(runCatching{context.startActivity(Intent(action))}.isSuccess)return
     }
+    /** Developer options, where USB debugging is switched on (background watch). */
+    fun developerOptions(context:Context) {
+        for(action in listOf(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS,Settings.ACTION_SETTINGS))
+            if(runCatching{context.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))}.isSuccess){
+                if(action==Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)Toast.makeText(context,UiText.text(context,"‘USB 디버깅’을 켜고 돌아오세요."),Toast.LENGTH_LONG).show()
+                return}
+    }
     fun wifi(context:Context) {
         for(action in listOf(Settings.Panel.ACTION_WIFI,Settings.ACTION_WIFI_SETTINGS,Settings.ACTION_SETTINGS))
             if(runCatching{context.startActivity(Intent(action))}.isSuccess)return

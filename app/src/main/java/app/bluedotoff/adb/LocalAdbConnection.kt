@@ -51,10 +51,12 @@ class LocalAdbConnection(private val wire:AdbWire):AutoCloseable {
         maxPayload=minOf(ready.arg1,AdbPacket.MAX_PAYLOAD)
         authenticated=true
     }
-    fun startHelper(apk:String):Unit=protocol {
+    fun startHelper(apk:String):Unit=startCommand(HelperLaunch.command(apk))
+    internal fun startWatch(apk:String):Unit=startCommand(WatchProtocol.launch(apk))
+    private fun startCommand(command:String):Unit=protocol {
         check(authenticated&&remote==0&&streamClosed&&streamId<Int.MAX_VALUE)
         streamId++;ended=false;helperExitConfirmed=false;streamClosed=false
-        send(AdbPacket(AdbPacket.OPEN,streamId,0,("shell,v2,raw:"+HelperLaunch.command(apk)+"\u0000").toByteArray()))
+        send(AdbPacket(AdbPacket.OPEN,streamId,0,("shell,v2,raw:"+command+"\u0000").toByteArray()))
         var p=receive();var duplicateCloses=0
         // A closed stream's terminal packet can still be queued on the transport.
         // Only this immediately preceding, proven closed identity is discarded.

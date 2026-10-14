@@ -19,7 +19,7 @@ data class LocationAccess(val fine: Long? = null, val coarse: Long? = null) {
 }
 
 enum class AppFilter(val label: String) { RECENT("최근 위치 사용 앱"), INSTALLED("내가 설치한 앱"), PREINSTALLED("기본 앱"), ALL("전체") }
-enum class HistoryView(val label:String) { APPS("앱 기록"), ALL("전체 위치 사용") }
+enum class HistoryView(val label:String) { APPS("앱 기록"), ALL("전체 위치 사용"), REAPPLY("재적용 기록") }
 /** Read-only hint about granted FINE sensitivity, not proof of a displayed dot or a write gate. */
 enum class FineIndicatorHint { UNKNOWN, SENSITIVE, NON_SENSITIVE }
 data class DiscoveredApp(val packageName: String, val label: String, val uid: Int, val preinstalled: Boolean = false, val launcher: Boolean = false, val access: LocationAccess = LocationAccess(), val block: String = "", val authoritative: Boolean = true, val indicatorHint:FineIndicatorHint=FineIndicatorHint.UNKNOWN, val internalService:Boolean=false, val uidClass:UidClass=UidClass.NORMAL, val sharedUserId:String?=null, val indicator:IndicatorAssessment=IndicatorAssessment(), val hasLocationDeclaration:Boolean?=null,val hasRelevantOps:Boolean=false,val check:CandidateCheck=CandidateCheck.AVAILABLE,val uidPeers:List<String> = emptyList()) {
@@ -51,7 +51,7 @@ object HistoryPolicy {
         else -> HistoryDisplayReason.USER_FACING_APP
     }
     fun relevant(app:DiscoveredApp, managed:Set<String>) = displayReason(app,managed).included
-    fun list(apps:List<DiscoveredApp>, managed:Set<String>, view:HistoryView)=DiscoveryPolicy.sort(apps.filter{it.access.latest!=null&&(view==HistoryView.ALL||relevant(it,managed))})
+    fun list(apps:List<DiscoveredApp>, managed:Set<String>, view:HistoryView)=if(view==HistoryView.REAPPLY)emptyList() else DiscoveryPolicy.sort(apps.filter{it.access.latest!=null&&(view==HistoryView.ALL||relevant(it,managed))})
 }
 data class ScanMetrics(val installed: Int = 0, val candidates: Int = 0, val historyEntries: Int = 0, val lightweightMs: Long = 0, val uidMapMs: Long = 0, val historyMs: Long = 0, val sortMs: Long = 0, val firstUsableMs: Long? = null, val targetPreflightMs: Long? = null)
 data class DiscoveryResult(val apps: List<DiscoveredApp>, val historyAvailable: Boolean, val metrics: ScanMetrics)

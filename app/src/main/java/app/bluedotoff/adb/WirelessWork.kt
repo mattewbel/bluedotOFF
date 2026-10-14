@@ -46,20 +46,21 @@ object WirelessWork {
         setHeld(context,false)
         android.util.Log.i("bluedotOFF","lease: released held wireless debugging")
     }
-    fun <T> run(context:Context,userAction:Boolean,knownPort:Int?=null,beforeDisable:()->Unit={},onCleanup:(String)->Unit={},hold:Boolean=false,block:(LocalAdbBackend)->T):T =
-        lease(context,userAction,knownPort,beforeDisable,onCleanup,hold){it.single(block)}
+    fun <T> run(context:Context,userAction:Boolean,knownPort:Int?=null,beforeDisable:()->Unit={},onCleanup:(String)->Unit={},hold:Boolean=false,forceWireless:Boolean=false,block:(LocalAdbBackend)->T):T =
+        lease(context,userAction,knownPort,beforeDisable,onCleanup,hold,forceWireless){it.single(block)}
     fun <T> runBatch(context:Context,userAction:Boolean,onCleanup:(String)->Unit={},hold:Boolean=false,block:(BatchSession)->T):T =
-        lease(context,userAction,null,{},onCleanup,hold,block)
-    class BatchSession internal constructor(private val connection:LocalAdbSession.HelperConnection) {
+        lease(context,userAction,null,{},onCleanup,hold,false,block)
+    class BatchSession internal constructor(private val connection:LocalAdbSession.HelperConnection?,private val resident:WatchClient.Session?=null) {
         private val chain=OrderlyHelperChain()
         internal fun <T> single(block:(LocalAdbBackend)->T):T =
-            chain.run{connection.run(it,block)}
+            if(resident!=null)resident.run(block) else chain.run{connection!!.run(it,block)}
         fun <T> run(block:(LocalAdbBackend)->T):T {
             check(ForegroundState.active){"화면을 떠나서 남은 앱은 바꾸지 않았어요."}
             return single(block)
         }
     }
-    private fun <T> lease(context:Context,userAction:Boolean,knownPort:Int?,beforeDisable:()->Unit,onCleanup:(String)->Unit,hold:Boolean,block:(BatchSession)->T):T=synchronized(lock) {
+    private fun <T> lease(context:Context,userAction:Boolean,knownPort:Int?,beforeDisable:()->Unit,onCleanup:(String)->Unit,hold:Boolean,forceWireless:Boolean,block:(BatchSession)->T):T=synchronized(lock) {
+        if(!forceWireless&&WatchClient.available(context)){onCleanup("");return@synchronized WatchClient.exclusive(context){block(BatchSession(null,it))}}
         // Cleared on every exit, including a refused start before the connection try block (GPT review 2026-10-11).
         leasing=true
         try{leaseLocked(context,userAction,knownPort,beforeDisable,onCleanup,hold,block)}finally{leasing=false}

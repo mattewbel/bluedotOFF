@@ -38,6 +38,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
     override fun onCreate(state:Bundle?){
         super.onCreate(state)
         permissionDialog=state?.getBoolean("permissionDialog")?:false
+        usbChoicePending=state?.getBoolean("usbChoicePending")?:false
         notificationSettingsOpened=state?.getBoolean("notificationSettingsOpened")?:false
         advanced=app.bluedotoff.BuildConfig.DEBUG&&intent.getBooleanExtra("diagnostics",false)
         session=SetupSession.acquire(this)
@@ -85,7 +86,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
     override fun onStop(){app.bluedotoff.ForegroundState.stopped();super.onStop()}
     override fun onResume(){super.onResume();foreground=true;if(notificationSettingsOpened){notificationSettingsOpened=false;session.notificationsResult()};if(!permissionDialog)session.resume();render()}
     override fun onPause(){foreground=false;super.onPause()}
-    override fun onSaveInstanceState(state:Bundle){state.putBoolean("permissionDialog",permissionDialog);state.putBoolean("notificationSettingsOpened",notificationSettingsOpened);super.onSaveInstanceState(state)}
+    override fun onSaveInstanceState(state:Bundle){state.putBoolean("permissionDialog",permissionDialog);state.putBoolean("usbChoicePending",usbChoicePending);state.putBoolean("notificationSettingsOpened",notificationSettingsOpened);super.onSaveInstanceState(state)}
     override fun onDestroy(){notificationReminder?.dismiss();code?.text?.clear();session.detach(changed);if(isFinishing&&!isChangingConfigurations)session.close();super.onDestroy()}
     private fun add(view:View){
         box.addView(view,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(BlueDotAppearance.SECTION_GAP)})
@@ -104,6 +105,40 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         setPadding(dp(24),dp(16),dp(24),dp(16));setTextColor(colors.onPrimary.toArgb());backgroundTintList=null
         background=RippleDrawable(ColorStateList.valueOf(colors.onPrimary.copy(alpha=0.16f).toArgb()),rounded(colors.primary.toArgb()),null)
         setOnClickListener{action()}
+    }
+    private fun outlinedButton(label:String,action:()->Unit)=Button(this).apply{
+        text=app.bluedotoff.UiText.text(this@LocalAdbSetupActivity,label);isAllCaps=false;textSize=14f
+        typeface=Typeface.create("sans-serif-medium",Typeface.NORMAL);includeFontPadding=false
+        minHeight=dp(BlueDotAppearance.BUTTON_HEIGHT);minimumHeight=minHeight
+        setPadding(dp(24),dp(16),dp(24),dp(16));setTextColor(colors.primary.toArgb());backgroundTintList=null
+        background=RippleDrawable(ColorStateList.valueOf(colors.primary.copy(alpha=0.12f).toArgb()),GradientDrawable().apply{setStroke(dp(1),this@LocalAdbSetupActivity.colors.outlineVariant.toArgb());cornerRadius=dp(BlueDotAppearance.BUTTON_RADIUS).toFloat()},null)
+        setOnClickListener{action()}
+    }
+    /** Step 9, USB option: the same risk notice as Settings (confirm unlocks after 5 seconds), then USB debugging, then the
+     *  same permission as automatic management - it starts watching again after a restart or an update. */
+    private var usbChoicePending=false
+    private fun chooseUsbWatch(){
+        val t={v:String->app.bluedotoff.UiText.text(this,v)}
+        val dialog=android.app.AlertDialog.Builder(this).setTitle(t("백그라운드 감시를 켤까요?"))
+            .setMessage(t("켜기 전에 꼭 읽어주세요.")+"\n\n"+app.bluedotoff.BackgroundWatch.RISKS.joinToString("\n"){"• "+t(it)})
+            .setPositiveButton(t("확인 (5초)"),null).setNegativeButton(t("취소"),null).create()
+        dialog.setOnShowListener{
+            val ok=dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE);ok.isEnabled=false
+            var left=5
+            val tick=object:Runnable{override fun run(){if(!dialog.isShowing)return;left--
+                if(left>0){ok.text=t("확인 (${left}초)");ok.postDelayed(this,1000)}else{ok.text=t("확인");ok.isEnabled=true}}}
+            ok.postDelayed(tick,1000)
+            ok.setOnClickListener{dialog.dismiss();usbChoicePending=true;render()
+                if(!app.bluedotoff.adb.WatchClient.usbEnabled(this))app.bluedotoff.SettingsEntrypoints.developerOptions(this)}
+        }
+        dialog.show()
+    }
+    /** Runs once step 9 is showing again (setup re-checks the connection after a visit to Settings) and USB debugging is on. */
+    private fun finishUsbChoice(){
+        if(!usbChoicePending||!app.bluedotoff.adb.WatchClient.usbEnabled(this))return
+        usbChoicePending=false
+        app.bluedotoff.BackgroundWatch.set(this,true)
+        session.enableManagement()
     }
     private fun link(label:String,action:()->Unit){add(TextView(this).apply{
         text=app.bluedotoff.UiText.text(this@LocalAdbSetupActivity,label);textSize=14f;includeFontPadding=false
@@ -179,7 +214,10 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         }else if(p.stage in listOf(SetupStage.PAIRING,SetupStage.CONNECTING,SetupStage.VERIFYING,SetupStage.FINAL_CHECK,SetupStage.ENABLING_MANAGEMENT))add(ProgressBar(this).apply{indeterminateTintList=ColorStateList.valueOf(colors.primary.toArgb())})
         if(p.stage==SetupStage.AUTOMATIC_MANAGEMENT){
             if(session.managementError.isNotBlank())text(session.managementError,14f)
-            link("지금은 사용하지 않기"){session.skipManagement()}
+            add(outlinedButton("USB 디버깅으로 유지 (백그라운드 감시)"){chooseUsbWatch()})
+            if(usbChoicePending&&app.bluedotoff.adb.WatchClient.usbEnabled(this))box.post{finishUsbChoice()}
+            if(usbChoicePending)text("개발자 옵션에서 ‘USB 디버깅’을 켠 뒤 이 화면으로 돌아오세요. 켜져 있으면 자동으로 다음 단계로 넘어가요.",14f)
+            link("지금은 사용하지 않기"){usbChoicePending=false;if(app.bluedotoff.BackgroundWatch.enabled(this@LocalAdbSetupActivity))app.bluedotoff.BackgroundWatch.set(this@LocalAdbSetupActivity,false);session.skipManagement()}
         }
         if(p.stage==SetupStage.NOTIFICATION_PERMISSION)link("알림 없이 계속"){recommendNotifications()}
         if(p.stage==SetupStage.NEARBY_PERMISSION)link("직접 입력으로 연결"){session.skipNearby()}
@@ -244,7 +282,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         SetupAction.WIFI_SETTINGS->app.bluedotoff.SettingsEntrypoints.wifi(this)
         SetupAction.WIRELESS_SETTINGS->wirelessSettings()
         SetupAction.NEARBY->{if(session.requiresNearbyPermission){permissionDialog=true;requestPermissions(arrayOf("android.permission.ACCESS_LOCAL_NETWORK"),71)}else session.skipNearby()}
-        SetupAction.AUTOMATIC_MANAGEMENT->session.enableManagement()
+        SetupAction.AUTOMATIC_MANAGEMENT->{usbChoicePending=false;if(app.bluedotoff.BackgroundWatch.enabled(this))app.bluedotoff.BackgroundWatch.set(this,false);session.enableManagement()}
         SetupAction.APPLICATION_SCOPE->chooseScope()
         SetupAction.RETRY_PAIRING->session.beginPairing()
         SetupAction.RETRY_CONNECTION,SetupAction.RESUME->session.retryConnection()

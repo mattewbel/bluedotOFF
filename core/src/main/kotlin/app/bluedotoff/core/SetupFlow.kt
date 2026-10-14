@@ -60,7 +60,7 @@ object SetupFlow {
             SetupStage.PAIRING->SetupPresentation(s,7,"코드를 확인하고 있어요","잠시만 기다려주세요.",SetupAction.NONE)
             SetupStage.CONNECTING->SetupPresentation(s,8,"이 기기에 연결하고 있어요","저장된 연결 정보를 확인하고 있어요. 새 코드를 입력할 필요는 없어요.",SetupAction.NONE)
             SetupStage.VERIFYING->SetupPresentation(s,8,"기기와 앱을 확인하고 있어요","기기 호환성과 앱의 복원 기록을 먼저 확인해요. 적용 범위를 고른 뒤 전체 앱을 확인해요. 설정은 변경하지 않아요.",SetupAction.NONE)
-            SetupStage.AUTOMATIC_MANAGEMENT->SetupPresentation(s,9,"자동 관리를 추천해요","권장 · 선택사항\n자동 관리를 사용하면 앱을 쓰는 동안 무선 디버깅을 켜 두고, 앱을 나가면 연결 종료를 확인한 뒤 꺼요. 이를 위해 이 앱에 시스템 설정 변경 권한을 추가해요. Wi-Fi와 개발자 옵션은 직접 켜야 하며, 다른 무선 디버깅 연결도 함께 끊길 수 있어요. 나중에 설정에서 끌 수 있어요.",SetupAction.AUTOMATIC_MANAGEMENT,"자동 관리 사용 (권장)")
+            SetupStage.AUTOMATIC_MANAGEMENT->SetupPresentation(s,9,"연결 유지 방법을 골라주세요","두 방법 모두 이 앱에 시스템 설정 변경 권한을 추가해요. 나중에 설정에서 바꿀 수 있어요.\n\n• 무선 디버깅 자동 관리 (권장): bluedotOFF를 쓰는 동안만 무선 디버깅을 켜고, 나가면 꺼요. 풀린 앱은 앱을 열 때 다시 숨겨요.\n• USB 디버깅으로 유지: 백그라운드 감시를 켜서 앱을 열지 않아도 풀린 앱을 바로 다시 숨겨요. USB 디버깅을 계속 켜 둬야 하고, 일부 은행·결제 앱이 실행되지 않을 수 있어요.",SetupAction.AUTOMATIC_MANAGEMENT,"무선 디버깅 자동 관리 (권장)")
             SetupStage.ENABLING_MANAGEMENT->SetupPresentation(s,9,"자동 관리를 준비하고 있어요","연결 종료까지 확인한 뒤 적용 범위를 선택해요. 잠시만 기다려주세요.",SetupAction.NONE)
             SetupStage.APPLICATION_SCOPE->SetupPresentation(s,10,"적용 범위를 선택해주세요","믿는 앱의 파란 위치 표시를 숨겨요. 나중에 설정에서 범위를 바꿀 수 있어요.",SetupAction.APPLICATION_SCOPE,"적용 범위 선택")
             SetupStage.FINAL_CHECK->SetupPresentation(s,11,"마지막으로 기기와 앱을 확인해요","선택한 적용 범위로 앱의 위치 표시 상태를 확인해요. 설정은 변경하지 않아요.",SetupAction.NONE)
@@ -87,7 +87,7 @@ object PairNoticePolicy {
 /** Completion comes from actual facts, never from the displayed step number. */
 data class SetupStepStatus(val number:Int,val label:String,val complete:Boolean,val current:Boolean)
 object SetupProgress {
-    val labels=listOf("시작하기","알림 선택","개발자 옵션","Wi-Fi 연결","근처 기기 권한","무선 디버깅","페어링 코드 입력","기기와 앱 확인","자동 관리 선택","적용 범위","최종 기기 확인")
+    val labels=listOf("시작하기","알림 선택","개발자 옵션","Wi-Fi 연결","근처 기기 권한","무선 디버깅","페어링 코드 입력","기기와 앱 확인","연결 유지 방법","적용 범위","최종 기기 확인")
     fun steps(f:SetupFacts):List<SetupStepStatus> {
         val current=SetupFlow.presentation(f).progress
         val done=listOf(f.welcomed||f.paired,f.notificationResolved||f.paired,f.developer,f.wifiConnected,

@@ -124,7 +124,9 @@ object LocalAdbSession {
     }
     /** US CSC models are allowed with a warning on Home; see MinimalPrivilegedHelper.verify(). */
     // Also kept for "진단 정보 복사" (One UI version and country only; nothing about the user's apps).
-    private fun rememberRegion(context:Context,profile:JSONObject){context.getSharedPreferences("ui-state",0).edit().putBoolean("usModel",profile.optString("country")=="US").putString("deviceOneUi",profile.optString("oneUi")).putString("deviceCountry",profile.optString("country")).apply()}
+    /** True once a helper confirmed this device's compatibility in this app process (for "진단 정보 복사"). */
+    @Volatile var compatibilityConfirmed=false;private set
+    internal fun rememberRegion(context:Context,profile:JSONObject){if(profile.optBoolean("abiVerified"))compatibilityConfirmed=true;context.getSharedPreferences("ui-state",0).edit().putBoolean("usModel",profile.optString("country")=="US").putString("deviceOneUi",profile.optString("oneUi")).putString("deviceCountry",profile.optString("country")).apply()}
     private fun appendEvent(context:Context,name:String,event:JSONObject){
         val f=File(context.noBackupFilesDir,name)
         if(f.length()>1_000_000)f.writeText("")

@@ -6,24 +6,26 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 data class BatchOutcome(val hide:Boolean,val results:List<BatchResult>,val entries:List<Entry>,
-    val snapshots:List<Snapshot>,val cleanupWarning:String="",val error:String="",val completedAt:Long=0,val show:Boolean=false,val auto:Boolean=false)
+    val snapshots:List<Snapshot>,val cleanupWarning:String="",val error:String="",val completedAt:Long=0,val show:Boolean=false,val auto:Boolean=false,val beforeUninstall:Boolean=false)
 data class BatchUiState(val id:Long=0,val progress:BatchProgress?=null,val outcome:BatchOutcome?=null,val hide:Boolean=true,val show:Boolean=false,val auto:Boolean=false) {
     val busy get()=progress!=null&&progress.phase!=BatchPhase.FINISHED
 }
 
 /** In-memory ownership survives Activity recreation; no boot receiver, retry or background daemon. */
 object BatchRuntime {
+    @Volatile var onIdle:(()->Unit)?=null
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
     private val mutable=MutableStateFlow(BatchUiState())
     val state=mutable.asStateFlow()
-    @Synchronized fun start(total:Int,hide:Boolean=true,show:Boolean=false,auto:Boolean=false,work:suspend ((BatchProgress)->Unit)->BatchOutcome):Boolean {
+    @Synchronized fun start(total:Int,hide:Boolean=true,show:Boolean=false,auto:Boolean=false,beforeUninstall:Boolean=false,work:suspend ((BatchProgress)->Unit)->BatchOutcome):Boolean {
         if(mutable.value.busy)return false
         val id=mutable.value.id+1
         mutable.value=BatchUiState(id,BatchProgress(0,total),hide=hide,show=show,auto=auto)
         scope.launch {
             val outcome=try {work {progress->mutable.value=BatchUiState(id,progress,hide=hide,show=show,auto=auto)}}
-                catch(_:Exception){BatchOutcome(hide,emptyList(),emptyList(),emptyList(),error="작업 결과를 확인하지 못했어요. 등록 기록은 그대로예요.",show=show,auto=auto)}
+                catch(_:Exception){BatchOutcome(hide,emptyList(),emptyList(),emptyList(),error="작업 결과를 확인하지 못했어요. 등록 기록은 그대로예요.",show=show,auto=auto,beforeUninstall=beforeUninstall)}
             mutable.value=BatchUiState(id,BatchProgress(total,total,BatchPhase.FINISHED),outcome.copy(completedAt=System.nanoTime()/1_000_000),hide,show,auto)
+            onIdle?.invoke()
         }
         return true
     }

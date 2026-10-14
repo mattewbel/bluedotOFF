@@ -17,8 +17,11 @@ class LifecycleReceiver : BroadcastReceiver() {
     companion object { private val executor = Executors.newSingleThreadExecutor() }
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action
-        if (action !in listOf(Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_PACKAGE_REPLACED, Intent.ACTION_PACKAGE_REMOVED,Intent.ACTION_PACKAGE_FULLY_REMOVED)) return
+        if (action !in listOf(Intent.ACTION_BOOT_COMPLETED,Intent.ACTION_MY_PACKAGE_REPLACED, Intent.ACTION_PACKAGE_REPLACED, Intent.ACTION_PACKAGE_REMOVED,Intent.ACTION_PACKAGE_FULLY_REMOVED)) return
         if (action == Intent.ACTION_PACKAGE_REMOVED && intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) return
+        // A restart always stops background watching; it is started again from the app (wireless debugging).
+        if (action == Intent.ACTION_BOOT_COMPLETED) { WatchNotification.stopped(context,WatchNotification.Reason.BOOT) }
+        if(action==Intent.ACTION_MY_PACKAGE_REPLACED){WatchNotification.stopped(context,WatchNotification.Reason.STOPPED);return}
         val pending = goAsync()
         executor.execute {
             try {
@@ -47,6 +50,12 @@ class LifecycleReceiver : BroadcastReceiver() {
 
 object ReapplyNotification {
     const val CHANNEL = "reapply"
+    /** Re-applied apps no longer need their reminder; the restart reminder (4101) goes once nothing needs re-applying. */
+    fun clear(context: Context, packages: Collection<String>, nothingLeft: Boolean) {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        packages.forEach { manager.cancel(it.hashCode()) }
+        if (nothingLeft) manager.cancel(4101)
+    }
     /** Opening bluedotOFF re-applies by itself (setting on and automatic management ready). */
     private fun autoReapply(context: Context) = context.getSharedPreferences("ui-state",Context.MODE_PRIVATE).getBoolean("autoReapply",true) &&
         app.bluedotoff.adb.WirelessControls(context).let { it.consent && it.granted }

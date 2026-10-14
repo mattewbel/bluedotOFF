@@ -191,6 +191,16 @@ object MinimalPrivilegedHelper {
             return JSONObject().put("parcel",Base64.encodeToString(reply.marshall(),Base64.NO_WRAP)).put("method",method).put("descriptor",services.getValue(service))
         }finally{data.recycle();reply.recycle()}
     }
+    /** Resident transport uses the identical typed dispatcher and guarded setter. No new system mutation. */
+    internal fun initializeResident(path:String):JSONObject {
+        check(path.matches(Regex("/data/app/[A-Za-z0-9_~=/+.-]+/base\\.apk"))&&System.getenv("CLASSPATH")==path)
+        apk=File(path);check(apk.isFile&&apk.canRead())
+        return request(JSONObject().put("op","PROFILE"))
+    }
+    internal fun residentRequest(r:JSONObject):JSONObject {
+        check(r.optString("op") !in setOf("GRANT_SELF_WIRELESS_PERMISSION","REVOKE_SELF_WIRELESS_PERMISSION"))
+        return request(r)
+    }
     @JvmStatic fun main(args:Array<String>){
         check(args.size==1&&args[0].matches(Regex("/data/app/[A-Za-z0-9_~=/+.-]+/base\\.apk"))&&System.getenv("CLASSPATH")==args[0]){"Helper classpath invalid"}
         apk=File(args[0]);check(apk.isFile&&apk.canRead()){"Helper APK unavailable"}

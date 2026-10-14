@@ -217,6 +217,123 @@ those files; bump `versionName`/`versionCode` in `app/build.gradle.kts` first.
 - 1.0.3 (versionCode 30, from GPT review 2026-10-13; owner chose one release, no stronger Home warning): `LifecycleReceiver` exported=false (finalize asserts it). Settings "앱 삭제 전 복원" (`MainActivity.beforeUninstall`: restoreAll, then `UiModel.uninstallCheck` = apps still changed; 0 -> "앱 정보 열기"); no revoke/pairing wipe because uninstall removes both. Settings "진단 정보 복사" (`copyDiagnostics`: device, Android/build, One UI + country remembered from the helper PROFILE in `LocalAdbSession.rememberRegion`, gate, scope, counts; no app list). `finalize.py` writes `bluedotOFF-<v>-checksums.txt` (APK + signer SHA-256). README security summary, tested-devices table (Fold8 SM-F971N user report), `.github/ISSUE_TEMPLATE/report.yml`.
 - Auto re-apply (owner request 2026-10-13, 1.0.3): the old "writes only on a tap" rule is widened to "when the user opens the app". `MainActivity.maybeAutoReapply` runs once per visit (`autoReapplyTried`, reset in onStop) after a refresh job completes (`invokeOnCompletion`), only with ForegroundState.active, Gate.READY, pref ui-state/autoReapply (default true) and automaticReady(); targets = `UiModel.reapplyTargetPackages` (NEEDS_REAPPLY_POLICY/BOOT/UPDATE; firmware recheck, review/failed and reinstalled apps excluded). `perform(...,auto=true)` (BatchUiState/BatchOutcome.auto) hides the overlay and shows "자동 재적용 중 · c / t"; outcome notice "N개 앱 자동 재적용 완료". Same write path and safety checks. Reapply notification text says opening the app re-applies when this is on. Device (Fold7): unlock -> check -> "window: 8 apps hide" -> notice. Diagnostics show One UI as "9.0 (90000)".
 - History (owner request 2026-10-13, 1.0.3): ↻ next to the title (`refreshHistory`: Check.HISTORY now, bypassing the 1-minute limit); each row is clickable (ripple) and opens the detail page; `UiModel.detailBack` makes Back return to History. Device-tested on Fold7. Resident helper ("lab mode") is planned for 1.1.0 after the owner's all-day survival test.
+- 1.0.4 (versionCode 31, owner request 2026-10-13, from the 1.0.3 review): diagnostics "Compatibility check: passed" only when a helper confirmed `abiVerified` in this process (`LocalAdbSession.compatibilityConfirmed`); "앱 삭제 전 복원" carries `beforeUninstall` in `BatchRuntime`/`BatchOutcome` so the result dialog survives Activity recreation (fold); auto re-apply is armed in onResume and spent by the first check that finishes afterwards (`autoReapplyArmed`); the reapply notification opens Home when auto re-apply is on; Back works during the quiet auto re-apply; snackbar notices sit above the bottom navigation (measured height via `onSizeChanged`, test in `noticeShot`); README notes some banking/payment apps refuse to run with Developer options on. QA pass: notices also clear a page's pinned bottom buttons (`Modifier.bottomActions()` reports their height; test `noticeSitsAboveThePageButtons`); `handledBatchId` and `uninstallCheck` are saved in the instance state (same pid only) so a fold does not re-show the last notice/dialog; bottom tabs work during auto re-apply; the automatic-management switch cannot be turned off while auto re-apply writes. Not changed on owner request: the experimental `app.bluedotoff.helperpoc` stays installed.
+- Owner decision (2026-10-13): 1.0.4 stays internal (not pushed, no GitHub release). Its changes ship with 1.1.0: fold the 1.0.4 CHANGELOG section and `artifacts/release-notes-1.0.4.md` into the 1.1.0 notes, and update the APK file names in README.md/README.en.md to 1.1.0. The public repo has unpushed 1.0.4 commits (`db6fbab`, `91ef6d7`) that go out with 1.1.0.
+- 1.1.0 groundwork (Claude Code, 2026-10-13, branch `claude/1.1.0-groundwork` from `52e0b56`; versionName 1.1.0 / versionCode 32).
+  Claude Code built only the parts of "백그라운드 감시(실험)" that do not involve the privileged helper; the watching itself
+  (helper side) is Codex's task. Done, all in `app/src/main/java/app/bluedotoff/WatchSupport.kt` unless noted:
+  - Settings switch "백그라운드 감시(실험)" (pref `ui-state/backgroundWatch`, default off; `UiModel.backgroundWatch`,
+    `MainActivity.backgroundWatchChanged`). The first switch-on shows `WatchRiskDialog` (BlueDotUi.kt): 5 risks, confirm unlocks
+    after a visible 5-second countdown ("확인 (N초)" + progress bar), cancel; confirming sets `ui-state/backgroundWatchAcknowledged`.
+    Right now the switch only stores the choice and logs it - it does not watch anything yet.
+  - `BackgroundWatch.enabled/acknowledged/set/running`. Call `running(context)` whenever watching (re)starts.
+  - `WatchNotification.stopped(context, Reason.BOOT|USB_DEBUGGING_OFF|STOPPED)`: channel "watch", once per stop (pref
+    `watchStopNotified`, cleared by `running()`), only while the switch is on; text ends with "다시 켜려면 Wi-Fi에 연결된 상태에서
+    bluedotOFF를 열어주세요." `LifecycleReceiver` already calls it with BOOT on BOOT_COMPLETED.
+  - Test log (`TestLog`, `ACTIVE=true`; set false or remove before any public release): `filesDir/test-log.txt`, 4 MB cap
+    (keeps the newer half), line format `yyyy-MM-dd HH:mm:ss | kind | message`. Kinds in use: `battery` (level, chargeUah,
+    charging, screen, watch), `state` (usbDebugging / wirelessDebugging / wifi, logged when changed between samples), `watch`
+    (switched on/off, running, stopped: REASON), `unhidden` (`pkg=<p> source=open-check`; helper detections should use
+    `source=watch`), `result` (`pkg=<p> mode=auto|hide|restore|show ok=true|false [error=...]`, written by MainActivity for every
+    batch; background re-applies should log `mode=watch`), `system` (boot completed). `TestLogReceiver` (exported=false) samples
+    every ~10 min via a non-waking inexact alarm armed in `LocalAdbApplication.onCreate` (so the log itself does not wake the phone;
+    samples can be sparse in deep sleep, deltas stay correct). Settings "테스트 로그 내보내기" saves via the system file picker
+    (SAF) with `TestLogSummary` on top: unplugged drain per hour (% and mAh) for all / screen off / watch on / watch off,
+    per-app unhidden counts and average interval, result counts, watch stops. Pure summary tests: `TestLogSummaryTest`.
+  - Tests: `UiRenderTest.backgroundWatchAsksFirstWithAFiveSecondWait`, `backgroundWatchDoesNotAskAgainOnceAcknowledged`,
+    `UiTextTest.backgroundWatchTextsHaveEnglish`; en.json has all new strings. Full suite: core 319, app 332 x2, lint 0 errors.
+  - Not device-tested yet (phone was not connected). The release APK from `assembleLocalRelease` is signed with the release key
+    (same signer as the installed app), so it installs as an update with `adb install -r`. Never uninstall the installed app:
+    that deletes the journal (restore records).
+  Left for Codex: the watching itself and its wiring (start/stop with the switch, `running()`, `stopped(...)`, `unhidden`/`result`
+  logging with source/mode `watch`), stop watching before "앱 삭제 전 복원", never re-hide apps the user restored or unregistered,
+  replace an old helper after an app update, one operation at a time with the app, more precise state-change logging if the
+  helper can report it, README/CHANGELOG/release notes for 1.1.0 (fold in the 1.0.4 notes), and the owner's device install.
+- 1.1.0 watch body (Codex, 2026-10-14, continued on `claude/1.1.0-groundwork` / baseline `01d9bb4`; test only, no push or device install):
+  - Connected Claude's existing switch/risk dialog/stop notification/test log. Added `adb/ResidentWatchHelper`, `WatchBridgeProvider`,
+    `WatchClient`, `WatchProtocol`, core `WatchPolicy`/`WatchEngine`. Initial start goes through existing TLS Local ADB; a detached
+    shell UID 2000 helper reuses the original typed `MinimalPrivilegedHelper` dispatcher/setter via Binder. USB debugging stays
+    user-controlled and must be ON. A fresh helper still requires the normal Wi-Fi/wireless bootstrap; it cannot be launched
+    from an ordinary app merely because USB debugging is enabled. No root, network listener, generic command/Binder proxy,
+    extra foreground service, or Shizuku dependency. Provider accepts shell only; daemon checks caller UID/signers/current APK,
+    version and lastUpdateTime on every request. Old helpers exit after own-package updates and are replaced on an app visit.
+  - Events use `PackageManager.registerPackageMonitorCallback(IRemoteCallback,userId)` and optional permission changes,
+    with 750ms/5s coalesced checks; newly configured targets also get those two bounded checks for delayed resets.
+    `registerReceiverWithFeature(caller=null,...)` was rejected as an approach: current AOSP requires a registered ApplicationThread.
+    Runtime generated Stub transaction names are validated instead of reading restricted TRANSACTION fields or guessing numbers.
+    IProcessObserver re-delivers the Binder on a client foreground transition; external provider calls can reconnect an ordinary
+    dead app process for an event. A 60s self-install/client-state heartbeat is not a whole-app/permission polling loop.
+  - Only verified, enabled APPLIED/NEEDS_REAPPLY_POLICY/UPDATE entries (and complete registered shared groups) may be revisited.
+    Fresh journal, install, firmware, boot, scope and non-sensitive invariants are checked; restored/unregistered/reinstalled,
+    pending/failed/review entries are excluded. Existing SafetyEngine/SharedGroupEngine fsync/preflight/0-500-1500ms/rollback
+    are reused. LocalAdbSession.exclusive serializes foreground Local ADB, resident work, and stop; off blocks new work and
+    drains current verification before exit. Deferred events are reconsidered after a foreground batch, against latest records.
+    App-uninstall preparation turns monitoring off before the old restore flow. No resident self-permission grant/revoke.
+  - Foreground read/manual apply/restore reuse a live resident backend without Wi-Fi; missing helpers use the existing workflow.
+    Running/stopped hooks wired; successful watch results cancel the app's old reapply notice. Test log adds actual running status,
+    state changes, callback support/startup failure stage, watch detection/results, version/journal-state export header and separate
+    mode/source summary. No location contents, pairing keys or tokens; ACTIVE=true remains test-only. Battery numbers are device-wide
+    estimates with non-waking approximate samples, not monitor-only consumption.
+  - QA: core 338, app 343 debug + 343 release; full Gradle command passes, lint 0 errors / 68 warnings (includes hidden API warnings).
+    Added restore/reinstall/scope/invariant/durable-failure/rollback/shared-UID guards and Binder routing/install-replacement/stop
+    serialization tests. R8 entrypoint retained, release signer matches existing public certificate (619fe1ec...ceaad62).
+    Checks: `bluedotOFF/artifacts/1.1.0-watch-build-check.json`. Read `docs/1.1.0-watch-validation.md` for tested vs pending matrix.
+  - README/README.en/CHANGELOG updated, 1.0.4 notes folded into 1.1.0. `artifacts/release-notes-1.1.0.md` explicitly INTERNAL TEST ONLY.
+    Signing material was not manually read/copied; existing Gradle signing is unchanged. Antigravity public-source research failed
+    on sandbox authentication access, so no output was relied on; Codex verified AOSP directly. The public checkout is untouched.
+  - Still pending: NEW implementation device startup, actual Samsung callback delivery, hide/restore, unplug/sleep/process death,
+    Auto Blocker/reboot/update smoke checks, and owner's 14h test. Previous separate PoC's USB-on survival/read success is NOT a
+    device pass for this implementation. Install only after owner says connected/ready: check unlocked, signer, then adb install -r;
+    never uninstall/reset data, and stop on signer mismatch. Test logging must be reviewed before any public release.
+  - Owner connected Fold7 on 2026-10-14: unlocked verified, installed 1.0.4/code31 and new APK signers matched; updated via
+    adb install -r to 1.1.0/code32. Installed APK SHA-256 matches final build (78cd0f72...fe7141). No uninstall/reset/pairing wipe.
+    USB ON, wireless OFF, Wi-Fi ON read back. Monitoring switch/consent not operated on owner's behalf; actual new-helper
+    runtime verification and 14h usage remain pending. See docs/1.1.0-watch-validation.md for installation evidence.
+  - Owner returned with usage logs on device-date 2026-10-14: exported log with explicit approval to open app (auto reapply may
+    run); no switch/direct hide/restore operated by reviewer. Watch ran 07:56:24~19:08:32 (11h12m; total log 11h30m, NOT 14h).
+    Same shell helper PID across 5 attachments and still alive before app open, USB ON/wireless OFF/Wi-Fi OFF; mobile-data
+    preference ON. Watch detections/results: Toss 31 + Google app 2, all 33 successful, zero logged failures/stops; startup
+    open-check auto results 5 separate. Owner Google Maps restore/hide results succeeded at 11:54. This confirms real new
+    implementation operation, not just PoC. 28/33 detection-to-verified-result <=2s, median2s; outliers11/20/44/58s unresolved.
+    Actual reset-to-detection/setter timing and visible privacy dot not captured. APPLIED213 export count is saved journal,
+    not proof of every live OS flag. Battery total6.45%/h is whole device, no watch-off control and six charging=false increases;
+    do not attribute it to monitor. Helper cumulative CPU21s is supporting observation only. Raw logs/analysis/report under
+    ignored research/watch-110-results-20261015 (directory date differs from actual log date); no private logs delegated.
+    Remaining: latency instrumentation, charging/power comparison, uninstall/USB-off/Auto Blocker/reboot/update regressions.
+- 2026-10-14 follow-up: History adds Material3 pull-down refresh (no dependency change) and REAPPLY tab. Local display-only
+    ReapplyHistoryStore keeps latest200 watch/app-open/manual reapply results, imports previous test-log watch/auto once;
+    excludes first-time add/restore/show and unstarted remainder. It never drives permissions or replaces the restore journal.
+    Result logging is failure-isolated; partial JSONL tails are separated, invalid rows skipped. Local tab refresh needs no ADB,
+    duplicate refresh blocked; fold/recreation reloads and known labels update without inventory scans. Korean/English/UI docs updated.
+    Luna handled bounded UI/tests and independent review; main integrated and checked actual changes (no measured token claim).
+    Owner concurrently supplied Claude's restore-first beforeUninstall/stopWatchForUninstall flow; PRESERVED. This supersedes
+    earlier stop-before-restore notes: live helper restores with Wi-Fi OFF, then outcome handler stops watch/helper. Added tests
+    for resident route before stop, failed restore remaining count, verified completion then STOP, UI drag/offline/recreation,
+    storage cap/corruption/IO failure. All automated: core338 + app357 debug + app357 release =1052 pass, lint0 errors/68 warnings.
+    Final source full Gradle command passed; release signer unchanged, new APK SHA ba657d80...ebe46f43e (4021109 bytes).
+    Audit: bluedotOFF/artifacts/1.1.0-history-build-check.json. New APK has NOT been installed/device-tested or publicly pushed.
+- Owner requests (Claude Code, 2026-10-14 evening, uncommitted on `claude/1.1.0-groundwork` together with Codex's work):
+  "백그라운드 감시(실험)" is now "백그라운드 감시" (switch, dialog title, channel text, en.json, README/CHANGELOG) and is the
+  third Settings section (after 무선 디버깅 자동 관리; test `backgroundWatchIsTheThirdSettingsSection`). Test log collection is
+  removed: `TestLog`/`TestLogReceiver`/`TestLogSummary`, the manifest receiver, the export button and `TestLogSummaryTest`.
+  Watch state/failure notes go to logcat only (`WatchLog.event`, no package names); unhidden/result file logging is gone
+  (ReapplyHistoryStore still records results). `LegacyTestLog.cleanup` (LocalAdbApplication) lets ReapplyHistoryStore import the
+  old test-log.txt once, then deletes it, the "test-log" prefs and its alarm. "진단 정보 복사" is "진단 정보 복사 및 보내기":
+  copies, then opens the mail app (ACTION_SENDTO to `SUPPORT_EMAIL` yundeokhee92@gmail.com, subject "bluedotOFF diagnostics
+  <version>", body = the text); the user sends it; without a mail app it only copies. Full suite: core 338, app 353 x2, lint 0
+  errors. Installed on the owner's Fold7 (adb install -r, signer 619fe1ec..., installed = built e8ff1cad...): Settings order,
+  imported reapply history, no pending TestLogReceiver alarm and the Gmail compose (body filled) checked on device.
+- Owner requests (Claude Code, 2026-10-14 night, uncommitted): welcome "미리 알아두세요" is 4 short lines (precise location first,
+  USB watch, Auto Blocker). Setup step 9 (`SetupStage.AUTOMATIC_MANAGEMENT`, label "연결 유지 방법") offers "무선 디버깅 자동 관리 (권장)"
+  or an outlined "USB 디버깅으로 유지 (백그라운드 감시)": View-based 5-second risk dialog (`BackgroundWatch.RISKS`, shared with Settings),
+  then Developer options if USB debugging is off (`SettingsEntrypoints.developerOptions`); once step 9 shows again with USB on,
+  `finishUsbChoice` turns the watch on and runs the same `enableManagement` (the permission restarts the watch after reboot/update).
+  Owner chose "restart-only": while watching, the Settings automatic-management switch is locked (dialog explains), its consent is
+  kept for restarts; "USB 디버깅 켜러 가기" shows when watching with USB off (`UiModel.usbDebugging`). Picker always says only
+  "정확한 위치" apps can be hidden. Help adds a 백그라운드 감시 section; README (ko/en) moves it under Using the app in plain words.
+  Guide `automatic` step updated. Full suite: core 338, app 354 x2, lint 0 errors. Device: not yet installed at the time of writing.
+- Watch stop guidance (Claude Code, 2026-10-14 night): `WatchNotification.advice(usbOn,autoManaged)` gives the restart steps (USB debugging back on + Wi-Fi + open app; wireless debugging too without automatic management; no new pairing). Stop notice has a "USB 디버깅 켜기" action (Developer options) when USB is off; `BackgroundWatch.observeUsb` (LocalAdbApplication) posts "USB 디버깅이 켜졌어요" once per stop when USB returns while the app is closed; Home shows "백그라운드 감시가 멈춰 있어요" (`UiModel.watchRunning`). Help/README add the bank-app Developer options note. Full suite: core 338, app 357 x2.
+- Owner device check (Fold7, 2026-10-14 ~21:20, build ab2fbfdd...): "앱 삭제 전 복원" restored all registered apps (Home "미적용", 72 apps show the indicator again); USB debugging off -> stop notice with "USB 디버깅 켜기", USB back on -> "USB 디버깅이 켜졌어요" notice, opening the app restarted the watch - all five steps confirmed by the owner. Watch restart after the app update was seen in logcat (wireless debugging on ~2 s, then off, watch running).
 - Not done (suggested later): splitting `MainActivity`, reformatting dense code, moving i18n to
   `strings.xml`, tidying the root research folder (`bluedotOFF_audit.zip`, `bluedotoff_filelist.txt`).
   Not device-tested in this session.

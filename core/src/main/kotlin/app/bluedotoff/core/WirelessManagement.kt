@@ -20,6 +20,10 @@ object PickerSelection {
     }
     fun toggle(rows:List<DiscoveredApp>,selected:Set<String>):Set<String> =
         if(state(rows,selected)==SelectionState.ALL)selected-scope(rows)else selected+scope(rows)
+    /** Picker "전체 선택" with shared groups. When every selectable app is already picked it clears them, even if some groups are
+     *  still unpicked (declined or not checked yet); otherwise it adds them and returns the groups to inspect next. */
+    fun toggleWithGroups(covered:Set<String>,groups:List<String>,selected:Set<String>):Pair<Set<String>,List<String>> =
+        if(covered.isNotEmpty()&&covered.all{it in selected})(selected-covered) to emptyList() else (selected+covered) to groups
 }
 data class ScanStamp(val build:String,val packageEpoch:Long,val created:Long) {
     fun valid(build:String,packageEpoch:Long,now:Long)=this.build==build&&this.packageEpoch==packageEpoch&&now>=created&&now-created<1_800_000

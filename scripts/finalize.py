@@ -24,6 +24,11 @@ for variant,suffix,expected in [('localDebug','','3b3b208f92d3d437acf30c333d9a7b
     assert next(e for e in application.findall('activity') if e.attrib[android+'name'].endswith('LocalAdbSetupActivity')).attrib[android+'exported']=='false'
     assert next(e for e in application.findall('receiver') if e.attrib[android+'name'].endswith('PairingReplyReceiver')).attrib[android+'exported']=='false'
     assert next(e for e in application.findall('receiver') if e.attrib[android+'name'].endswith('LifecycleReceiver')).attrib[android+'exported']=='false'
+    providers={p.attrib[android+'name']:p for p in application.findall('provider')}
+    assert set(providers)=={'app.bluedotoff.adb.WatchBridgeProvider','androidx.startup.InitializationProvider'}
+    watch=providers['app.bluedotoff.adb.WatchBridgeProvider']
+    assert watch.attrib[android+'authorities']=='app.bluedotoff.watch' and watch.attrib[android+'permission']=='android.permission.INTERACT_ACROSS_USERS_FULL'
+    assert providers['androidx.startup.InitializationProvider'].attrib[android+'exported']=='false'
     sign=subprocess.run([str(tools/'apksigner.bat'),'verify','--print-certs',str(apk)],capture_output=True,text=True,env=env);assert sign.returncode==0
     cert=next(line.split(': ',1)[1].strip() for line in sign.stdout.splitlines() if 'certificate SHA-256 digest:' in line);assert cert==expected
     align=subprocess.run([str(tools/'zipalign.exe'),'-c','-P','16','4',str(apk)],capture_output=True);assert align.returncode==0

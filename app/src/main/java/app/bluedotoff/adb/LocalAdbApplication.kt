@@ -5,6 +5,9 @@ class LocalAdbApplication:android.app.Application(){
     override fun onCreate(){
         super.onCreate()
         app.bluedotoff.StartupScanHandoff.observePackages(this)
+        app.bluedotoff.LegacyTestLog.cleanup(this)
+        app.bluedotoff.BackgroundWatch.observeUsb(this)
+        runCatching{WatchClient.initialize(this)}.onFailure{app.bluedotoff.WatchLog.event("state","watchInitFailed=${it.javaClass.simpleName}");app.bluedotoff.WatchNotification.stopped(this,app.bluedotoff.WatchNotification.Reason.STOPPED)}
         // The process may have died while holding wireless debugging on; turn it off unless a screen opens meanwhile.
         if(WirelessWork.held(this))android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({WirelessWork.release(this)},5000)
         val filter=android.content.IntentFilter().apply{addAction(android.content.Intent.ACTION_PACKAGE_REPLACED);addAction(android.content.Intent.ACTION_PACKAGE_REMOVED);addDataScheme("package")}

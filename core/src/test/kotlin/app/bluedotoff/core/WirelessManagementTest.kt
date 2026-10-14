@@ -58,4 +58,14 @@ class WirelessManagementTest {
         assertEquals(SetupStage.WIFI_NOT_CONNECTED,SetupFlow.stage(SetupFacts(wifiConnected=false,wireless=false,pairAdvertisement=true)))
         assertEquals(SetupStage.DEVELOPER_OPTIONS_OFF,SetupFlow.stage(SetupFacts(developer=false,wifiConnected=false)))
     }
+    @Test fun selectAllCanBeUndoneEvenWithUnpickedSharedGroups(){
+        val covered=setOf("a","b");val groups=listOf("shared.group")
+        val (first,inspect)=PickerSelection.toggleWithGroups(covered,groups,emptySet())
+        assertEquals(covered,first);assertEquals(groups,inspect)
+        // The group was declined, so it stays unpicked; tapping again clears instead of adding again.
+        val (second,again)=PickerSelection.toggleWithGroups(covered,groups,first+"other")
+        assertEquals(setOf("other"),second);assertTrue(again.isEmpty())
+        // Partly picked: adds the rest.
+        assertEquals(covered,PickerSelection.toggleWithGroups(covered,emptyList(),setOf("a")).first)
+    }
 }

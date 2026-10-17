@@ -73,11 +73,12 @@ class ScopeDialogsTest {
         dialog=ScopeDialogs.choose(controller.get(),ApplicationScope.GROUPS,tint=0f){}
         compose.onNodeWithText("다음").assertIsDisplayed();screenshot("84-scope-choice-wide")
     }
-    @Test fun firstSetupStillRequiresTheExplicitFinalConfirmation(){
-        var confirmed=false
-        dialog=ScopeDialogs.confirm(controller.get(),ApplicationScope.ALL,firstSetup=true){confirmed=true}
-        Assert.assertFalse(confirmed)
-        compose.onNodeWithText("이 범위로 시작").assertIsDisplayed().performClick();Assert.assertTrue(confirmed)
+    /** First setup: one explicit "이 범위로 시작" picks the scope (nothing is chosen before the tap). */
+    @Test fun firstSetupScopeIsChosenWithOneExplicitTap(){
+        var chosen:ApplicationScope?=null
+        dialog=ScopeDialogs.choose(controller.get(),ApplicationScope.NORMAL,firstSetup=true,tint=0f){chosen=it}
+        Assert.assertNull(chosen)
+        compose.onNodeWithText("이 범위로 시작").assertIsDisplayed().performClick();Assert.assertEquals(ApplicationScope.NORMAL,chosen)
     }
     // Native Robolectric drawing can leave a resized Dialog layout pending.
     // Check deferred-load interactions with the legacy renderer; the other

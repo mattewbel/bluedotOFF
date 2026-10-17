@@ -33,6 +33,27 @@ import androidx.test.espresso.IdlingPolicies
 @Config(sdk=[34],qualifiers="ko-rKR-w412dp-h915dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class UiRenderTest {
+    @Test fun batterySettingIsAvailableForWirelessUsers(){batterySetting(false)}
+    @Test fun batterySettingIsAvailableForUsbUsers(){batterySetting(true)}
+    private fun batterySetting(watching:Boolean){
+        var requested:Boolean?=null
+        val current=androidx.compose.runtime.mutableStateOf(model(page=Page.SETTINGS).copy(backgroundWatch=watching,batteryUnrestricted=watching))
+        controller.get().setContent{BlueDotApp(current.value,{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},openBattery={requested=it})}
+        val row=compose.onNode(isToggleable() and hasText(BatteryOptimization.TITLE)).performScrollTo()
+        if(watching)row.assertIsOn()else row.assertIsOff()
+        row.performClick();org.junit.Assert.assertEquals(!watching,requested)
+        // Opening a system screen is not consent; keep the previous real state until it is read back.
+        if(watching)row.assertIsOn()else row.assertIsOff()
+        compose.runOnIdle{current.value=current.value.copy(batteryUnrestricted=!watching)}
+        if(watching)row.assertIsOff()else row.assertIsOn()
+    }
+    @Test fun unknownBatteryStateCannotPretendToToggleButCanOpenSettings(){
+        var requested:Boolean?=null
+        controller.get().setContent{BlueDotApp(model(page=Page.SETTINGS).copy(batteryUnrestricted=null),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},openBattery={requested=it})}
+        compose.onNode(isToggleable() and hasText(BatteryOptimization.TITLE)).performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("배터리 설정 상태를 확인할 수 없어요. 설정 열기").performScrollTo().performClick()
+        org.junit.Assert.assertEquals(false,requested)
+    }
     @Test fun rejectedGroupsAreListedWithReasonsUntilConfirmed(){
         controller.get().setContent { BlueDotApp(model(page=Page.PICK).copy(rejectedGroupList=listOf(RejectedGroup("삼성 계정",6,"공유 앱의 위치 표시 설정이 서로 달라 변경하지 않았습니다."))),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}) }
         compose.waitForIdle()
@@ -167,6 +188,139 @@ class UiRenderTest {
         compose.onNodeWithText("1개 앱 · 재적용 필요").assertExists()
         compose.onNodeWithText("1개 앱 · 상태 확인 필요").assertExists()
     }
+    /** Picker: an already applied app shows "적용 중" with a plain check mark, never a checked box next to "0개 선택됨". */
+    @Test fun appliedAppInPickerIsNotShownAsASelection(){
+        val applied=DiscoveredApp("demo.weather","날씨",10792,launcher=true,hasLocationDeclaration=true,indicator=IndicatorAssessment(IndicatorEligibility.STRONG_CANDIDATE))
+        val other=DiscoveredApp("demo.map","지도",10793,launcher=true,hasLocationDeclaration=true,indicator=IndicatorAssessment(IndicatorEligibility.STRONG_CANDIDATE))
+        val m=model(applied=true,page=Page.PICK).copy(discovered=listOf(applied,other),historyAvailable=true)
+        render("92-picker-applied-check",m)
+        compose.onNodeWithText("0개 선택됨").assertExists();compose.onNodeWithText("적용 중").assertExists()
+        compose.onAllNodes(isToggleable() and isOn()).assertCountEquals(0)
+    }
+    /** Home: "상태 확인 필요" lists exactly those apps, and a row opens that app. */
+    @Test fun checkNeededCountOpensTheAppsBehindIt(){
+        var opened:String?=null
+        val base=model(applied=true).entries.single()
+        val failed=base.copy(identity=base.identity.copy(packageName="demo.map"),label="지도",state=TargetState.FAILED_SAFE,error="확인 실패")
+        val reapply=base.copy(identity=base.identity.copy(packageName="demo.bus"),label="버스",state=TargetState.NEEDS_REAPPLY_POLICY)
+        controller.get().setContent{BlueDotApp(model(applied=true).copy(entries=listOf(base,failed,reapply)),{}, {pkg->opened=pkg}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})}
+        compose.onNodeWithText("1개 앱 · 상태 확인 필요").performClick()
+        compose.onNodeWithText("상태 확인이 필요한 앱").assertExists()
+        compose.onNode(hasText("버스") and hasAnyAncestor(isDialog())).assertDoesNotExist()
+        compose.onNode(hasText("지도") and hasAnyAncestor(isDialog())).performClick()
+        compose.waitForIdle();org.junit.Assert.assertEquals("demo.map",opened)
+    }
+    /** Settings: the watch switch shows whether the watch is really running. */
+    @Test fun watchSwitchShowsTheRealState(){
+        val current=androidx.compose.runtime.mutableStateOf(model(page=Page.SETTINGS).copy(backgroundWatch=true,usbDebugging=true,watchRunning=true))
+        controller.get().setContent{BlueDotApp(current.value,{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})}
+        compose.onNodeWithText("감시 중").performScrollTo().assertExists()
+        compose.runOnIdle{current.value=current.value.copy(watchRunning=false)}
+        compose.onNodeWithText("멈춤").performScrollTo().assertExists();compose.onNodeWithText("다시 켜려면 Wi-Fi에 연결해 무선 디버깅을 켠 뒤 bluedotOFF를 열어주세요.").assertExists()
+        compose.runOnIdle{current.value=current.value.copy(usbDebugging=false)}
+        compose.onNodeWithText("USB 디버깅을 다시 켜고, Wi-Fi에 연결해 무선 디버깅을 켠 뒤 bluedotOFF를 열어주세요.").performScrollTo().assertExists()
+        compose.runOnIdle{current.value=current.value.copy(backgroundWatch=false)}
+        compose.onNodeWithText("감시 중").assertDoesNotExist();compose.onNodeWithText("멈춤").assertDoesNotExist()
+    }
+    /** No connection: restore buttons lead to setup instead of sitting grey. */
+    @Test fun restoreWithoutConnectionLeadsToSetup(){
+        var opened=false
+        val m=model(applied=true,page=Page.RESTORE).copy(connected=false,automaticReady=false,homePicked=setOf("demo.weather"))
+        controller.get().setContent{BlueDotApp(m,{}, {}, {}, {}, {}, {}, {opened=true}, {}, {}, {}, {}, {}, {}, {}, {})}
+        compose.onNodeWithText("연결 후 1개 복원").assertIsEnabled().performClick()
+        compose.waitForIdle();assertTrue(opened)
+    }
+    /** While searching, a matching app that cannot be hidden is listed with its reason; it cannot be selected. */
+    @Test fun searchShowsAppsThatCannotBeHiddenWithReason(){
+        val blocked=DiscoveredApp("demo.blocked","차단 지도",10795,launcher=true,hasLocationDeclaration=true,block="정확한 위치 권한이 허용된 앱만 적용할 수 있습니다.",indicator=IndicatorAssessment(IndicatorEligibility.STRONG_CANDIDATE))
+        val m=model(page=Page.PICK).copy(entries=emptyList(),discovered=listOf(blocked),historyAvailable=true,query="차단",filter=AppFilter.ALL)
+        render("93-picker-search-unavailable",m)
+        compose.onNodeWithText("숨길 수 없는 앱").assertExists()
+        compose.onNodeWithText("정확한 위치 권한이 허용된 앱만 적용할 수 있습니다.").assertExists()
+        compose.onAllNodes(isToggleable() and isEnabled() and hasAnyAncestor(hasScrollAction())).assertCountEquals(0)
+        render("93b-picker-no-search",m.copy(query=""))
+        compose.onNodeWithText("숨길 수 없는 앱").assertDoesNotExist()
+    }
+    /** A shared group the user already picked is not listed under "숨길 수 없는 앱" while searching (found on the phone). */
+    @Test fun pickedGroupIsNotShownAsUnavailableWhileSearching(){
+        val names=listOf("demo.group.map","demo.group.helper")
+        val apps=names.mapIndexed{i,p->DiscoveredApp(p,if(i==0)"묶음 지도" else "묶음 도우미",10900,launcher=i==0,hasLocationDeclaration=i==0,uidClass=UidClass.MULTI_PACKAGE_SHARED_UID,sharedUserId="demo.shared",uidPeers=names,indicator=IndicatorAssessment(IndicatorEligibility.STRONG_CANDIDATE))}
+        // As on the phone: an old record of a previous install of this group is in a locked state.
+        val stale=model().entries.single().let{e->names.map{p->e.copy(identity=e.identity.copy(packageName=p,uid=10900),enabled=false,state=TargetState.NEEDS_REVIEW,groupIdentities=names.map{n->e.identity.copy(packageName=n,uid=10900)})}}
+        val m=model(page=Page.PICK).copy(entries=stale,discovered=apps,historyAvailable=true,query="묶음",filter=AppFilter.ALL,picked=names.toSet(),approvedGroups=listOf(names),applicationScope=ApplicationScope.ALL)
+        render("93c-picker-search-picked-group",m)
+        compose.onNodeWithText("숨길 수 없는 앱").assertDoesNotExist()
+    }
+    /** A restore that skipped apps keeps a visible line and a way to see them. */
+    @Test fun skippedRestoreStaysOnTheResultCard(){
+        val base=model(applied=true).entries.single()
+        val locked=base.copy(identity=base.identity.copy(packageName="demo.map"),label="지도",state=TargetState.NEEDS_REVIEW,error="확인 필요")
+        val done=BatchOutcome(false,listOf(BatchResult("demo.weather",base.copy(enabled=false,state=TargetState.NOT_APPLIED))),listOf(base,locked),emptyList(),completedAt=System.nanoTime()/1_000_000)
+        render("95-restore-skipped",model(applied=true).copy(entries=listOf(base,locked),completion=done,restoreSkipped=1))
+        compose.onNodeWithText("확인이 필요한 1개 앱은 건너뛰었어요.").assertExists()
+        compose.onNodeWithText("남은 앱 보기").performClick()
+        compose.onNode(hasText("지도") and hasAnyAncestor(isDialog())).assertExists()
+    }
+    /** Settings shows "감시 시작 중…" (not "멈춤") while a stopped watch is being started. */
+    @Test fun watchStartingIsNotShownAsStopped(){
+        controller.get().setContent{BlueDotApp(model(page=Page.SETTINGS).copy(backgroundWatch=true,usbDebugging=true,watchRunning=false,watchStarting=true),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})}
+        compose.onNodeWithText("감시 시작 중…").performScrollTo().assertExists()
+        compose.onNodeWithText("멈춤").assertDoesNotExist()
+    }
+    /** After a phone update the structure check fails: Home says so and offers no "연결 준비" (re-pairing will not help). */
+    @Test fun osChangedIsNotShownAsAConnectionProblem(){
+        render("96-home-os-changed",model(applied=true).copy(connected=false,automaticReady=true,compatibility=SetupFlow.OS_CHANGED))
+        compose.onNodeWithText("휴대폰 업데이트로 내부 구조가 바뀌었어요").assertExists()
+        compose.onNodeWithText("연결 준비").assertDoesNotExist()
+    }
+    /** A locked app tells the user not to clear data (its original value is only in the restore record). */
+    @Test fun lockedAppWarnsNotToClearData(){
+        val base=model(applied=true).entries.single().copy(state=TargetState.NEEDS_REVIEW,error="중단된 공유 앱 묶음은 자동으로 변경하지 않습니다.")
+        render("97-detail-locked",model(applied=true,page=Page.DETAIL).copy(entries=listOf(base),selected="demo.weather"))
+        compose.onNodeWithText("안전을 위해 이 앱은 더 바꾸지 않도록 잠가 두었어요. 원래 상태 기록은 그대로 있어요. 앱 데이터를 지우거나 bluedotOFF를 삭제하지 말고, 설정 → 진단 정보 복사 및 보내기로 알려주세요.").performScrollTo().assertExists()
+    }
+    /** Owner choice: when apps need attention, the recent-location card moves below the registered list. */
+    @Test fun recentCardMovesBelowTheListWhenAttentionIsNeeded(){
+        val recent=DiscoveredApp("demo.recent","최근 앱",10796,launcher=true,access=LocationAccess(fine=System.currentTimeMillis()-60_000),hasLocationDeclaration=true,indicator=IndicatorAssessment(IndicatorEligibility.STRONG_CANDIDATE))
+        val base=model(applied=true).entries.single()
+        fun top(text:String)=compose.onNodeWithText(text,useUnmergedTree=true).fetchSemanticsNode().positionInRoot.y
+        render("98-home-normal-order",model(applied=true).copy(discovered=listOf(recent),historyAvailable=true))
+        assertTrue(top("최근 위치 사용 앱")<top("등록한 앱 · 1개"))
+        render("98b-home-attention-order",model(applied=true).copy(entries=listOf(base.copy(state=TargetState.NEEDS_REAPPLY_POLICY)),discovered=listOf(recent),historyAvailable=true))
+        assertTrue(top("최근 위치 사용 앱")>top("등록한 앱 · 1개"))
+    }
+    /** U-14: English + large text + narrow screen (cover-screen width). Screenshots for review; key controls on screen. */
+    @Test @Config(qualifiers="en-rUS-w360dp-h780dp-night-xxhdpi",fontScale=1.3f) fun englishLargeNarrowScreens(){
+        val apps=listOf("Weather","Maps").mapIndexed{i,l->DiscoveredApp("demo.app$i",l,11000+i,launcher=true,hasLocationDeclaration=true,indicator=IndicatorAssessment(IndicatorEligibility.STRONG_CANDIDATE))}
+        render("99a-en-large-narrow-picker",model(page=Page.PICK).copy(entries=emptyList(),discovered=apps,historyAvailable=true,filter=AppFilter.PREINSTALLED))
+        compose.onNode(isSelected() and hasText(UiText.text(controller.get(),AppFilter.PREINSTALLED.label))).assertIsDisplayed()
+        render("99b-en-large-narrow-history",model(applied=true,page=Page.HISTORY).copy(discovered=apps,historyAvailable=true,historyView=HistoryView.REAPPLY))
+        compose.onNode(isSelected() and hasText(UiText.text(controller.get(),HistoryView.REAPPLY.label))).assertIsDisplayed()
+        render("99c-en-large-narrow-settings",model(applied=true,page=Page.SETTINGS).copy(backgroundWatch=true,usbDebugging=true,watchRunning=true))
+        val base=model(applied=true).entries.single()
+        render("99d-en-large-narrow-home",model(applied=true).copy(entries=listOf(base.copy(state=TargetState.NEEDS_REAPPLY_POLICY))))
+    }
+    /** The US-model notice can be confirmed once; the callback stores that and the notice is gone. */
+    @Test fun usNoticeCanBeConfirmed(){
+        var dismissed=false
+        val current=androidx.compose.runtime.mutableStateOf(model(applied=true).copy(usModel=true,connected=true))
+        controller.get().setContent{BlueDotApp(current.value,{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},dismissUsNotice={dismissed=true;current.value=current.value.copy(usModel=false)})}
+        compose.onNodeWithText("미국 판매 모델 안내").assertExists()
+        compose.onNodeWithText("확인했어요").performClick()
+        compose.waitForIdle()
+        assertTrue(dismissed);compose.onNodeWithText("미국 판매 모델 안내").assertDoesNotExist()
+    }
+    /** A broken restore journal is not shown as a connection problem, and the user is told not to clear data. */
+    @Test fun journalProblemIsShownSeparatelyFromConnection(){
+        render("91-home-journal-problem",model(applied=true).copy(journalProblem=true,connected=true))
+        compose.onNodeWithText("복원 기록을 확인하지 못했어요").assertExists()
+        compose.onNodeWithText("앱 데이터를 지우거나 앱을 삭제하지 마세요. 기록이 사라지면 숨긴 앱을 원래대로 되돌릴 수 없어요. 설정 → 진단 정보 복사 및 보내기로 알려주세요.").assertExists()
+        // Not connected at the same time: no "연결 준비" next to "다시 연결해도 해결되지 않아요".
+        render("91b-home-journal-problem-offline",model(applied=true).copy(journalProblem=true,connected=false,automaticReady=false))
+        compose.onNodeWithText("복원 기록을 확인하지 못했어요").assertExists();compose.onNodeWithText("연결 준비").assertDoesNotExist()
+        render("91-home-journal-ok",model(applied=true).copy(connected=true))
+        compose.onNodeWithText("복원 기록을 확인하지 못했어요").assertDoesNotExist()
+    }
     @Test @Config(qualifiers="en-rUS-w412dp-h915dp-night-xxhdpi") fun homeAttentionUsesPlainEnglish(){
         val base=model(applied=true).entries.single()
         render("83-home-attention-en",model(applied=true).copy(entries=listOf(base.copy(state=TargetState.NEEDS_REAPPLY_POLICY))))
@@ -217,8 +371,11 @@ class UiRenderTest {
     /** Background watch is the third Settings section: after the scope and wireless debugging, before the reapply notice. */
     @Test fun backgroundWatchIsTheThirdSettingsSection(){
         render("89-settings-background-watch",model(page=Page.SETTINGS))
-        fun top(text:String)=compose.onNode(androidx.compose.ui.test.isToggleable()and androidx.compose.ui.test.hasText(text)).fetchSemanticsNode().boundsInRoot.top
-        assertTrue(top("무선 디버깅 자동 관리")<top("백그라운드 감시"));assertTrue(top("백그라운드 감시")<top("재적용 알림"))
+        // Traversal follows the vertical Column even when later rows are below the viewport.
+        // Clipped bounds collapse off-screen rows to zero and cannot establish their order.
+        val labels=compose.onAllNodes(isToggleable()).fetchSemanticsNodes().map{it.config[androidx.compose.ui.semantics.SemanticsProperties.Text].joinToString{t->t.text}}
+        val expected=listOf("무선 디버깅 자동 관리","백그라운드 감시",BatteryOptimization.TITLE,"재적용 알림")
+        assertTrue(labels.containsAll(expected));assertTrue(expected.zipWithNext().all{(a,b)->labels.indexOf(a)<labels.indexOf(b)})
     }
     /** While watching, automatic management is only the restart path: its switch is locked and explains why. */
     @Test fun automaticManagementIsLockedWhileWatching(){
@@ -402,7 +559,7 @@ class UiRenderTest {
     @Test fun usModelShowsWarningOnlyWhenFlagged(){render("84-home-us-model",model(applied=true).copy(usModel=true));compose.onNodeWithText("미국 판매 모델 안내").assertExists()}
     @Test fun nonUsModelHasNoRegionWarning(){render("84-home-default",model(applied=true));compose.onNodeWithText("미국 판매 모델 안내").assertDoesNotExist()}
     @Test @Config(qualifiers="en-rUS-w412dp-h915dp-xxhdpi") fun usModelWarningIsEnglishOutsideKorean(){render("84-home-us-model-en",model(applied=true).copy(usModel=true));compose.onNodeWithText("US model notice").assertExists()}
-    @Test fun welcomeWarnsSomeAppsMayLoseHiding(){render("01-welcome-notice",model(gate=Gate.WELCOME));compose.onNodeWithText("미리 알아두세요").assertExists();compose.onNodeWithText("위치 권한을 ‘정확한 위치’로 허용한 앱만 숨길 수 있어요.").assertExists();compose.onNodeWithText("풀린 앱은 bluedotOFF를 열 때 다시 숨겨요. USB 디버깅을 켜 두면 앱을 열지 않아도 바로 다시 숨겨요.").assertExists()}
+    @Test fun welcomeWarnsSomeAppsMayLoseHiding(){render("01-welcome-notice",model(gate=Gate.WELCOME));compose.onNodeWithText("미리 알아두세요").assertExists();compose.onNodeWithText("위치 권한을 ‘정확한 위치’로 허용한 앱만 숨길 수 있어요.").assertExists();compose.onNodeWithText("풀린 앱은 bluedotOFF를 열 때 다시 숨겨요. USB 디버깅을 켜 두면 앱을 열지 않아도 감지하는 대로 다시 숨겨요.").assertExists()}
     @Test @Config(qualifiers="en-rUS-w412dp-h915dp-xxhdpi") fun welcomeNoticeIsEnglishOutsideKorean(){render("01-welcome-notice-en",model(gate=Gate.WELCOME));compose.onNodeWithText("Good to know").assertExists()}
     @Test fun homeHasNoWelcomeNotice(){render("01-home-no-notice",model(applied=true));compose.onNodeWithText("미리 알아두세요").assertDoesNotExist()}
     @Test @Config(qualifiers="ko-rKR-w412dp-h915dp-night-xxhdpi") fun emptyBlueHomeKeepsNavigationOnPageBackground(){render("86-home-empty-blue-dark",model().copy(entries=emptyList()));compose.onNodeWithText("설정").assertExists()}

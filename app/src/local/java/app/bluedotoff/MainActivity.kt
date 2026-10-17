@@ -81,7 +81,10 @@ class MainActivity : ComponentActivity() {
     private fun recheck()=refresh(true,Check.REGISTERED)
     private val prefs by lazy { getSharedPreferences("ui-state", MODE_PRIVATE) }
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { model = model.copy(notifications = it, notificationOffer = false) }
-    private val journalListener:()->Unit = { if(ForegroundState.active&&!model.busy){loadReapplyHistory();refresh()} }
+    private val journalListener:()->Unit = {
+        // Watch start/stop also arrives here: show it even when a refresh is skipped (busy or already running).
+        model=model.copy(watchRunning=WatchClient.available(this),usbDebugging=WatchClient.usbEnabled(this))
+        if(ForegroundState.active&&!model.busy){loadReapplyHistory();refresh()} }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -134,6 +137,9 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState != null) {
             model = model.copy(uninstallCheck = if (savedInstanceState.containsKey("uninstallCheck")) savedInstanceState.getInt("uninstallCheck") else model.uninstallCheck, page = Page.valueOf(savedInstanceState.getString("page") ?: "HOME"), selected = savedInstanceState.getString("selected"), picked=savedInstanceState.getStringArrayList("picked")?.toSet()?:emptySet(),query=savedInstanceState.getString("query")?:"",filter=AppFilter.valueOf(savedInstanceState.getString("filter")?:"RECENT"),homePicked=savedInstanceState.getStringArrayList("homePicked")?.toSet()?:emptySet(),historyView=HistoryView.valueOf(savedInstanceState.getString("historyView")?:"APPS"))
         }
+        if(savedInstanceState!=null)model=model.copy(restoreSkipped=savedInstanceState.getInt("restoreSkipped",0),pageBack=Page.valueOf(savedInstanceState.getString("pageBack")?:"HOME"))
+        if(savedInstanceState==null&&pendingRestore.isNotEmpty())model=model.copy(page=Page.RESTORE,homePicked=pendingRestore)
+        pendingRestore=emptySet()
         if(model.page==Page.HISTORY&&model.historyView==HistoryView.REAPPLY)loadReapplyHistory()
         discovery=LocalAdbDiscovery(this){
             if(WatchClient.available(this)){model=model.copy(connected=true,automaticReady=true);return@LocalAdbDiscovery}
@@ -153,7 +159,7 @@ class MainActivity : ComponentActivity() {
         else @Suppress("DEPRECATION") registerReceiver(packageChanges,packageFilter)
         wifiObserver=WifiConnection.observe(this){runOnUiThread{model=model.copy(automaticReady=automaticReady());if(ForegroundState.active&&!model.busy)refresh()}}
         navigateNotification(intent)
-        setContent { BlueDotApp(model, ::navigate, ::select, ::requestHide, ::requestRestore, ::batchHide, ::restoreAll, ::openBackend, ::openBackend, ::openBackend, ::refreshFromUser, ::allowNotifications, ::dismissNotificationOffer, ::begin, ::loadApps, ::clearNotice, ::togglePick, ::addSelected, ::changeQuery, ::changeFilter, { model=model.copy(homePicked=emptySet());navigate(Page.RESTORE) }, ::toggleHomePick, ::restoreSelected, ::contentShown, pickerRevision, ::historyViewChanged,pickerViewChanged={model=model.copy(pickerView=it,pickerRows=null);filterPicker()},wirelessExit={if(!model.busy)WirelessDebuggingExit.open(this)},toggleAll=::toggleAll,managementChanged=::managementChanged,removeManagementPermission=::removeManagementPermission,sharedInspect={pickGroups(listOf(it))},sharedAccept=::acceptShared,sharedDismiss={sharedGeneration++;model=model.copy(sharedOffer=null)},scopeChange=::chooseScope,reapplyNeeded={perform(it,true)},notificationChanged=::reapplyNotificationChanged,recheck=::recheck,bigGroupsAccept=::acceptBigGroups,bigGroupsDismiss={model=model.copy(bigGroups=emptyList())},rejectedDismiss={model=model.copy(rejectedGroupList=emptyList())},restorePickAll=::toggleAllRestore,showPick=::toggleShowPick,showPickAll=::toggleAllShow,showSelected=::showSelected,refreshHistory=::refreshHistory,autoReapplyChanged=::autoReapplyChanged,openShow={model=model.copy(showPicked=emptySet());navigate(Page.SHOW)},beforeUninstall=::beforeUninstall,uninstallDismiss={model=model.copy(uninstallCheck=null)},openAppInfo=::openAppInfo,copyDiagnostics=::copyDiagnostics,backgroundWatchChanged=::backgroundWatchChanged,openDeveloperOptions={SettingsEntrypoints.developerOptions(this)}) }
+        setContent { BlueDotApp(model, ::navigate, ::select, ::requestHide, ::requestRestore, ::batchHide, ::restoreAll, ::openBackend, ::openBackend, ::openBackend, ::refreshFromUser, ::allowNotifications, ::dismissNotificationOffer, ::begin, ::loadApps, ::clearNotice, ::togglePick, ::addSelected, ::changeQuery, ::changeFilter, { model=model.copy(homePicked=emptySet());navigate(Page.RESTORE) }, ::toggleHomePick, ::restoreSelected, ::contentShown, pickerRevision, ::historyViewChanged,pickerViewChanged={model=model.copy(pickerView=it,pickerRows=null);filterPicker()},wirelessExit={if(!model.busy)WirelessDebuggingExit.open(this)},toggleAll=::toggleAll,managementChanged=::managementChanged,removeManagementPermission=::removeManagementPermission,sharedInspect={pickGroups(listOf(it))},sharedAccept=::acceptShared,sharedDismiss={sharedGeneration++;model=model.copy(sharedOffer=null)},scopeChange=::chooseScope,reapplyNeeded={perform(it,true)},notificationChanged=::reapplyNotificationChanged,recheck=::recheck,bigGroupsAccept=::acceptBigGroups,bigGroupsDismiss={model=model.copy(bigGroups=emptyList())},rejectedDismiss={model=model.copy(rejectedGroupList=emptyList())},restorePickAll=::toggleAllRestore,showPick=::toggleShowPick,showPickAll=::toggleAllShow,showSelected=::showSelected,refreshHistory=::refreshHistory,autoReapplyChanged=::autoReapplyChanged,openShow={model=model.copy(showPicked=emptySet());navigate(Page.SHOW)},beforeUninstall=::beforeUninstall,uninstallDismiss={model=model.copy(uninstallCheck=null)},openAppInfo=::openAppInfo,copyDiagnostics=::copyDiagnostics,backgroundWatchChanged=::backgroundWatchChanged,openDeveloperOptions={SettingsEntrypoints.developerOptions(this)},openBattery={enable->if(!model.busy)BatteryOptimization.open(this,enable)},dismissUsNotice=::dismissUsNotice) }
     }
     // Leaving bluedotOFF turns a held wireless debugging off after a short grace (quick switches back keep it on).
     private val releaseHandler=android.os.Handler(android.os.Looper.getMainLooper())
@@ -161,9 +167,9 @@ class MainActivity : ComponentActivity() {
     override fun onStart() { super.onStart(); ForegroundState.started(); releaseHandler.removeCallbacks(releaseHeld) }
     override fun onStop() { interactionOpened=0L;autoReapplyTried=false;ForegroundState.stopped(); releaseHandler.postDelayed(releaseHeld,2000); super.onStop() }
     override fun onPause() { ForegroundState.paused();super.onPause() }
-    override fun onResume() { super.onResume();ForegroundState.resumed();autoReapplyArmed=true;model=model.copy(notifications=reapplyNotificationsEnabled(),usbDebugging=WatchClient.usbEnabled(this),watchRunning=WatchClient.available(this)); if (::store.isInitialized) resumeCheck() }
+    override fun onResume() { super.onResume();pendingRestore=emptySet();ForegroundState.resumed();autoReapplyArmed=true;model=model.copy(notifications=reapplyNotificationsEnabled(),usbDebugging=WatchClient.usbEnabled(this),watchRunning=WatchClient.available(this),batteryUnrestricted=BatteryOptimization.unrestricted(this)); if (::store.isInitialized) resumeCheck() }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); navigateNotification(intent); refresh() }
-    override fun onSaveInstanceState(out: Bundle) { out.putString("page",model.page.name); out.putString("selected",model.selected); out.putStringArrayList("picked",ArrayList(model.picked));out.putString("query",model.query);out.putString("filter",model.filter.name);out.putString("historyView",model.historyView.name);out.putStringArrayList("homePicked",ArrayList(model.homePicked));out.putInt("batchPid",android.os.Process.myPid());out.putLong("handledBatchId",handledBatchId);model.uninstallCheck?.let{out.putInt("uninstallCheck",it)};super.onSaveInstanceState(out) }
+    override fun onSaveInstanceState(out: Bundle) { out.putString("page",model.page.name); out.putString("selected",model.selected); out.putStringArrayList("picked",ArrayList(model.picked));out.putString("query",model.query);out.putString("filter",model.filter.name);out.putString("historyView",model.historyView.name);out.putStringArrayList("homePicked",ArrayList(model.homePicked));out.putInt("restoreSkipped",model.restoreSkipped);out.putString("pageBack",model.pageBack.name);out.putInt("batchPid",android.os.Process.myPid());out.putLong("handledBatchId",handledBatchId);model.uninstallCheck?.let{out.putInt("uninstallCheck",it)};super.onSaveInstanceState(out) }
     override fun onDestroy() { if(LifecycleEvents.listener===journalListener)LifecycleEvents.listener=null;discovery.close();wifiObserver?.close();unregisterReceiver(packageChanges); super.onDestroy() }
     private fun navigateNotification(intent: Intent?) {
         if (intent?.action != "app.bluedotoff.REAPPLY") return
@@ -194,9 +200,13 @@ class MainActivity : ComponentActivity() {
             try {
                 prefs.getString("setupNotice",null)?.let{cleanupNotice=it;prefs.edit().remove("setupNotice").apply()}
                 val entries=withContext(Dispatchers.IO){markLocalEvents()}
-                if(userAction&&prefs.getBoolean("welcomed",false)&&scopes.resolved&&DeviceSupport.basic()&&BackgroundWatch.enabled(this@MainActivity))
-                    withContext(Dispatchers.IO){WatchClient.ensureStarted(applicationContext)}
-                model=model.copy(applicationScope=scopes.current,scopePending=scopes.pending!=null||scopes.requested!=null,scopeResolved=scopes.resolved,entries=entries,usModel=prefs.getBoolean("usModel",false),reapplyNotify=prefs.getBoolean("reapplyNotify",true),autoReapply=prefs.getBoolean("autoReapply",true),backgroundWatch=BackgroundWatch.enabled(this@MainActivity),usbDebugging=WatchClient.usbEnabled(this@MainActivity),watchRunning=WatchClient.available(this@MainActivity),watchAcknowledged=BackgroundWatch.acknowledged(this@MainActivity),notifications=reapplyNotificationsEnabled(),automaticReady=automaticReady(),connected=controls.wireless||WatchClient.available(this@MainActivity),autoManagement=controls.consent,autoPermission=controls.granted)
+                model=model.copy(journalProblem=false)
+                if(userAction&&prefs.getBoolean("welcomed",false)&&scopes.resolved&&DeviceSupport.basic()&&BackgroundWatch.enabled(this@MainActivity)){
+                    // Settings shows "감시 시작 중…" instead of "멈춤" while a stopped watch is being started.
+                    model=model.copy(watchStarting=!WatchClient.available(this@MainActivity))
+                    try{withContext(Dispatchers.IO){WatchClient.ensureStarted(applicationContext)}}finally{model=model.copy(watchStarting=false)}
+                }
+                model=model.copy(applicationScope=scopes.current,scopePending=scopes.pending!=null||scopes.requested!=null,scopeResolved=scopes.resolved,entries=entries,usModel=prefs.getBoolean("usModel",false)&&!prefs.getBoolean("usNoticeDismissed",false),reapplyNotify=prefs.getBoolean("reapplyNotify",true),autoReapply=prefs.getBoolean("autoReapply",true),backgroundWatch=BackgroundWatch.enabled(this@MainActivity),usbDebugging=WatchClient.usbEnabled(this@MainActivity),watchRunning=WatchClient.available(this@MainActivity),watchAcknowledged=BackgroundWatch.acknowledged(this@MainActivity),notifications=reapplyNotificationsEnabled(),automaticReady=automaticReady(),connected=controls.wireless||WatchClient.available(this@MainActivity),autoManagement=controls.consent,autoPermission=controls.granted)
                 if(mode==Check.LOCAL)return@launch
                 if(!prefs.getBoolean("welcomed",false)){model=model.copy(gate=Gate.WELCOME);return@launch}
                 if(!DeviceSupport.basic()){model=model.copy(gate=Gate.UNSUPPORTED,compatibility="Samsung One UI 9 이상에서 지원 여부를 확인할 수 있어요.");return@launch}
@@ -262,7 +272,7 @@ class MainActivity : ComponentActivity() {
                             pkg to snapshot
                         }.toMap()
                         snapshots.addAll(current.values.filterNotNull())
-                        if(current.isNotEmpty())check(store.transform{e->if(e.identity.packageName in current)Reconcile.read(e,current[e.identity.packageName],firmware.key,boot,current) else e})
+                        if(current.isNotEmpty())check(store.transform{e->if(e.identity.packageName in current)Reconcile.read(e,current[e.identity.packageName],firmware.key,boot,current) else e}){"복원 기록을 저장하지 못해서 바꾸지 않았어요."}
                         if(mode!=Check.HISTORY){if(only.isEmpty())changedPackages.clear() else changedPackages.removeAll(current.keys)}
                         // The connection is open anyway: refresh the display-only location history (about a second)
                         // so apps used since the last full check appear. Inventory and its 30-minute expiry are unchanged.
@@ -272,7 +282,7 @@ class MainActivity : ComponentActivity() {
                         val prepared=StartupScan.read({firmware},store::entries,
                             {capture->backend.discover(checkCancelled={coroutine.ensureActive()},onSnapshot=capture,onProgress=reportScan)},
                             {pkg->try{backend.read(pkg)}catch(_:PackageManager.NameNotFoundException){null}},
-                            {targets,fw->check(store.transform{e->Reconcile.read(e,targets[e.identity.packageName],fw.key,boot,targets)});store.entries()},
+                            {targets,fw->check(store.transform{e->Reconcile.read(e,targets[e.identity.packageName],fw.key,boot,targets)}){"복원 기록을 저장하지 못해서 바꾸지 않았어요."};store.entries()},
                             boot,{coroutine.isActive})
                         snapshots.addAll(prepared.snapshots)
                         prepared.discovery
@@ -286,7 +296,10 @@ class MainActivity : ComponentActivity() {
                 model=model.copy(gate=Gate.READY,scanProgress=null,rechecking=false,checkingRegistered=false,lastCheckedAt=if(fullCheck)System.currentTimeMillis() else model.lastCheckedAt,entries=store.entries(),candidates=if(mode==Check.HISTORY||only.isNotEmpty())model.candidates.filterNot{c->snapshots.any{it.identity.packageName==c.identity.packageName}}+snapshots else snapshots,loadingApps=false,connected=controls.wireless||WatchClient.available(this@MainActivity),automaticReady=automaticReady(),freshPackages=if(!controls.wireless&&!WatchClient.available(this@MainActivity))emptySet() else if(mode==Check.HISTORY||only.isNotEmpty())model.freshPackages+snapshots.map{it.identity.packageName} else snapshots.map{it.identity.packageName}.toSet(),compatibility="앱 확인 완료",notice=cleanupNotice,notificationOffer=!notificationsEnabled()&&!prefs.getBoolean("notificationExplained",false))
                 filterPicker()
                 if(model.page==Page.DETAIL&&model.selected!=null&&snapshots.none{it.identity.packageName==model.selected})select(model.selected!!)
-            }catch(_:CancellationException){model=model.copy(rechecking=false,checkingRegistered=false,scanProgress=null,loadingApps=false)}catch(error:Exception){android.util.Log.w("bluedotOFF","refresh failed: ${error.javaClass.simpleName}: ${error.message?.take(160)}");model=model.copy(gate=if(model.entries.any{it.enabled}||model.automaticReady)Gate.READY else Gate.NOT_RUNNING,rechecking=false,checkingRegistered=false,scanProgress=null,loadingApps=false,connected=false,freshPackages=emptySet(),compatibility="현재 기기의 변경 작업을 확인할 수 없어요. 연결 준비에서 다시 확인해주세요.",notice=cleanupNotice)}
+            }catch(_:CancellationException){model=model.copy(rechecking=false,checkingRegistered=false,scanProgress=null,loadingApps=false)}catch(error:Exception){android.util.Log.w("bluedotOFF","refresh failed: ${error.javaClass.simpleName}: ${error.message?.take(160)}")
+                // A broken or unsavable restore journal is not a connection problem: reconnecting cannot fix it, and clearing data would lose it.
+                val journalProblem=error.message=="복원 기록을 저장하지 못해서 바꾸지 않았어요."||withContext(Dispatchers.IO){runCatching{store.entries()}.isFailure}
+                model=model.copy(journalProblem=journalProblem,gate=if(journalProblem||model.entries.any{it.enabled}||model.automaticReady)Gate.READY else Gate.NOT_RUNNING,rechecking=false,checkingRegistered=false,scanProgress=null,loadingApps=false,connected=false,freshPackages=emptySet(),compatibility=if(error.message=="COMPATIBILITY_FAILED")SetupFlow.OS_CHANGED else "현재 기기의 변경 작업을 확인할 수 없어요. 연결 준비에서 다시 확인해주세요.",notice=cleanupNotice)}
         }
         refreshJob=job
         job.invokeOnCompletion{cause->if(cause==null)releaseHandler.post{val armed=autoReapplyArmed;autoReapplyArmed=false;if(armed)maybeAutoReapply()}}
@@ -305,7 +318,9 @@ class MainActivity : ComponentActivity() {
         if(model.page==Page.PICK&&model.discovered.isNotEmpty()&&!scanFrameRecorded){scanFrameRecorded=true;val ms=now-(if(pickerOpened>0L)pickerOpened else scanOpened);model=model.copy(metrics=model.metrics.copy(firstUsableMs=ms));lifecycleScope.launch(Dispatchers.IO){runCatching{backend.recordUiMetric("picker_first_frame_ms",ms)}}}
         if(interactionOpened>0L){val ms=now-interactionOpened;val phase=interactionPhase;interactionOpened=0L;lifecycleScope.launch(Dispatchers.IO){runCatching{backend.recordUiMetric(phase,ms)}}}
     }
-    private fun navigate(page: Page) { if(page!=model.page)interactionOpened=0L;if(page==Page.PICK){pickerOpened=android.os.SystemClock.elapsedRealtime();scanFrameRecorded=false};model=model.copy(page=page); if(page in listOf(Page.PICK,Page.SHOW)&&(!cacheValid()||model.discovered.isEmpty()))refresh(true,Check.FULL)
+    private fun navigate(page: Page) { if(page!=model.page)interactionOpened=0L;if(page==Page.PICK){pickerOpened=android.os.SystemClock.elapsedRealtime();scanFrameRecorded=false}
+        // Screens opened from Settings (숨김이 남은 앱, 도움말) go back to where they were opened.
+        model=model.copy(page=page,pageBack=if(page in listOf(Page.SHOW,Page.HELP)&&page!=model.page)model.page else model.pageBack); if(page in listOf(Page.PICK,Page.SHOW)&&(!cacheValid()||model.discovered.isEmpty()))refresh(true,Check.FULL)
         // History shows the remembered list at once and re-reads only location access times (about a second).
         else if(page==Page.HISTORY&&model.historyView==HistoryView.REAPPLY)loadReapplyHistory()
         else if(page==Page.HISTORY)refresh(true,if(model.discovered.isEmpty())Check.FULL else if(android.os.SystemClock.elapsedRealtime()-lastHistoryElapsed>=60_000L)Check.HISTORY else Check.LOCAL) }
@@ -510,9 +525,12 @@ class MainActivity : ComponentActivity() {
             outcome
         }
         if(started)skipNotice=if(needsCheck>0)"확인이 필요한 ${needsCheck}개 앱은 건너뛰었어요. 홈 목록에서 상태를 확인해주세요." else ""
-        if(started)model=model.copy(busy=true,operationHide=hide,operationShow=show,autoReapplying=auto,progress=BatchProgress(0,targets.size),completion=null,loadingApps=false,notice="",wirelessWarning="",batchResults=emptyList())
+        if(started)model=model.copy(busy=true,operationHide=hide,operationShow=show,autoReapplying=auto,progress=BatchProgress(0,targets.size),completion=null,restoreSkipped=needsCheck,loadingApps=false,notice="",wirelessWarning="",batchResults=emptyList())
     }
-    private fun openBackend(){checkOnResume=true;refreshJob?.cancel();discoveryJob?.cancel();invalidateScan();startActivity(Intent(this,LocalAdbSetupActivity::class.java))}
+    /** Restore picks made before "연결 후 N개 복원": setup returns with FLAG_ACTIVITY_CLEAR_TOP, which recreates this
+     *  activity, so the selection is carried over in memory and shown again. Nothing runs until the user taps restore. */
+    private companion object { var pendingRestore:Set<String> = emptySet() }
+    private fun openBackend(){pendingRestore=if(model.page==Page.RESTORE)model.homePicked else emptySet();checkOnResume=true;refreshJob?.cancel();discoveryJob?.cancel();invalidateScan();startActivity(Intent(this,LocalAdbSetupActivity::class.java))}
     private fun <T> localBatch(userAction:Boolean=true,forceWireless:Boolean=false,block:()->T):T {
         return WirelessWork.run(this,userAction,endpointPort,onCleanup={cleanupNotice=it},hold=true,forceWireless=forceWireless){active->
             backend=active
@@ -554,6 +572,8 @@ class MainActivity : ComponentActivity() {
         if(on&&!notificationsEnabled())allowNotifications()
         else if(on&&!reapplyNotificationsEnabled())startActivity(Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,packageName).putExtra(Settings.EXTRA_CHANNEL_ID,ReapplyNotification.CHANNEL))
     }
+    /** The US-model notice is informational: once confirmed it stays hidden (README keeps the details). */
+    private fun dismissUsNotice() { prefs.edit().putBoolean("usNoticeDismissed",true).apply(); model=model.copy(usModel=false) }
     private fun dismissNotificationOffer() { prefs.edit().putBoolean("notificationExplained",true).apply(); model=model.copy(notificationOffer=false) }
     /** Picker: reads and validates each shared group in one connection, then selects every valid group as a unit.
      * Groups that do not pass are left out of the picker; the write path validates every group again before changing it. */

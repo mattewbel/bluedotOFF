@@ -23,7 +23,7 @@ class UiTextTest {
         for(k in listOf("백그라운드 감시","백그라운드 감시를 켤까요?","켜기 전에 꼭 읽어주세요.","USB 디버깅을 항상 켜 둬야 해요.",
             "bluedotOFF를 열지 않아도 숨김이 풀린 앱을 자동으로 다시 숨겨요.","백그라운드에서 동작해서 배터리 사용량이 늘 수 있어요.",
             "일부 은행·결제 앱은 USB 디버깅이 켜져 있으면 실행되지 않을 수 있어요.","USB 디버깅과 무선 디버깅이 모두 꺼지면 감시가 멈춰요.",
-            "USB 디버깅을 켜 두면 bluedotOFF를 열지 않아도 숨김이 풀린 앱을 바로 다시 적용해요.","백그라운드 감시가 멈췄을 때 알려드려요.","백그라운드 감시가 멈췄어요",
+            "USB 디버깅을 켜 두면 bluedotOFF를 열지 않아도 숨김이 풀린 앱을 감지하는 대로 다시 적용해요.","백그라운드 감시가 멈췄을 때 알려드려요.","백그라운드 감시가 멈췄어요",
             "다시 켜려면 Wi-Fi에 연결된 상태에서 bluedotOFF를 열어주세요.","진단 정보 복사 및 보내기",
             "진단 정보를 복사하고 메일 앱을 열었어요. 내용을 확인한 뒤 보내 주세요. 설치된 앱 목록이나 위치 기록은 들어 있지 않아요.")+WatchNotification.Reason.entries.map{it.message})
             assertNotEquals(k,k,UiText.text(language("en"),k))
@@ -46,6 +46,20 @@ class UiTextTest {
         assertEquals("Example app icon",UiText.text(language("en"),"Example app 아이콘"))
         assertEquals("카카오맵",UiText.text(language("en"),"카카오맵"))
     }
+    @Test fun batteryOptimizationCopyAndProgressHaveEnglish(){
+        val strings=listOf(
+            BatteryOptimization.TITLE,
+            BatteryOptimization.DESCRIPTION,
+            "배터리 사용 제한을 해제할까요?",
+            "화면이 꺼진 동안에도 감시가 덜 늦어지도록, 배터리 설정을 ‘제한 없음’으로 바꿀 수 있어요. 배터리 사용량이 늘 수 있어요. 필수 설정은 아니며, 나중에 설정에서도 바꿀 수 있어요.",
+            "배터리 → 제한 없음에서 설정을 바꿀 수 있어요.",
+            "설정 화면을 열지 못했어요. 휴대폰 설정의 앱 정보 → 배터리에서 바꿔주세요.",
+            "해제됨","설정하기","확인하기","앱 정보 → 배터리에서 ‘최적화’를 선택해주세요.",
+            "끄려면 앱 정보 → 배터리에서 ‘최적화’를 선택해주세요.","배터리 설정 상태를 확인할 수 없어요. 설정 열기")
+        for(k in strings)assertNotEquals(k,k,UiText.text(language("en"),k))
+        assertEquals("Disable battery optimization",UiText.text(language("en"),BatteryOptimization.TITLE))
+        assertEquals("Connection setup · 10 / 12",UiText.text(language("en"),"연결 준비 · 10 / 12"))
+    }
     @Test fun unknownErrorsRemainVisibleAndNeverBecomeSuccess(){
         assertEquals("UNKNOWN_IO_FAILURE",UiText.text(language("en"),"UNKNOWN_IO_FAILURE"))
     }
@@ -55,6 +69,13 @@ class UiTextTest {
         assertEquals("복원 기록 저장 확인 실패",UiText.error("복원 기록 저장 확인 실패"))
         assertEquals("",UiText.error(""))
         assertEquals("The task couldn't be finished. Check the device connection and try again.",UiText.text(language("en"),UiText.error("Helper descriptor mismatch")))
+    }
+    @Test fun legacyRecoverableErrorsGetUpdatedCopyButRollbackBlockStaysExact(){
+        assertEquals("변경 후 상태를 확인하지 못해 원래 표시 상태로 되돌렸어요. 다시 확인해 주세요.",UiText.error("안전성 확인에 실패해 원래 표시 상태로 복원했습니다."))
+        assertEquals("표시 상태가 유지되는지 확인하지 못했어요. 다시 확인해 주세요.",UiText.error("현재 상태의 지속성을 확인하지 못했습니다. 다시 확인해 주세요."))
+        assertEquals("숨김 유지 여부를 다시 확인해야 해요. 재적용을 눌러주세요.",UiText.error("이전 빌드의 기록은 지속성 검사가 없어 새 적용 확인이 필요합니다."))
+        val serious="복원을 확인하지 못했습니다. 추가 변경을 차단했습니다."
+        assertEquals(serious,UiText.error(serious))
     }
     @Test fun offlineLastVerifiedCopyDoesNotPromiseCurrentLiveState(){
         val id=app.bluedotoff.core.Identity("test.app",0,10001,listOf("signer"),1,1,1)

@@ -98,6 +98,10 @@ class SetupSession internal constructor(private val context:Context,private val 
         app.bluedotoff.StartupScanHandoff.cache.invalidate();refresh()
     }
     fun skipManagement(){if(managing||!verified)return;runtime.skipManagement();managementError="";refresh()}
+    fun skipBatteryChoice(){if(closed||SetupFlow.stage(facts)!=SetupStage.BATTERY_OPTIMIZATION)return;runtime.skipBatteryChoice();refresh()}
+    /** Battery settings cannot grant ADB access. Re-read facts without discarding the
+     * verified connection; refresh still invalidates it if Wi-Fi/debugging changed. */
+    fun batterySettingsReturned(){if(!closed)refresh()}
     fun enableManagement(){
         val port=verifiedPort?:return
         if(closed||managing||!verified||runtime.busy||SetupFlow.stage(facts)!=SetupStage.AUTOMATIC_MANAGEMENT)return
@@ -158,7 +162,7 @@ class SetupSession internal constructor(private val context:Context,private val 
             paired=paired,nearbyResolved=broad||prefs.getBoolean("nearbyAsked",false),sessionStarted=discovery!=null,
             pairAdvertisement=found!=null,pairing=pairing,connecting=connecting,verifying=verifying,verified=verified,forcePairing=forcePairing,error=error,completedOffline=runtime.intentionalExit&&!wireless,
             managementChoiceResolved=runtime.managementChoiceResolved,managing=managing,applicationScopeResolved=app.bluedotoff.ScopePreferences(context).resolved,finalCheckResolved=runtime.finalCheckResolved,
-            autoBlocked=runtime.autoBlocked
+            autoBlocked=runtime.autoBlocked,batteryChoiceRequired=runtime.batteryChoiceRequired,batteryChoiceResolved=runtime.batteryChoiceResolved
         )
         val stage=SetupFlow.stage(facts)
         if(!dev||!wifi||!pairingNeeded||error!=null)settingsHandoff=false

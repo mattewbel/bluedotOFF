@@ -5,9 +5,9 @@ enum class SetupStage {
     WELCOME, NOTIFICATION_PERMISSION, DEVELOPER_OPTIONS_OFF, WIFI_NOT_CONNECTED, WIRELESS_DEBUGGING_OFF,
     NEARBY_PERMISSION, GUIDE_PAIRING_CODE_PAGE, WAIT_FOR_PAIRING_ADVERTISEMENT,
     PAIRING_NOTIFICATION_READY, PAIRING, CONNECTING, VERIFYING, AUTOMATIC_MANAGEMENT, ENABLING_MANAGEMENT, APPLICATION_SCOPE, FINAL_CHECK, READY,
-    PAIRING_RETRY, CONNECTION_RECOVERY, DISCOVERY_RECOVERY, SESSION_EXPIRED, UNSUPPORTED
+    PAIRING_RETRY, CONNECTION_RECOVERY, DISCOVERY_RECOVERY, SESSION_EXPIRED, UNSUPPORTED, BATTERY_OPTIMIZATION
 }
-enum class SetupAction { START, NOTIFICATIONS, DEVICE_INFO, WIFI_SETTINGS, WIRELESS_SETTINGS, NEARBY, AUTOMATIC_MANAGEMENT, APPLICATION_SCOPE, RETRY_PAIRING, RETRY_CONNECTION, CHOOSE_CONNECTION, RESUME, NONE, SECURITY_SETTINGS }
+enum class SetupAction { START, NOTIFICATIONS, DEVICE_INFO, WIFI_SETTINGS, WIRELESS_SETTINGS, NEARBY, AUTOMATIC_MANAGEMENT, APPLICATION_SCOPE, RETRY_PAIRING, RETRY_CONNECTION, CHOOSE_CONNECTION, RESUME, NONE, SECURITY_SETTINGS, BATTERY_OPTIMIZATION }
 data class SetupFacts(
     val welcomed:Boolean=true, val notificationResolved:Boolean=true,
     val developer:Boolean=true, val wireless:Boolean=true, val supported:Boolean=true,
@@ -16,17 +16,19 @@ data class SetupFacts(
     val verifying:Boolean=false, val verified:Boolean=false, val forcePairing:Boolean=false,
     val error:SetupStage?=null, val wifiConnected:Boolean=true, val completedOffline:Boolean=false,
     val managementChoiceResolved:Boolean=true, val managing:Boolean=false, val applicationScopeResolved:Boolean=true, val finalCheckResolved:Boolean=true,
-    val autoBlocked:Boolean=false
+    val autoBlocked:Boolean=false, val batteryChoiceRequired:Boolean=false, val batteryChoiceResolved:Boolean=true
 )
-data class SetupPresentation(val stage:SetupStage,val progress:Int,val title:String,val body:String,val action:SetupAction,val button:String="")
+data class SetupPresentation(val stage:SetupStage,val progress:Int,val title:String,val body:String,val action:SetupAction,val button:String="",val total:Int=11)
 object SetupFlow {
     private fun completed(f:SetupFacts)=when {
         f.managing->SetupStage.ENABLING_MANAGEMENT
         !f.managementChoiceResolved->SetupStage.AUTOMATIC_MANAGEMENT
+        f.batteryChoiceRequired&&!f.batteryChoiceResolved->SetupStage.BATTERY_OPTIMIZATION
         !f.applicationScopeResolved->SetupStage.APPLICATION_SCOPE
         !f.finalCheckResolved->SetupStage.FINAL_CHECK
         else->SetupStage.READY
     }
+    const val OS_CHANGED="이 휴대폰에서 확인한 구조와 달라져서, 안전을 위해 아무것도 바꾸지 않고 멈췄어요. 다시 페어링해도 해결되지 않아요. 숨긴 앱의 복원 기록은 그대로이니 앱 데이터를 지우거나 삭제하지 말고, bluedotOFF 업데이트를 기다려주세요."
     fun stage(f:SetupFacts):SetupStage=when {
         !f.supported->SetupStage.UNSUPPORTED
         !f.welcomed&&!f.paired->SetupStage.WELCOME
@@ -48,7 +50,8 @@ object SetupFlow {
     }
     fun presentation(f:SetupFacts):SetupPresentation {
         val s=stage(f)
-        return when(s){
+        val extra=if(f.batteryChoiceRequired)1 else 0
+        val p=when(s){
             SetupStage.WELCOME->SetupPresentation(s,1,"연결 준비","몇 가지 설정을 켜면 이 앱에서 바로 연결할 수 있어요.",SetupAction.START,"시작하기")
             SetupStage.NOTIFICATION_PERMISSION->SetupPresentation(s,2,"알림을 켜면 연결이 쉬워요","알림에서 페어링 코드를 입력하고, 재부팅·업데이트 후 확인 안내를 받을 수 있어요. 알림 없이 연결하려면 분할 화면이 필요해요.",SetupAction.NOTIFICATIONS,"알림 허용")
             SetupStage.DEVELOPER_OPTIONS_OFF->SetupPresentation(s,3,"먼저 개발자 옵션을 켜주세요","휴대전화 정보에서 ‘소프트웨어 정보’를 열고 ‘빌드번호’를 7번 연속 누르세요. 돌아오면 다음 단계로 넘어가요.",SetupAction.DEVICE_INFO,"휴대전화 정보 열기")
@@ -60,17 +63,22 @@ object SetupFlow {
             SetupStage.PAIRING->SetupPresentation(s,7,"코드를 확인하고 있어요","잠시만 기다려주세요.",SetupAction.NONE)
             SetupStage.CONNECTING->SetupPresentation(s,8,"이 기기에 연결하고 있어요","저장된 연결 정보를 확인하고 있어요. 새 코드를 입력할 필요는 없어요.",SetupAction.NONE)
             SetupStage.VERIFYING->SetupPresentation(s,8,"기기와 앱을 확인하고 있어요","기기 호환성과 앱의 복원 기록을 먼저 확인해요. 적용 범위를 고른 뒤 전체 앱을 확인해요. 설정은 변경하지 않아요.",SetupAction.NONE)
-            SetupStage.AUTOMATIC_MANAGEMENT->SetupPresentation(s,9,"연결 유지 방법을 골라주세요","두 방법 모두 이 앱에 시스템 설정 변경 권한을 추가해요. 나중에 설정에서 바꿀 수 있어요.\n\n• 무선 디버깅 자동 관리 (권장): bluedotOFF를 쓰는 동안만 무선 디버깅을 켜고, 나가면 꺼요. 풀린 앱은 앱을 열 때 다시 숨겨요.\n• USB 디버깅으로 유지: 백그라운드 감시를 켜서 앱을 열지 않아도 풀린 앱을 바로 다시 숨겨요. USB 디버깅을 계속 켜 둬야 하고, 일부 은행·결제 앱이 실행되지 않을 수 있어요.",SetupAction.AUTOMATIC_MANAGEMENT,"무선 디버깅 자동 관리 (권장)")
+            SetupStage.AUTOMATIC_MANAGEMENT->SetupPresentation(s,9,"연결 유지 방법을 골라주세요","숨김이 풀린 앱을 언제 다시 숨길지 골라주세요. 두 방법 모두 이 앱에 시스템 설정 변경 권한을 추가하고, 나중에 설정에서 바꿀 수 있어요.\n\n• 앱을 열 때 다시 숨기기 (무선 디버깅 자동 관리): bluedotOFF를 쓰는 동안만 무선 디버깅을 켜고, 나가면 꺼요.\n• 앱을 닫아도 다시 숨기기 (USB 디버깅으로 유지): 백그라운드 감시가 풀린 앱을 감지하는 대로 다시 숨겨요. USB 디버깅을 계속 켜 둬야 하고, 일부 은행·결제 앱이 실행되지 않을 수 있어요.",SetupAction.AUTOMATIC_MANAGEMENT,"무선 디버깅 자동 관리")
             SetupStage.ENABLING_MANAGEMENT->SetupPresentation(s,9,"자동 관리를 준비하고 있어요","연결 종료까지 확인한 뒤 적용 범위를 선택해요. 잠시만 기다려주세요.",SetupAction.NONE)
-            SetupStage.APPLICATION_SCOPE->SetupPresentation(s,10,"적용 범위를 선택해주세요","믿는 앱의 파란 위치 표시를 숨겨요. 나중에 설정에서 범위를 바꿀 수 있어요.",SetupAction.APPLICATION_SCOPE,"적용 범위 선택")
-            SetupStage.FINAL_CHECK->SetupPresentation(s,11,"마지막으로 기기와 앱을 확인해요","선택한 적용 범위로 앱의 위치 표시 상태를 확인해요. 설정은 변경하지 않아요.",SetupAction.NONE)
-            SetupStage.READY->SetupPresentation(s,11,"준비 완료","연결을 확인했어요.",SetupAction.NONE)
+            SetupStage.BATTERY_OPTIMIZATION->SetupPresentation(s,10,"배터리 사용 제한을 해제할까요?","화면이 꺼진 동안에도 감시가 덜 늦어지도록, 배터리 설정을 ‘제한 없음’으로 바꿀 수 있어요. 배터리 사용량이 늘 수 있어요. 필수 설정은 아니며, 나중에 설정에서도 바꿀 수 있어요.",SetupAction.BATTERY_OPTIMIZATION,"배터리 사용 제한 해제")
+            SetupStage.APPLICATION_SCOPE->SetupPresentation(s,10+extra,"적용 범위를 선택해주세요","믿는 앱의 파란 위치 표시를 숨겨요. 나중에 설정에서 범위를 바꿀 수 있어요.",SetupAction.APPLICATION_SCOPE,"적용 범위 선택")
+            SetupStage.FINAL_CHECK->SetupPresentation(s,11+extra,"마지막으로 기기와 앱을 확인해요","선택한 적용 범위로 앱의 위치 표시 상태를 확인해요. 설정은 변경하지 않아요.",SetupAction.NONE)
+            SetupStage.READY->SetupPresentation(s,11+extra,"준비 완료","연결을 확인했어요.",SetupAction.NONE)
             SetupStage.PAIRING_RETRY->SetupPresentation(s,7,"새 페어링 코드를 열어주세요","코드가 맞지 않거나 시간이 만료됐어요. 새 코드 화면을 열고 다시 입력해주세요.",SetupAction.RETRY_PAIRING,"새 코드로 다시 연결")
             SetupStage.CONNECTION_RECOVERY->SetupPresentation(s,8,"기기 연결을 다시 확인해주세요","연결 승인이 해제됐거나 연결이 끊겼을 수 있어요. 다시 확인해도 연결되지 않으면 한 번만 다시 페어링해주세요.",SetupAction.RETRY_CONNECTION,"연결 다시 확인")
             SetupStage.DISCOVERY_RECOVERY->SetupPresentation(s,8,"이 기기의 연결을 선택해주세요","무선 디버깅이 켜져 있는지 확인한 뒤, 목록에서 이 휴대폰을 선택해주세요.",SetupAction.CHOOSE_CONNECTION,"연결할 기기 선택")
             SetupStage.SESSION_EXPIRED->SetupPresentation(s,7,"연결 준비가 잠시 중단됐어요","코드 화면을 다시 열어 이어서 연결할 수 있어요.",SetupAction.RESUME,"이어서 연결")
-            SetupStage.UNSUPPORTED->SetupPresentation(s,3,"이 기기의 지원 여부를 확인할 수 없어요","Samsung One UI 9 이상에서 지원 여부를 확인할 수 있어요. 대상 앱의 설정은 변경하지 않았어요.",SetupAction.NONE)
+            // A phone that worked before (paired) and now fails the structure check was most likely updated: re-pairing
+            // will not help, and the restore record must be kept.
+            SetupStage.UNSUPPORTED->if(f.supported&&f.paired)SetupPresentation(s,3,"휴대폰 업데이트로 내부 구조가 바뀌었어요",OS_CHANGED,SetupAction.NONE)
+                else SetupPresentation(s,3,"이 기기의 지원 여부를 확인할 수 없어요","Samsung One UI 9 이상에서 지원 여부를 확인할 수 있어요. 대상 앱의 설정은 변경하지 않았어요.",SetupAction.NONE)
         }
+        return p.copy(total=11+extra)
     }
 }
 
@@ -88,11 +96,13 @@ object PairNoticePolicy {
 data class SetupStepStatus(val number:Int,val label:String,val complete:Boolean,val current:Boolean)
 object SetupProgress {
     val labels=listOf("시작하기","알림 선택","개발자 옵션","Wi-Fi 연결","근처 기기 권한","무선 디버깅","페어링 코드 입력","기기와 앱 확인","연결 유지 방법","적용 범위","최종 기기 확인")
+    fun labels(f:SetupFacts)=if(f.batteryChoiceRequired)labels.take(9)+"배터리 사용 제한 해제"+labels.drop(9) else labels
     fun steps(f:SetupFacts):List<SetupStepStatus> {
         val current=SetupFlow.presentation(f).progress
         val done=listOf(f.welcomed||f.paired,f.notificationResolved||f.paired,f.developer,f.wifiConnected,
             f.nearbyResolved,f.wireless||(f.verified&&f.completedOffline),f.paired&&!f.forcePairing,
             f.verified,f.managementChoiceResolved,f.applicationScopeResolved,f.finalCheckResolved&&f.verified)
-        return labels.mapIndexed{i,label->SetupStepStatus(i+1,label,done[i],i+1==current&&SetupFlow.stage(f)!=SetupStage.READY)}
+        val complete=if(f.batteryChoiceRequired)done.take(9)+f.batteryChoiceResolved+done.drop(9) else done
+        return labels(f).mapIndexed{i,label->SetupStepStatus(i+1,label,complete[i],i+1==current&&SetupFlow.stage(f)!=SetupStage.READY)}
     }
 }

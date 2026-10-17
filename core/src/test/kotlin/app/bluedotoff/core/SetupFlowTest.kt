@@ -4,6 +4,29 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SetupFlowTest {
+    @Test fun optionalBatteryChoiceOnlyExtendsUsbSetupAfterManagement(){
+        val f=SetupFacts(paired=true,verified=true,managementChoiceResolved=false,batteryChoiceRequired=true,batteryChoiceResolved=false,applicationScopeResolved=false,finalCheckResolved=false)
+        assertEquals(SetupStage.AUTOMATIC_MANAGEMENT,stage(f))
+        val usb=f.copy(managementChoiceResolved=true)
+        val battery=SetupFlow.presentation(usb)
+        assertEquals(SetupStage.BATTERY_OPTIMIZATION,battery.stage);assertEquals(10,battery.progress);assertEquals(12,battery.total)
+        assertEquals(SetupAction.BATTERY_OPTIMIZATION,battery.action)
+        val scope=usb.copy(batteryChoiceResolved=true)
+        assertEquals(11,SetupFlow.presentation(scope).progress)
+        assertEquals(12,SetupFlow.presentation(scope.copy(applicationScopeResolved=true)).progress)
+        assertEquals(SetupStage.READY,stage(scope.copy(applicationScopeResolved=true,finalCheckResolved=true)))
+        val wireless=usb.copy(batteryChoiceRequired=false)
+        assertEquals(SetupStage.APPLICATION_SCOPE,stage(wireless));assertEquals(10,SetupFlow.presentation(wireless).progress);assertEquals(11,SetupFlow.presentation(wireless).total)
+    }
+    @Test fun usbProgressIncludesOptionalChoiceAndNeverMarksFutureStepsCurrent(){
+        val f=SetupFacts(paired=true,verified=true,batteryChoiceRequired=true,batteryChoiceResolved=false,applicationScopeResolved=false,finalCheckResolved=false)
+        val steps=SetupProgress.steps(f)
+        assertEquals(12,steps.size);assertEquals(listOf(10),steps.filter{it.current}.map{it.number})
+        assertFalse(steps[9].complete);assertFalse(steps[10].complete)
+        assertTrue(SetupProgress.steps(f.copy(batteryChoiceResolved=true))[9].complete)
+        assertEquals(11,SetupProgress.steps(f.copy(batteryChoiceRequired=false)).size)
+        assertFalse(SetupFlow.presentation(f.copy(managementChoiceResolved=false)).body.contains("권장"))
+    }
     @Test fun recommendationRequiresVerificationAndAnUnresolvedFirstRunChoice(){
         val f=SetupFacts(paired=true,managementChoiceResolved=false)
         assertEquals(SetupStage.CONNECTING,SetupFlow.stage(f))
@@ -60,5 +83,11 @@ class SetupFlowTest {
         assertFalse(steps.single{it.number==5}.complete)
         assertFalse(steps.single{it.number==6}.complete)
         assertEquals(11,steps.size)
+    }
+    /** A phone that worked before and now fails the structure check says so (re-pairing will not help). */
+    @Test fun pairedUnsupportedExplainsAnOsChange(){
+        val f=SetupFacts(supported=true,paired=true,welcomed=true,notificationResolved=true,developer=true,wifiConnected=true,nearbyResolved=true,wireless=true,error=SetupStage.UNSUPPORTED)
+        org.junit.Assert.assertEquals(SetupFlow.OS_CHANGED,SetupFlow.presentation(f).body)
+        org.junit.Assert.assertNotEquals(SetupFlow.OS_CHANGED,SetupFlow.presentation(f.copy(paired=false)).body)
     }
 }

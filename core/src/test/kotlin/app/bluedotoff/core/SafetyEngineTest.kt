@@ -4,6 +4,16 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SafetyEngineTest {
+    @Test fun explicitRetryAfterSafeRollbackClearsErrorOnlyAfterSettlingPasses(){
+        val(s,p,e)=rig();p.failAfterWrite=true
+        val failed=e.userHide(identity.packageName)
+        assertEquals(TargetState.FAILED_SAFE,failed.state);assertFalse(failed.settlingVerified)
+        assertTrue(failed.error.contains("원래 표시 상태"));assertEquals(baseline,p.current)
+        p.failAfterWrite=false
+        val applied=e.userHide(identity.packageName)
+        assertEquals(TargetState.APPLIED,applied.state);assertTrue(applied.enabled);assertTrue(applied.settlingVerified)
+        assertEquals("",applied.error);assertEquals(0,p.current.bit);assertEquals(256,s.data.last().originalBit)
+    }
     @Test fun emptyJournalWithOffTargetRecordsCurrentBitAndNeverInventsOldOnBit(){
         val(store,port,engine)=rig();port.current=baseline.copy(fineFlags=baseline.fineFlags and 256.inv())
         val start=port.current;val entry=engine.userHide(identity.packageName)

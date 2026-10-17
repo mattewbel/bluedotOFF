@@ -127,7 +127,7 @@ class SafetyEngine(private val port: TargetPort, private val journal: Journal, p
         if(failure is JournalPersistenceException)throw failure
         val before=operation.before;val pending=operation.pending;val original=pending.originalBit
         if(!operation.wrote)return durable(pending.copy(state=if(failure is OwnershipChangedException)TargetState.NEEDS_REVIEW else TargetState.FAILED_SAFE,
-            error=if(failure is OwnershipChangedException)failure.message!! else "현재 상태의 지속성을 확인하지 못했습니다. 다시 확인해 주세요."))
+            error=if(failure is OwnershipChangedException)failure.message!! else "표시 상태가 유지되는지 확인하지 못했어요. 다시 확인해 주세요."))
         // Never use an old install's bit on a replaced package. Rollback touches only 0x100.
         var ownershipChanged=failure is OwnershipChangedException
         val restored = try {
@@ -140,7 +140,7 @@ class SafetyEngine(private val port: TargetPort, private val journal: Journal, p
             }
         } catch (rollbackFailure: Exception) { if(rollbackFailure is OwnershipChangedException)ownershipChanged=true;false }
         return durable(pending.copy(state=if(ownershipChanged)TargetState.NEEDS_REVIEW else if(restored)TargetState.FAILED_SAFE else TargetState.FAILED_ROLLBACK,
-            error=if(ownershipChanged)"이 앱과 묶인 앱 구성이 바뀌어 변경을 멈췄습니다." else if(restored)"안전성 확인에 실패해 원래 표시 상태로 복원했습니다." else "복원을 확인하지 못했습니다. 추가 변경을 차단했습니다.",changedByUs=!restored))
+            error=if(ownershipChanged)"이 앱과 묶인 앱 구성이 바뀌어 변경을 멈췄습니다." else if(restored)"변경 후 상태를 확인하지 못해 원래 표시 상태로 되돌렸어요. 다시 확인해 주세요." else "복원을 확인하지 못했습니다. 추가 변경을 차단했습니다.",changedByUs=!restored))
     }
     private fun checkSettled(before:Snapshot,wanted:Int,wrote:Boolean,phase:String) {
         val current=port.read(before.identity.packageName)
@@ -247,7 +247,7 @@ object Reconcile {
         if (entry.state == TargetState.PENDING_RESTORE && snapshot.bit == entry.originalBit) return entry.copy(state = TargetState.NOT_APPLIED, enabled = false, changedByUs = false)
         if (entry.state == TargetState.PENDING_HIDE) return entry.copy(state = TargetState.FAILED_SAFE, error = "중단된 적용의 지속성을 확인하지 못했습니다. 직접 다시 확인해 주세요.")
         if (entry.state == TargetState.FAILED_SAFE) return entry
-        if (!entry.settlingVerified) return entry.copy(state=TargetState.FAILED_SAFE,error="이전 빌드의 기록은 지속성 검사가 없어 새 적용 확인이 필요합니다.")
+        if (!entry.settlingVerified) return entry.copy(state=TargetState.FAILED_SAFE,error="숨김 유지 여부를 다시 확인해야 해요. 재적용을 눌러주세요.")
         // An event marker stays conservative even if early boot/update temporarily still reads OFF.
         if (entry.bootSession != bootSession || entry.state == TargetState.NEEDS_REAPPLY_BOOT) return entry.copy(state = TargetState.NEEDS_REAPPLY_BOOT)
         if (entry.identity.versionCode != snapshot.identity.versionCode || entry.identity.lastUpdateTime != snapshot.identity.lastUpdateTime || entry.state == TargetState.NEEDS_REAPPLY_UPDATE) return entry.copy(state = TargetState.NEEDS_REAPPLY_UPDATE)

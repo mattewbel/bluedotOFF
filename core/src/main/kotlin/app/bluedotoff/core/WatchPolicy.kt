@@ -13,14 +13,15 @@ object WatchPolicy {
                     .takeIf{it.size==ids.size}
             }.distinctBy{it.map{e->e.identity.packageName}.sorted()}
     }
-    /** A fresh read must match the recorded install. An app update is allowed; reinstall/UID/signature change is not. */
+    /** A fresh read must match the recorded install. An app update is allowed; reinstall/UID/signature change is not.
+     *  A group uses the same rule as the manual group write: one usable member, companions pinned but never granted. */
     fun mayReapply(entries:List<Entry>,fresh:List<Snapshot>,firmware:Firmware,boot:String):Boolean =
         entries.isNotEmpty()&&entries.size==fresh.size&&entries.zip(fresh).all{(e,s)->
             eligible(e)&&e.identity.sameInstall(s.identity)&&e.bootSession==boot&&e.firmware==firmware.key&&
-                ScopePolicy.includes(s,s.applicationScope)&&s.fineGranted&&s.fineDeclared&&
+                ScopePolicy.includes(s,s.applicationScope)&&(entries.size>1||s.fineGranted&&s.fineDeclared)&&
                 (e.state==TargetState.NEEDS_REAPPLY_UPDATE||e.identity.versionCode!=s.identity.versionCode||e.identity.lastUpdateTime!=s.identity.lastUpdateTime||
                     e.invariantDigest.isNotBlank()&&e.invariantDigest==s.invariantDigest())
-        }&&fresh.any{it.bit==SENSITIVITY_BIT}
+        }&&(entries.size==1||runCatching{SharedGroupPolicy.validate(fresh)}.isSuccess)&&fresh.any{it.bit==SENSITIVITY_BIT}
 }
 
 /** Bound event bursts and avoid a hot retry loop when Android repeatedly resets a flag or a write fails. */

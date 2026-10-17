@@ -47,6 +47,38 @@ class WatchEngineTest {
     @Test fun switchOffAfterSetterStillFinishesTheSafetyChecks(){val r=Rig();r.run(canStart={if(r.writes.isNotEmpty())false else true});assertEquals(listOf(0),r.writes);assertTrue(r.results.single().success);assertTrue(r.phases.contains("settled_1500ms"))}
     @Test fun switchOffBeforeSetterStopsWriting(){val r=Rig();var calls=0;r.run(canStart={++calls<3});assertTrue(r.writes.isEmpty())}
     @Test fun partialSharedRegistrationNeverExpandsTheMutation(){val second=id.copy(packageName="test.peer");val ids=listOf(id,second);val e=entry().copy(groupIdentities=ids);assertTrue(WatchPolicy.units(listOf(e),setOf(id.packageName)).isEmpty());assertTrue(WatchPolicy.units(listOf(e,e.copy(identity=second,enabled=false)),setOf(id.packageName)).isEmpty())}
+    private class Group(val current:MutableMap<String,Snapshot>,val store:Store){var writes=0;val results=mutableListOf<BatchResult>()}
+    /** Registered two-app group; [member] shapes each fresh read (default: identical, both use location). */
+    private fun group(member:(Snapshot)->Snapshot={it},fresh:(Snapshot)->Snapshot={it}):Group{
+        val ids=listOf(id,id.copy(packageName="test.peer"));val names=ids.map{it.packageName}
+        val registered=ids.associate{it.packageName to member(base.copy(identity=it,peers=names,sharedUserId="test.shared"))}
+        val g=Group(registered.mapValues{(_,s)->fresh(s)}.toMutableMap(),Store(ids.map{identity->entry().copy(identity=identity,sharedUserId="test.shared",groupIdentities=ids,invariantDigest=registered.getValue(identity.packageName).invariantDigest())}))
+        val port=object:TargetPort{
+            override fun compatibleFirmware()=fw
+            override fun read(packageName:String)=g.current.getValue(packageName)
+            override fun writeFineBit(packageName:String,originalBit:Int):Unit=error("must be a group write")
+            override fun writeFineGroupChecked(expected:List<Snapshot>,wanted:Int){assertEquals(0,wanted);g.writes++;g.current.replaceAll{_,s->s.copy(fineFlags=s.fineFlags and 256.inv())}}
+        }
+        WatchEngine(port,g.store,{300},{"boot"},wait={}).reapply(setOf(id.packageName),{true},{},g.results::add)
+        return g
+    }
+    private val companion:(Snapshot)->Snapshot={s->if(s.identity.packageName=="test.peer")s.copy(fineDeclared=false,fineGranted=false,coarseDeclared=false,coarseGranted=false,fineFlags=0x100,coarseFlags=0x100) else s.copy(fineFlags=0x100,coarseFlags=0x100)}
+    @Test fun groupWithNonLocationCompanionIsReappliedLikeTheManualWrite(){
+        val g=group(companion)
+        assertEquals(1,g.writes);assertEquals(2,g.results.size);assertTrue(g.results.all{it.success})
+        assertTrue(g.store.values.all{it.state==TargetState.APPLIED&&it.originalBit==256})
+        assertFalse(g.current.getValue("test.peer").fineGranted)
+    }
+    @Test fun groupWithoutAnyUsableMemberIsNeverReapplied(){
+        val g=group(companion){s->s.copy(fineGranted=false)}
+        assertEquals(0,g.writes);assertTrue(g.results.isEmpty())
+    }
+    @Test fun groupCompanionIdentityOrPermissionChangeIsNeverReapplied(){
+        for(change in listOf<(Snapshot)->Snapshot>({it.copy(identity=it.identity.copy(signers=listOf("other")))},{it.copy(identity=it.identity.copy(firstInstallTime=999))},{it.copy(fineDeclared=true,fineGranted=true)})){
+            val g=group(companion){s->if(s.identity.packageName=="test.peer")change(s) else s}
+            assertEquals(0,g.writes)
+        }
+    }
     @Test fun completeRegisteredSharedGroupUsesExactlyOneUidWrite(){
         val ids=listOf(id,id.copy(packageName="test.peer"));val names=ids.map{it.packageName}
         val current=ids.associate{it.packageName to base.copy(identity=it,peers=names,sharedUserId="test.shared")}.toMutableMap()

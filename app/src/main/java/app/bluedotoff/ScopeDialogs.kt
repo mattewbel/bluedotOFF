@@ -87,11 +87,11 @@ object ScopeDialogs {
             }
         }
 
-    fun confirm(activity:ComponentActivity,scope:ApplicationScope,targets:List<Pair<String,String>> = emptyList(),firstSetup:Boolean=false,tint:Float=1f,onConfirm:()->Unit):AutoCloseable =
+    fun confirm(activity:ComponentActivity,scope:ApplicationScope,targets:List<Pair<String,String>> = emptyList(),tint:Float=1f,onConfirm:()->Unit):AutoCloseable =
         show(activity,tint){close->
             var expanded by rememberSaveable{mutableStateOf(false)}
             ScopePanel(if(targets.isEmpty())"이 범위를 사용할까요?" else "범위를 낮출까요?",
-                if(targets.isNotEmpty())"복원 후 범위 변경" else if(firstSetup)"이 범위로 시작" else "이 범위 사용",close,{close();onConfirm()}){
+                if(targets.isNotEmpty())"복원 후 범위 변경" else "이 범위 사용",close,{close();onConfirm()}){
                 ScopeDetail(scope)
                 if(targets.isEmpty())Copy("범위 선택만으로 앱을 변경하지 않아요. 앱 추가에서 직접 선택해주세요.",small=true)
                 else{

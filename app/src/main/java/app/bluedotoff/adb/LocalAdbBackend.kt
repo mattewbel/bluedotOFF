@@ -33,8 +33,9 @@ class LocalAdbBackend private constructor(private val context:Context,private va
     private fun audit(event:JSONObject){
         if(!event.has("category"))event.put("category","TARGET_METADATA")
         val file=java.io.File(context.noBackupFilesDir,"local-adb-operation-events.jsonl")
-        if(file.length()>1_000_000)file.writeText("")
-        file.appendText(event.put("time",System.currentTimeMillis()).put("transport",if(residentExchange!=null)"resident-binder" else "local-adb").put("sessionId",sessionId).put("helperPid",proof.getInt("pid")).put("generation",generation).put("shellUid",proof.getInt("uid")).put("selinux",proof.getString("selinux")).put("profileId",proof.getString("profileId")).toString()+"\n")
+        // Diagnostics only (never read for safety): a storage error here must not mark a working helper as lost.
+        val line=event.put("time",System.currentTimeMillis()).put("transport",if(residentExchange!=null)"resident-binder" else "local-adb").put("sessionId",sessionId).put("helperPid",proof.getInt("pid")).put("generation",generation).put("shellUid",proof.getInt("uid")).put("selinux",proof.getString("selinux")).put("profileId",proof.getString("profileId")).toString()+"\n"
+        try{if(file.length()>1_000_000)file.writeText("");file.appendText(line)}catch(e:java.io.IOException){android.util.Log.w("bluedotOFF","diagnostic log skipped: ${e.javaClass.simpleName}")}
     }
     override fun writeFineBit(packageName:String,originalBit:Int):Unit=error("Phase 7 read-only acceptance: target writes disabled")
     /** Debug acceptance only: actual socket close, getter failure, zero target mutation. */

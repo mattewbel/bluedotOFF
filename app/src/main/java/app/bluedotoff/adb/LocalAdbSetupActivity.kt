@@ -31,6 +31,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
     private var navigating=false
     private var permissionDialog=false
     private var notificationSettingsOpened=false
+    private var batterySettingsOpened=false
     private var notificationReminder:android.app.AlertDialog?=null
     private var code:EditText?=null
     private val changed:()->Unit={runOnUiThread{render()}}
@@ -40,6 +41,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         permissionDialog=state?.getBoolean("permissionDialog")?:false
         usbChoicePending=state?.getBoolean("usbChoicePending")?:false
         notificationSettingsOpened=state?.getBoolean("notificationSettingsOpened")?:false
+        batterySettingsOpened=state?.getBoolean("batterySettingsOpened")?:false
         advanced=app.bluedotoff.BuildConfig.DEBUG&&intent.getBooleanExtra("diagnostics",false)
         session=SetupSession.acquire(this)
         val gutter=dp(if(resources.configuration.screenWidthDp>=760)BlueDotAppearance.WIDE_GUTTER else BlueDotAppearance.PAGE_GUTTER)
@@ -84,9 +86,9 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
     }
     override fun onStart(){super.onStart();app.bluedotoff.ForegroundState.started()}
     override fun onStop(){app.bluedotoff.ForegroundState.stopped();super.onStop()}
-    override fun onResume(){super.onResume();foreground=true;if(notificationSettingsOpened){notificationSettingsOpened=false;session.notificationsResult()};if(!permissionDialog)session.resume();render()}
+    override fun onResume(){super.onResume();foreground=true;if(notificationSettingsOpened){notificationSettingsOpened=false;session.notificationsResult()};if(!permissionDialog){if(batterySettingsOpened){batterySettingsOpened=false;session.batterySettingsReturned()}else session.resume()};render()}
     override fun onPause(){foreground=false;super.onPause()}
-    override fun onSaveInstanceState(state:Bundle){state.putBoolean("permissionDialog",permissionDialog);state.putBoolean("usbChoicePending",usbChoicePending);state.putBoolean("notificationSettingsOpened",notificationSettingsOpened);super.onSaveInstanceState(state)}
+    override fun onSaveInstanceState(state:Bundle){state.putBoolean("permissionDialog",permissionDialog);state.putBoolean("usbChoicePending",usbChoicePending);state.putBoolean("notificationSettingsOpened",notificationSettingsOpened);state.putBoolean("batterySettingsOpened",batterySettingsOpened);super.onSaveInstanceState(state)}
     override fun onDestroy(){notificationReminder?.dismiss();code?.text?.clear();session.detach(changed);if(isFinishing&&!isChangingConfigurations)session.close();super.onDestroy()}
     private fun add(view:View){
         box.addView(view,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(BlueDotAppearance.SECTION_GAP)})
@@ -147,7 +149,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         background=RippleDrawable(ColorStateList.valueOf(colors.primary.copy(alpha=0.12f).toArgb()),null,rounded(android.graphics.Color.WHITE))
         isClickable=true;setOnClickListener{action()}
     })}
-    private fun progress(step:Int){
+    private fun progress(step:Int,total:Int){
         add(LinearLayout(this).apply{
             orientation=LinearLayout.VERTICAL
             minimumHeight=dp(48)
@@ -156,19 +158,19 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
             background=RippleDrawable(ColorStateList.valueOf(colors.primary.copy(alpha=0.12f).toArgb()),null,rounded(android.graphics.Color.WHITE))
             setOnClickListener{app.bluedotoff.ScopeDialogs.steps(this@LocalAdbSetupActivity,SetupProgress.steps(session.facts))}
             addView(TextView(this@LocalAdbSetupActivity).apply{
-                text=BlueDotAppearance.setupProgress(this@LocalAdbSetupActivity,step);textSize=14f;includeFontPadding=false
+                text=BlueDotAppearance.setupProgress(this@LocalAdbSetupActivity,step,total);textSize=14f;includeFontPadding=false
                 typeface=Typeface.create("sans-serif-medium",Typeface.NORMAL);setTextColor(colors.primary.toArgb())
             })
             addView(object:ProgressBar(this@LocalAdbSetupActivity,null,android.R.attr.progressBarStyleHorizontal){
                 private val paint=android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
                 override fun onDraw(canvas:android.graphics.Canvas){
-                    val gap=dp(3).toFloat();val segment=(width-gap*10)/11f
-                    repeat(11){i->
+                    val gap=dp(3).toFloat();val segment=(width-gap*(total-1))/total.toFloat()
+                    repeat(total){i->
                         paint.color=when{ i+1==step->BlueDotAppearance.dotBlue.toArgb();i+1<step->colors.primary.toArgb();else->colors.outlineVariant.toArgb()}
                         val left=i*(segment+gap);canvas.drawRoundRect(left,0f,left+segment,height.toFloat(),dp(2).toFloat(),dp(2).toFloat(),paint)
                     }
                 }
-            }.apply{max=11;progress=step;isIndeterminate=false;importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO},LinearLayout.LayoutParams(-1,dp(6)).apply{topMargin=dp(12)})
+            }.apply{max=total;progress=step;isIndeterminate=false;importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO},LinearLayout.LayoutParams(-1,dp(6)).apply{topMargin=dp(12)})
         })
     }
     private fun input(view:EditText){
@@ -180,9 +182,10 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         if(isDestroyed||!::box.isInitialized||permissionDialog)return
         val f=session.facts;val p=SetupFlow.presentation(f)
         if(p.stage==SetupStage.READY&&foreground&&!navigating&&!advanced){navigating=true;session.close(keepScan=true);startActivity(Intent(this,app.bluedotoff.MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP));finish();return}
-        val key="${p.stage}|${f.autoBlocked}|${session.notifications}|${session.manualInput}|${session.needsPort}|${session.inputError}|$advanced|${session.diagnosticResult}|${session.managementError}|${session.scanProgress}"
+        // The pending USB choice must re-render: with USB debugging already on, that render is where step 9 finishes.
+        val key="${p.stage}|${p.total}|${f.autoBlocked}|${session.notifications}|${session.manualInput}|${session.needsPort}|${session.inputError}|$advanced|${session.diagnosticResult}|${session.managementError}|${session.scanProgress}|$usbChoicePending"
         if(lastKey==key)return;lastKey=key;code?.text?.clear();code=null;box.removeAllViews()
-        progress(p.progress)
+        progress(p.progress,p.total)
         text(p.title,28f)
         if(f.autoBlocked&&p.stage==SetupStage.WIRELESS_DEBUGGING_OFF)listOf(GuideStep.AUTO_BLOCKER,GuideStep.AUTO_BLOCKER_OFF).forEach{add(app.bluedotoff.GuideArtwork(this,GuideSelection(it)))}
         else OnboardingGuide.current(p.stage,session.notifications,session.manualInput)?.let{image->
@@ -219,6 +222,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
             if(usbChoicePending)text("개발자 옵션에서 ‘USB 디버깅’을 켠 뒤 이 화면으로 돌아오세요. 켜져 있으면 자동으로 다음 단계로 넘어가요.",14f)
             link("지금은 사용하지 않기"){usbChoicePending=false;if(app.bluedotoff.BackgroundWatch.enabled(this@LocalAdbSetupActivity))app.bluedotoff.BackgroundWatch.set(this@LocalAdbSetupActivity,false);session.skipManagement()}
         }
+        if(p.stage==SetupStage.BATTERY_OPTIMIZATION)link("나중에"){session.skipBatteryChoice()}
         if(p.stage==SetupStage.NOTIFICATION_PERMISSION)link("알림 없이 계속"){recommendNotifications()}
         if(p.stage==SetupStage.NEARBY_PERMISSION)link("직접 입력으로 연결"){session.skipNearby()}
         if(p.stage in listOf(SetupStage.WAIT_FOR_PAIRING_ADVERTISEMENT,SetupStage.PAIRING_NOTIFICATION_READY,SetupStage.GUIDE_PAIRING_CODE_PAGE)){
@@ -271,9 +275,9 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         dialog.show()
     }
     private fun chooseScope(){
-        app.bluedotoff.ScopeDialogs.choose(this,ApplicationScope.NORMAL,firstSetup=true){scope->
-            app.bluedotoff.ScopeDialogs.confirm(this,scope,firstSetup=true){session.chooseScope(scope)}
-        }
+        // Owner choice (2026-10-17): one explicit "이 범위로 시작". Choosing a scope here changes no app, so the
+        // repeated confirmation was dropped; lowering an applied scope still asks first (MainActivity).
+        app.bluedotoff.ScopeDialogs.choose(this,ApplicationScope.NORMAL,firstSetup=true){scope->session.chooseScope(scope)}
     }
     private fun act(action:SetupAction){when(action){
         SetupAction.START->session.welcome()
@@ -283,6 +287,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         SetupAction.WIRELESS_SETTINGS->wirelessSettings()
         SetupAction.NEARBY->{if(session.requiresNearbyPermission){permissionDialog=true;requestPermissions(arrayOf("android.permission.ACCESS_LOCAL_NETWORK"),71)}else session.skipNearby()}
         SetupAction.AUTOMATIC_MANAGEMENT->{usbChoicePending=false;if(app.bluedotoff.BackgroundWatch.enabled(this))app.bluedotoff.BackgroundWatch.set(this,false);session.enableManagement()}
+        SetupAction.BATTERY_OPTIMIZATION->{batterySettingsOpened=true;if(!app.bluedotoff.BatteryOptimization.open(this))batterySettingsOpened=false}
         SetupAction.APPLICATION_SCOPE->chooseScope()
         SetupAction.RETRY_PAIRING->session.beginPairing()
         SetupAction.RETRY_CONNECTION,SetupAction.RESUME->session.retryConnection()

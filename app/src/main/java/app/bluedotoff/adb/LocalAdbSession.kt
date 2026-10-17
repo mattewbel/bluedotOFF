@@ -129,8 +129,8 @@ object LocalAdbSession {
     internal fun rememberRegion(context:Context,profile:JSONObject){if(profile.optBoolean("abiVerified"))compatibilityConfirmed=true;context.getSharedPreferences("ui-state",0).edit().putBoolean("usModel",profile.optString("country")=="US").putString("deviceOneUi",profile.optString("oneUi")).putString("deviceCountry",profile.optString("country")).apply()}
     private fun appendEvent(context:Context,name:String,event:JSONObject){
         val f=File(context.noBackupFilesDir,name)
-        if(f.length()>1_000_000)f.writeText("")
-        f.appendText(event.toString()+"\n")
+        // Diagnostics only: never let a storage error replace the result of the work it describes.
+        try{if(f.length()>1_000_000)f.writeText("");f.appendText(event.toString()+"\n")}catch(e:java.io.IOException){android.util.Log.w("bluedotOFF","diagnostic log skipped: ${e.javaClass.simpleName}")}
     }
     private fun requirePaired(context:Context){
         check(android.provider.Settings.Global.getInt(context.contentResolver,android.provider.Settings.Global.DEVELOPMENT_SETTINGS_ENABLED,0)==1){"DEVELOPER_OPTIONS_OFF"}

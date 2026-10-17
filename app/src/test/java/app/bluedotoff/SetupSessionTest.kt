@@ -29,6 +29,9 @@ internal class SetupQueue:AbstractExecutorService(){
     override fun awaitTermination(timeout:Long,unit:TimeUnit)=stopped
 }
 internal class FakeSetupRuntime:SetupRuntime {
+    override var batteryChoiceRequired=false
+    override var batteryChoiceResolved=true
+    override fun skipBatteryChoice(){batteryChoiceResolved=true}
     override var finalCheckResolved=true
     var initialChecks=0;var fullScans=0
     override fun completeFinalCheck(){finalCheckResolved=true}
@@ -74,6 +77,29 @@ internal class FakeSetupRuntime:SetupRuntime {
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk=[34],application=Application::class)
 class SetupSessionTest {
+    @Test fun batteryDenialStaysOptionalAndReturningDoesNotRepeatVerifiedScan(){
+        runtime.finalCheckResolved=false;runtime.batteryChoiceRequired=true;runtime.batteryChoiceResolved=false
+        context.getSharedPreferences("application-scope",0).edit().clear().commit()
+        runtime.paired=true;runtime.connectEndpoint=LocalAdbDiscovery.Endpoint("saved",42000)
+        session.refresh();queue.next();shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(SetupStage.BATTERY_OPTIMIZATION,stage())
+        session.batterySettingsReturned()
+        assertEquals(SetupStage.BATTERY_OPTIMIZATION,stage());assertTrue(queue.tasks.isEmpty());assertEquals(1,runtime.initialChecks)
+        session.skipBatteryChoice();assertEquals(SetupStage.APPLICATION_SCOPE,stage())
+        session.chooseScope(ApplicationScope.ALL);queue.next();shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(SetupStage.READY,stage());assertEquals(1,runtime.fullScans)
+    }
+    @Test fun batteryApprovalIsReadFromRuntimeAndRadioLossStillInvalidatesVerification(){
+        runtime.finalCheckResolved=false;runtime.batteryChoiceRequired=true;runtime.batteryChoiceResolved=false
+        context.getSharedPreferences("application-scope",0).edit().clear().commit()
+        runtime.paired=true;runtime.connectEndpoint=LocalAdbDiscovery.Endpoint("saved",42000)
+        session.refresh();queue.next();shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(SetupStage.BATTERY_OPTIMIZATION,stage())
+        runtime.batteryChoiceResolved=true;session.batterySettingsReturned()
+        assertEquals(SetupStage.APPLICATION_SCOPE,stage());assertTrue(queue.tasks.isEmpty())
+        runtime.wifiConnected=false;session.batterySettingsReturned()
+        assertEquals(SetupStage.WIFI_NOT_CONNECTED,stage());assertFalse(session.facts.verified)
+    }
     @Test fun freshSetupChecksConnectionThenScansOnceAfterManagementAndScope(){
         runtime.finalCheckResolved=false;runtime.managementChoiceResolved=false
         context.getSharedPreferences("application-scope",0).edit().clear().commit()
@@ -149,6 +175,17 @@ class SetupSessionTest {
         androidRuntime.skipManagement();androidRuntime.initializeOnboarding();assertTrue(androidRuntime.managementChoiceResolved)
         ui.edit().clear().commit();androidRuntime.initializeOnboarding();assertFalse(androidRuntime.managementChoiceResolved)
         assertFalse(controls.consent)
+    }
+    @Test fun batteryChoicePersistsExplicitSkipAndDoesNotReopenForCompletedUsers(){
+        val ui=context.getSharedPreferences("ui-state",0);ui.edit().clear().commit()
+        org.robolectric.Shadows.shadowOf(context.getSystemService(android.os.PowerManager::class.java)).setIgnoringBatteryOptimizations(context.packageName,false)
+        val r=AndroidSetupRuntime(context);r.initializeOnboarding()
+        assertFalse(r.batteryChoiceResolved)
+        r.skipBatteryChoice();assertTrue(AndroidSetupRuntime(context).batteryChoiceResolved)
+        assertFalse(BatteryOptimization.unrestricted(context)?:true)
+        ui.edit().clear().putBoolean("finalCheckResolved",true).commit()
+        assertTrue(AndroidSetupRuntime(context).batteryChoiceResolved)
+        ui.edit().clear().commit();r.initializeOnboarding();assertFalse(r.batteryChoiceResolved)
     }
     @Test fun offToOnInSettingsNeedsNoActivityResumeForCodeNotification(){
         runtime.wireless=false;session.refresh();assertFalse(runtime.alive)

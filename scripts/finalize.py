@@ -6,7 +6,7 @@ android='{http://schemas.android.com/apk/res/android}'
 env=dict(os.environ,JAVA_HOME='C:/Program Files/Eclipse Adoptium/jdk-17.0.20.101-hotspot')
 sdk=Path(os.environ.get('ANDROID_HOME') or os.environ.get('ANDROID_SDK_ROOT') or Path.home()/'AppData/Local/Android/Sdk')
 tools=sdk/'build-tools/36.0.0'
-permissions={'android.permission.FOREGROUND_SERVICE','android.permission.WRITE_SECURE_SETTINGS','android.permission.ACCESS_NETWORK_STATE','android.permission.INTERNET','android.permission.ACCESS_LOCAL_NETWORK','android.permission.POST_NOTIFICATIONS','android.permission.RECEIVE_BOOT_COMPLETED','app.bluedotoff.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'}
+permissions={'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS','android.permission.FOREGROUND_SERVICE','android.permission.WRITE_SECURE_SETTINGS','android.permission.ACCESS_NETWORK_STATE','android.permission.INTERNET','android.permission.ACCESS_LOCAL_NETWORK','android.permission.POST_NOTIFICATIONS','android.permission.RECEIVE_BOOT_COMPLETED','app.bluedotoff.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'}
 gradle=(root/'app/build.gradle.kts').read_text(encoding='utf-8-sig')
 result={'version':re.search(r'versionName = "([^"]+)"',gradle)[1],'versionCode':int(re.search(r'versionCode = (\d+)',gradle)[1]),'compileSdk':37,'targetSdk':37,'apks':{},'testCounts':{},'lint':{}}
 for variant,suffix,expected in [('localDebug','','3b3b208f92d3d437acf30c333d9a7b5b0bc8f535056e18edd82df2701db2be0c'),('localRelease','-release','619fe1ecbdf59d5d0b838ddc6420e58be90f828be11cb61fe6c8e6aa4ceaad62')]:
@@ -66,9 +66,13 @@ for operation in ['grant','revoke']:
     assert 'ProcessBuilder("/system/bin/pm","'+operation+'","--user","0","app.bluedotoff","android.permission.WRITE_SECURE_SETTINGS")' in helper
 assert not re.search(r'Settings\.(?:Global|Secure|System)\.put',helper)
 assert not re.search(r'ProcessBuilder|Runtime\.getRuntime|updatePermissionFlags',controls)
+# Provenance: which source the audited APKs came from, and whether it had uncommitted changes.
+git=lambda *a:subprocess.run(['git',*a],cwd=root,capture_output=True,text=True,check=True).stdout.strip()
+result['source']={'commit':git('rev-parse','HEAD'),'uncommittedChanges':bool(git('status','--porcelain','--','.'))}
 result['mergedPermissions']=sorted(permissions);result['staticAudit']='fixed-loopback, typed allowlist, single narrow FINE setter; pattern/manifest/dex checks, not a formal proof'
 (art/f"build-audit-{result['version']}.json").write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
 # Published next to the release APK so anyone (or any analysis tool) can confirm a file is the official build.
 rel=result['apks']['release'];sig=':'.join(rel['signerSha256'][i:i+2] for i in range(0,64,2)).upper()
 (art/f"bluedotOFF-{result['version']}-checksums.txt").write_text(''.join(line+'\n' for line in [rel['file'],'SHA-256: '+rel['sha256'],'Signing certificate SHA-256: '+sig]),encoding='utf-8')
+if result['source']['uncommittedChanges']:print('WARNING: built from uncommitted changes; commit before publishing.')
 print(json.dumps(result,ensure_ascii=False,indent=2))

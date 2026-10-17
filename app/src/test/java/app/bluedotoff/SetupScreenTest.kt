@@ -33,6 +33,20 @@ import java.io.File
 @Config(sdk=[34],application=Application::class,qualifiers="ko-rKR-w412dp-h915dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class SetupScreenTest {
+    @Test fun usbBatteryOfferHasTwelveStepsAndAnExplicitSkip(){
+        runtime.finalCheckResolved=false;runtime.managementChoiceResolved=false;runtime.batteryChoiceRequired=true;runtime.batteryChoiceResolved=false
+        runtime.paired=true;runtime.connectEndpoint=LocalAdbDiscovery.Endpoint("saved",42000)
+        show("111-usb-management");session.skipManagement();shadowOf(Looper.getMainLooper()).idle()
+        val activity=controller!!.get()
+        fun views()=descendants(activity.findViewById<ViewGroup>(android.R.id.content))
+        assertTrue(views().filterIsInstance<TextView>().any{it.text=="연결 준비 · 10 / 12"})
+        assertTrue(views().filterIsInstance<Button>().any{it.text==BatteryOptimization.TITLE})
+        assertEquals(12,views().filterIsInstance<ProgressBar>().single().max)
+        views().filterIsInstance<TextView>().single{it.text=="나중에"}.performClick()
+        assertTrue(runtime.batteryChoiceResolved)
+        assertNotEquals(SetupStage.BATTERY_OPTIMIZATION,SetupFlow.stage(session.facts))
+    }
+    private fun descendants(root:View):List<View> = listOf(root)+(if(root is ViewGroup)(0 until root.childCount).flatMap{descendants(root.getChildAt(it))}else emptyList())
     @Test fun progressDoesNotColorPreparedFutureStepsAndOpensSharedStyleList(){
         runtime.notifications=false
         val views=show("24-notification-current-progress")
@@ -132,17 +146,55 @@ class SetupScreenTest {
         runtime.managementChoiceResolved=false;runtime.paired=true;runtime.connectEndpoint=LocalAdbDiscovery.Endpoint("saved",42000)
         val views=show("13-recommended-management")
         // Step 9 offers both ways to stay connected, plus a visible skip.
-        assertEquals(listOf("무선 디버깅 자동 관리 (권장)","USB 디버깅으로 유지 (백그라운드 감시)"),views.filterIsInstance<Button>().map{it.text.toString()})
+        assertEquals(listOf("무선 디버깅 자동 관리","USB 디버깅으로 유지 (백그라운드 감시)"),views.filterIsInstance<Button>().map{it.text.toString()})
         assertTrue(views.filterIsInstance<TextView>().any{it.text=="지금은 사용하지 않기"})
         assertTrue(views.filterIsInstance<TextView>().any{it.text.contains("일부 은행·결제 앱이 실행되지 않을 수 있어요")})
         assertEquals(0,runtime.managementCalls);assertNull(shadowOf(controller!!.get()).nextStartedActivity)
+    }
+    /** USB debugging already on: confirming the 5-second risk dialog must continue by itself (no Settings visit
+     *  re-renders the screen). Previously the pending choice was not part of the render key and setup stalled. */
+    @Test fun usbChoiceWithUsbAlreadyOnContinuesAfterConfirm(){
+        android.provider.Settings.Global.putInt(context.contentResolver,android.provider.Settings.Global.ADB_ENABLED,1)
+        runtime.managementChoiceResolved=false;runtime.paired=true;runtime.connectEndpoint=LocalAdbDiscovery.Endpoint("saved",42000)
+        val views=show("13b-usb-choice-usb-on")
+        views.filterIsInstance<Button>().single{it.text.toString()=="USB 디버깅으로 유지 (백그라운드 감시)"}.performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+        val dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog() as android.app.AlertDialog
+        val ok=dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)
+        assertFalse(ok.isEnabled)
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(6))
+        assertTrue(ok.isEnabled);ok.performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+        // The choice was finished: watch preference set and the management work queued (then run here).
+        assertTrue(BackgroundWatch.enabled(context));assertFalse(queue.tasks.isEmpty())
+        queue.next();shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(1,runtime.managementCalls)
+        // USB was already on, so Developer options is not opened.
+        assertNull(shadowOf(controller!!.get()).nextStartedActivity?.takeIf{it.action==android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS})
+    }
+    /** USB debugging off: the choice opens Developer options; turning USB debugging on there and coming back finishes it. */
+    @Test fun usbChoiceFinishesAfterTurningUsbOnInDeveloperOptions(){
+        android.provider.Settings.Global.putInt(context.contentResolver,android.provider.Settings.Global.ADB_ENABLED,0)
+        runtime.managementChoiceResolved=false;runtime.paired=true;runtime.connectEndpoint=LocalAdbDiscovery.Endpoint("saved",42000)
+        val views=show("13c-usb-choice-usb-off")
+        views.filterIsInstance<Button>().single{it.text.toString()=="USB 디버깅으로 유지 (백그라운드 감시)"}.performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+        val ok=(org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog() as android.app.AlertDialog).getButton(android.app.AlertDialog.BUTTON_POSITIVE)
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(6));ok.performClick();shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(BackgroundWatch.enabled(context));assertEquals(0,runtime.managementCalls)
+        // The user turns USB debugging on in Developer options and returns.
+        android.provider.Settings.Global.putInt(context.contentResolver,android.provider.Settings.Global.ADB_ENABLED,1)
+        // Setup re-checks the connection after a visit to Settings, then shows step 9 again and finishes the choice.
+        controller!!.pause().resume();shadowOf(Looper.getMainLooper()).idle()
+        repeat(10){if(queue.tasks.isNotEmpty()){queue.next();shadowOf(Looper.getMainLooper()).idle()}}
+        assertTrue(BackgroundWatch.enabled(context));assertEquals(1,runtime.managementCalls)
     }
     @Test @Config(qualifiers="en-rUS-w412dp-h915dp-xxhdpi",fontScale=1.5f) fun englishRecommendationFitsScrollableSharedLayout(){
         runtime.managementChoiceResolved=false;runtime.paired=true;runtime.connectEndpoint=LocalAdbDiscovery.Endpoint("saved",42000)
         val views=show("14-recommended-management-en-large")
         assertTrue(views.filterIsInstance<TextView>().any{it.text=="Choose how to stay connected"})
         assertTrue(views.filterIsInstance<TextView>().any{it.text=="Not now"})
-        assertEquals(listOf("Wireless debugging automatic management (recommended)","Keep through USB debugging (background watch)"),views.filterIsInstance<Button>().map{it.text.toString()})
+        assertEquals(listOf("Manage wireless debugging automatically","Keep through USB debugging (background watch)"),views.filterIsInstance<Button>().map{it.text.toString()})
     }
     @Test fun greyedOutWirelessSwitchLeadsToAutoBlockerGuide(){
         runtime.paired=true;runtime.wireless=false;val views=show("09-wireless-off-auto-blocker-hint")

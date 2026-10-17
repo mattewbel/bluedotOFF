@@ -23,6 +23,9 @@ internal interface SetupRuntime {
     val managementChoiceResolved:Boolean get()=true
     fun skipManagement() {}
     fun enableManagement(port:Int):Unit=throw UnsupportedOperationException()
+    val batteryChoiceRequired:Boolean get()=false
+    val batteryChoiceResolved:Boolean get()=true
+    fun skipBatteryChoice() {}
     val wifiConnected:Boolean get()=true
     val autoBlocked:Boolean get()=false
     fun foregroundUse() {}
@@ -60,6 +63,11 @@ internal class AndroidSetupRuntime(private val context:Context):SetupRuntime {
         if(!ui.contains("managementChoiceResolved"))check(ui.edit().putBoolean("managementChoiceResolved",paired||WirelessControls(context).consent).commit())
     }
     override val finalCheckResolved get()=ui.getBoolean("finalCheckResolved",false)
+    override val batteryChoiceRequired get()=app.bluedotoff.BackgroundWatch.enabled(context)
+    // Existing users are not sent through onboarding again. Fresh installs persist false
+    // for finalCheckResolved before pairing; only consent or an explicit skip resolves this step.
+    override val batteryChoiceResolved get()=ui.getBoolean("batteryChoiceResolved",finalCheckResolved)||app.bluedotoff.BatteryOptimization.unrestricted(context)==true
+    override fun skipBatteryChoice(){check(ui.edit().putBoolean("batteryChoiceResolved",true).commit())}
     override fun completeFinalCheck(){check(ui.edit().putBoolean("finalCheckResolved",true).commit())}
     override fun verifyConnection(port:Int,started:()->Unit,current:()->Boolean){
         if(!current())throw java.util.concurrent.CancellationException()

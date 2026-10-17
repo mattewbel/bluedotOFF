@@ -4,7 +4,7 @@ import hashlib,json,os,zipfile,re
 P=Path(__file__).resolve().parents[1];A=P/'artifacts';A.mkdir(exist_ok=True)
 version=re.search(r'versionName = "([^"]+)"',(P/'app/build.gradle.kts').read_text(encoding='utf-8-sig'))[1]
 roots=['app/src/main','app/src/local','app/src/test','core/src','gradle/wrapper','docs','scripts']
-singles=['.gitignore','README.md','README.en.md','LICENSE','app/proguard-rules.pro','build.gradle.kts','settings.gradle.kts','gradle.properties','gradlew','gradlew.bat','app/build.gradle.kts','core/build.gradle.kts']
+singles=['.gitignore','README.md','README.ko.md','LICENSE','app/proguard-rules.pro','build.gradle.kts','settings.gradle.kts','gradle.properties','gradlew','gradlew.bat','app/build.gradle.kts','core/build.gradle.kts']
 excluded={'.git','.gradle','.kotlin','.cxx','build','artifacts','research','.private','__pycache__','no_backup','.idea','tools','captures'}
 files={P/s for s in singles}
 for root in roots:
@@ -21,7 +21,7 @@ for file in sorted(files):
     assert file.suffix.lower() not in {'.jks','.keystore','.p12','.apk','.so','.o','.pyc'},rel
     assert 'reference' not in rel.parts
     payload[rel.as_posix()]=file.read_bytes()
-required=['LICENSE','README.en.md','app/proguard-rules.pro','gradle/wrapper/gradle-wrapper.jar','app/src/main/cpp/native_adb.cpp','app/src/main/cpp/third_party/boringssl/CMakeLists.txt','app/src/main/assets/licenses/AOSP-ADB-NOTICE.txt','app/src/main/assets/licenses/BoringSSL-LICENSE.txt','app/src/main/assets/licenses/Fiat-Crypto-LICENSE.txt']
+required=['LICENSE','README.md','README.ko.md','app/proguard-rules.pro','gradle/wrapper/gradle-wrapper.jar','app/src/main/cpp/native_adb.cpp','app/src/main/cpp/third_party/boringssl/CMakeLists.txt','app/src/main/assets/licenses/AOSP-ADB-NOTICE.txt','app/src/main/assets/licenses/BoringSSL-LICENSE.txt','app/src/main/assets/licenses/Fiat-Crypto-LICENSE.txt']
 assert all(n in payload for n in required)
 # The complete vendored source subset and licenses must be reproduced exactly.
 provenance=json.loads(payload['app/src/main/cpp/third_party/provenance.json'])

@@ -35,5 +35,5 @@ object BlueDotAppearance {
             surface = surface, background = surface)
     }
 
-    fun setupProgress(context: Context, step: Int) = UiText.text(context, "연결 준비 · $step / 11")
+    fun setupProgress(context: Context, step: Int, total: Int = 11) = UiText.text(context, "연결 준비 · $step / $total")
 }

@@ -37,9 +37,9 @@ abstract class BinderBackend(private val context: Context) : TargetPort {
     abstract fun liveShellServer():Boolean
     @Synchronized private fun record(event: JSONObject) {
         val file = File(context.noBackupFilesDir,"validation-events.jsonl")
-        if(file.exists() && file.length()>1_000_000) file.writeText("")
         event.put("time",System.currentTimeMillis()).put("elapsedMs",SystemClock.elapsedRealtime()-validationStart)
-        file.appendText(event.toString()+"\n")
+        // Diagnostics only (never read for safety): a storage error here must not fail a permission read or write.
+        try{if(file.exists() && file.length()>1_000_000) file.writeText("");file.appendText(event.toString()+"\n")}catch(e:java.io.IOException){android.util.Log.w("bluedotOFF","diagnostic log skipped: ${e.javaClass.simpleName}")}
     }
     open fun recordVerification(phase:String,s:Snapshot,wrote:Boolean) {
         record(JSONObject().put("phase",phase).put("package",s.identity.packageName).put("uid",s.identity.uid).put("peers",org.json.JSONArray(s.peers)).put("signers",org.json.JSONArray(s.identity.signers)).put("versionCode",s.identity.versionCode).put("firstInstallTime",s.identity.firstInstallTime).put("lastUpdateTime",s.identity.lastUpdateTime).put("fineGranted",s.fineGranted).put("coarseGranted",s.coarseGranted).put("backgroundGranted",s.backgroundGranted).put("fineFlags",s.fineFlags).put("coarseFlags",s.coarseFlags).put("backgroundFlags",s.backgroundFlags).put("fineMode",s.fineMode).put("coarseMode",s.coarseMode).put("sharedUserId",s.sharedUserId?:JSONObject.NULL).put("uidClass",s.ownership.uidClass.name).put("eligibilityReason",s.rejectionReason()).put("setterPreviouslyCalled",wrote).put("transport","local-adb").put("firmware",compatibleFirmware().key))

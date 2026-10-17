@@ -195,14 +195,19 @@ class MainActivity : ComponentActivity() {
         val current=store.entries()
         return current
     }
-    /** Shared groups left PENDING by an interruption, settled with SharedGroupEngine.recover; returns how many groups. */
-    private fun recoverInterrupted():Int {
+    /** Shared groups left PENDING by an interruption, settled with SharedGroupEngine.recover. Returns the notice for what
+     *  actually happened (null = nothing to settle): a lock is reported before a restored interrupted hide, then a
+     *  finished interrupted restore (review 2026-10-17: a locked group was announced as restored). */
+    private fun recoverInterrupted():String? {
         val groups=store.entries().filter{it.groupIdentities.isNotEmpty()&&it.state in listOf(TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE)}
             .map{e->e.groupIdentities.map{it.packageName}.sorted()}.distinct()
-        groups.forEach{g->SharedGroupEngine(backend,store,System::currentTimeMillis,{BootSession.current(this)},observe=backend::recordVerification).recover(g)}
-        return groups.size
+        val results=groups.map{g->SharedGroupEngine(backend,store,System::currentTimeMillis,{BootSession.current(this)},observe=backend::recordVerification).recover(g)}.flatten()
+        results.firstOrNull{it.state in listOf(TargetState.NEEDS_REVIEW,TargetState.FAILED_ROLLBACK)}?.let{return it.error}
+        if(results.any{it.state==TargetState.NEEDS_REAPPLY_POLICY&&it.error==SharedGroupEngine.INTERRUPTED})return SharedGroupEngine.INTERRUPTED
+        val restored=results.count{it.state==TargetState.NOT_APPLIED&&!it.enabled}
+        return if(restored>0)"${restored}개 앱을 원래 표시 상태로 복원했어요." else null
     }
-    private var recovered=0
+    private var recoveredNotice:String?=null
     private fun refresh(userAction:Boolean=false,mode:Check=Check.AUTO,only:Set<String> = emptySet()) {
         if((!userAction&&SetupSession.current()!=null)||model.busy||BatchRuntime.state.value.busy||refreshJob?.isActive==true)return
         val job=lifecycleScope.launch {
@@ -297,11 +302,11 @@ class MainActivity : ComponentActivity() {
                         prepared.discovery
                     }
                     // B-1: on app open, settle shared groups an interruption left PENDING (checked; never from the watch).
-                    recovered=recoverInterrupted()
+                    recoveredNotice=recoverInterrupted()
                     found
                 }}
                 val checkedNow=android.os.SystemClock.elapsedRealtime();lastHistoryElapsed=checkedNow
-                if(recovered>0)cleanupNotice=SharedGroupEngine.INTERRUPTED
+                recoveredNotice?.let{cleanupNotice=it;recoveredNotice=null}
                 val fullCheck=mode!=Check.HISTORY&&only.isEmpty()
                 if(fullCheck)clock.fullChecked(checkedNow)
                 if(scan!=null){changedPackages.clear();scanStamp=ScanStamp(Build.FINGERPRINT,epoch,android.os.SystemClock.elapsedRealtime());model=model.copy(discovered=scan.apps,historyAvailable=scan.historyAvailable,metrics=scan.metrics)}

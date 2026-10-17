@@ -21,7 +21,8 @@ object LocalAdbSession {
     private var held:LocalAdbConnection?=null
     private var heldPort=-1
     val holdsConnection get()=synchronized(lock){held!=null}
-    fun closeHeld()=synchronized(lock){check(!busy);held?.let{runCatching{it.close()}};held=null;heldPort=-1}
+    /** [onlyIf] is checked after waiting for the lock (a screen may have opened meanwhile). */
+    fun closeHeld(onlyIf:()->Boolean={true})=synchronized(lock){if(onlyIf()){check(!busy);held?.let{runCatching{it.close()}};held=null;heldPort=-1}}
     @Volatile var busy=false; private set
     @Volatile var generation=0L; private set
     @Volatile private var pairingHandle=0L

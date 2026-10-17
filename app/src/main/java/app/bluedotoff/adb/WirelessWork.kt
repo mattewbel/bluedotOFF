@@ -35,14 +35,16 @@ object WirelessWork {
      *  in case the process died while holding). Never touches a lease in progress or a connection the user made. */
     fun release(context:Context)=Thread{releaseIfHidden(context)}.start()
     /** Blocking form for [WirelessReleaseJob]: waits for a lease in progress, then releases only if no screen is visible. */
-    fun releaseIfHidden(context:Context)=synchronized(lock){if(!ForegroundState.active)releaseLocked(context)}
+    fun releaseIfHidden(context:Context)=synchronized(lock){if(!ForegroundState.active)releaseLocked(context,onlyIfHidden=true)}
     /** Same cleanup right away (e.g. the user turns automatic management off while the app is open). */
-    fun releaseNow(context:Context)=synchronized(lock){releaseLocked(context)}
-    private fun releaseLocked(context:Context){
+    fun releaseNow(context:Context)=synchronized(lock){releaseLocked(context,onlyIfHidden=false)}
+    private fun releaseLocked(context:Context,onlyIfHidden:Boolean){
         // The kept ADB connection is closed for every user (with or without automatic management); OFF follows only
         // after that physical close, and only for wireless debugging this app turned on itself.
-        runCatching{LocalAdbSession.closeHeld()}
-        if(!held(context))return
+        // Closing can wait for another session; if a screen opened meanwhile, the release is cancelled (review 2026-10-17).
+        val stillHidden={!onlyIfHidden||!ForegroundState.active}
+        runCatching{LocalAdbSession.closeHeld(stillHidden)}
+        if(!stillHidden()||!held(context))return
         val controls=WirelessControls(context)
         if(controls.consent&&controls.granted&&controls.wireless)runCatching{controls.disableWirelessDebugging()}
         setHeld(context,false)

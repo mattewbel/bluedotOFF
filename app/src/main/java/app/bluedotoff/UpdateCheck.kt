@@ -55,14 +55,23 @@ object UpdateCheck {
     }.getOrDefault(false)
     /** Blocking; call off the main thread. Automatic checks run once a day at most ([force] = the user's "지금 확인").
      *  Returns the latest release, or null when the check is off, offline or failed (nothing is shown for that). */
+    private val requestLock=Any()
+    /** The GitHub request; replaced only by tests (no network in unit tests). */
+    internal var fetcher:()->String?={fetch()}
     fun check(c:Context,force:Boolean=false):Release?{
         if(!enabled(c))return null
-        val p=prefs(c)
-        if(!force&&!UpdatePolicy.due(System.currentTimeMillis(),p.getLong("lastCheck",0L)))return latest(c)?.let{Release(it)}
-        if(!online(c))return null
-        val tag=runCatching{fetch()}.getOrNull()?:return null
-        p.edit().putString("latestTag",tag).putLong("lastCheck",System.currentTimeMillis()).apply()
-        return Release(tag)
+        val p=prefs(c);val asked=System.currentTimeMillis()
+        // One request at a time (app open, the daily job and "지금 확인" can overlap). The automatic attempt is recorded
+        // before the request, so a failure or timeout also waits a day; no internet records nothing (review 2026-10-17).
+        synchronized(requestLock){
+            if(force&&p.getLong("lastCheck",0L)>=asked)return latest(c)?.let{Release(it)}
+            if(!force&&!UpdatePolicy.due(System.currentTimeMillis(),p.getLong("lastAttempt",0L)))return latest(c)?.let{Release(it)}
+            if(!online(c))return null
+            p.edit().putLong("lastAttempt",System.currentTimeMillis()).commit()
+            val tag=runCatching{fetcher()}.getOrNull()?:return null
+            p.edit().putString("latestTag",tag).putLong("lastCheck",System.currentTimeMillis()).apply()
+            return Release(tag)
+        }
     }
     private fun fetch():String?{
         val connection=java.net.URL(API).openConnection() as javax.net.ssl.HttpsURLConnection

@@ -25,7 +25,7 @@ class UpdateCheckTest {
         prefs.edit().clear().commit();context.getSharedPreferences("ui-state",0).edit().clear().commit()
         UpdateCheckJob.cancel(context)
     }
-    private fun seen(tag:String){prefs.edit().putString("latestTag",tag).putLong("lastCheck",System.currentTimeMillis()).commit()}
+    private fun seen(tag:String){val now=System.currentTimeMillis();prefs.edit().putString("latestTag",tag).putLong("lastCheck",now).putLong("lastAttempt",now).commit()}
     @Test fun offByDefaultAndNeverChecksWhenOff(){
         assertFalse(UpdateCheck.enabled(context));assertFalse(UpdateCheck.asked(context))
         assertNull(UpdateCheck.check(context,force=true))

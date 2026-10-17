@@ -131,7 +131,10 @@ class SharedGroupEngine(private val port:TargetPort,private val journal:Journal,
             durable(failed);return failed
         }
         val hide=pending.first().state==TargetState.PENDING_HIDE
-        val settled=pending.zip(current).map{(e,s)->e.copy(identity=s.identity,enabled=hide,state=if(hide)TargetState.NEEDS_REAPPLY_POLICY else TargetState.NOT_APPLIED,
+        // An app update before the app was opened changes version fields only (sameInstall above); the group record
+        // must carry the same fresh identities or the journal refuses it (review round 2, 2026-10-17).
+        val fresh=current.map{it.identity}
+        val settled=pending.zip(current).map{(e,s)->e.copy(identity=s.identity,groupIdentities=fresh,enabled=hide,state=if(hide)TargetState.NEEDS_REAPPLY_POLICY else TargetState.NOT_APPLIED,
             settlingVerified=true,lastVerifiedTime=now(),error=if(hide)INTERRUPTED else "")}
         durable(settled);settled
     }

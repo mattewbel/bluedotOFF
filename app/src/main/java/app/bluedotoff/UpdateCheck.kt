@@ -64,6 +64,8 @@ object UpdateCheck {
         // One request at a time (app open, the daily job and "지금 확인" can overlap). The automatic attempt is recorded
         // before the request, so a failure or timeout also waits a day; no internet records nothing (review 2026-10-17).
         synchronized(requestLock){
+            // Re-read after waiting: the user may have switched the check off meanwhile (review round 2).
+            if(!enabled(c))return null
             if(force&&p.getLong("lastCheck",0L)>=asked)return latest(c)?.let{Release(it)}
             if(!force&&!UpdatePolicy.due(System.currentTimeMillis(),p.getLong("lastAttempt",0L)))return latest(c)?.let{Release(it)}
             if(!online(c))return null

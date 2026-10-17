@@ -247,17 +247,18 @@ class UiRenderTest {
         compose.onNode(hasText("지도") and hasAnyAncestor(isDialog())).performClick()
         compose.waitForIdle();org.junit.Assert.assertEquals("demo.map",opened)
     }
-    /** Settings: the watch switch shows whether the watch is really running. */
-    @Test fun watchSwitchShowsTheRealState(){
-        val current=androidx.compose.runtime.mutableStateOf(model(page=Page.SETTINGS).copy(backgroundWatch=true,usbDebugging=true,watchRunning=true))
+    /** Owner (1.1.2): no watch state line in Settings; Home's card and the notification report a stopped watch. */
+    @Test fun watchStateIsOnHomeNotInSettings(){
+        val current=androidx.compose.runtime.mutableStateOf(model(page=Page.SETTINGS).copy(backgroundWatch=true,usbDebugging=true,watchRunning=false))
         controller.get().setContent{BlueDotApp(current.value,{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})}
-        compose.onNodeWithText("감시 중").performScrollTo().assertExists()
-        compose.runOnIdle{current.value=current.value.copy(watchRunning=false)}
-        compose.onNodeWithText("멈춤").performScrollTo().assertExists();compose.onNodeWithText("다시 켜려면 Wi-Fi에 연결해 무선 디버깅을 켠 뒤 bluedotOFF를 열어주세요.").assertExists()
-        compose.runOnIdle{current.value=current.value.copy(usbDebugging=false)}
-        compose.onNodeWithText("USB 디버깅을 다시 켜고, Wi-Fi에 연결해 무선 디버깅을 켠 뒤 bluedotOFF를 열어주세요.").performScrollTo().assertExists()
-        compose.runOnIdle{current.value=current.value.copy(backgroundWatch=false)}
-        compose.onNodeWithText("감시 중").assertDoesNotExist();compose.onNodeWithText("멈춤").assertDoesNotExist()
+        compose.onNodeWithText("백그라운드 감시").performScrollTo().assertExists()
+        compose.onNodeWithText("멈춤").assertDoesNotExist();compose.onNodeWithText("감시 중").assertDoesNotExist()
+        compose.onNodeWithText("다시 켜려면 Wi-Fi에 연결해 무선 디버깅을 켠 뒤 bluedotOFF를 열어주세요.").assertDoesNotExist()
+        compose.runOnIdle{current.value=current.value.copy(page=Page.HOME)}
+        compose.onNodeWithText("백그라운드 감시가 멈춰 있어요").assertExists()
+        compose.onNodeWithText("다시 켜려면 Wi-Fi에 연결해 무선 디버깅을 켠 뒤 bluedotOFF를 열어주세요.").assertExists()
+        compose.runOnIdle{current.value=current.value.copy(watchRunning=true)}
+        compose.onNodeWithText("백그라운드 감시가 멈춰 있어요").assertDoesNotExist()
     }
     /** No connection: restore buttons lead to setup instead of sitting grey. */
     @Test fun restoreWithoutConnectionLeadsToSetup(){
@@ -298,11 +299,10 @@ class UiRenderTest {
         compose.onNodeWithText("남은 앱 보기").performClick()
         compose.onNode(hasText("지도") and hasAnyAncestor(isDialog())).assertExists()
     }
-    /** Settings shows "감시 시작 중…" (not "멈춤") while a stopped watch is being started. */
+    /** Home does not say "멈춰 있어요" while a stopped watch is being started. */
     @Test fun watchStartingIsNotShownAsStopped(){
-        controller.get().setContent{BlueDotApp(model(page=Page.SETTINGS).copy(backgroundWatch=true,usbDebugging=true,watchRunning=false,watchStarting=true),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})}
-        compose.onNodeWithText("감시 시작 중…").performScrollTo().assertExists()
-        compose.onNodeWithText("멈춤").assertDoesNotExist()
+        controller.get().setContent{BlueDotApp(model(page=Page.HOME).copy(backgroundWatch=true,usbDebugging=true,watchRunning=false,watchStarting=true),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})}
+        compose.onNodeWithText("백그라운드 감시가 멈춰 있어요").assertDoesNotExist()
     }
     /** After a phone update the structure check fails: Home says so and offers no "연결 준비" (re-pairing will not help). */
     @Test fun osChangedIsNotShownAsAConnectionProblem(){

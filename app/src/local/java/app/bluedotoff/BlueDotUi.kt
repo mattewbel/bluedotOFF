@@ -347,7 +347,8 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
                 }
             }
             // Background watch is chosen but not running: say why and what brings it back (USB debugging first).
-            if(m.backgroundWatch&&!m.watchRunning&&m.gate==Gate.READY)Surface(shape=RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.secondaryContainer,contentColor=MaterialTheme.colorScheme.onSecondaryContainer){
+            // Not while it is being started again (opening the app restarts it).
+            if(m.backgroundWatch&&!m.watchRunning&&!(m.watchStarting&&m.usbDebugging)&&m.gate==Gate.READY)Surface(shape=RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.secondaryContainer,contentColor=MaterialTheme.colorScheme.onSecondaryContainer){
                 Column(Modifier.fillMaxWidth().padding(18.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
                     Text("백그라운드 감시가 멈춰 있어요",style=MaterialTheme.typography.titleMedium)
                     Text(WatchNotification.advice(m.usbDebugging,m.autoManagement),style=MaterialTheme.typography.bodyMedium)
@@ -601,8 +602,12 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
         LazyRow(state=viewRow,horizontalArrangement=Arrangement.spacedBy(8.dp)){items(HistoryView.entries){view->FilterChip(selected=m.historyView==view,onClick={viewChanged(view)},label={Text(view.label)})}}
         // With automatic management the app connects by itself when the tab opens; only manual users must connect first.
         if(!reapply&&!m.connected&&!m.automaticReady){Text("현재 기록을 확인하려면 무선 디버깅으로 연결해 주세요.");TextButton(onClick=open){Text("연결 설정 열기")}}
-        if(refreshing)LinearProgressIndicator(Modifier.fillMaxWidth())
-        PullToRefreshBox(isRefreshing=refreshing,onRefresh={if(canRefresh)refresh()},modifier=Modifier.weight(1f)) {
+        // One progress line only: the app-wide "앱 상태 확인 중…" bar already covers a re-check, and the pull spinner
+        // slides back once released (the header button keeps spinning), so no second bar or spinner over the list.
+        // isRefreshing stays false, so the pull state is sent back explicitly (it would otherwise stay at the threshold).
+        if(refreshing&&!m.rechecking)LinearProgressIndicator(Modifier.fillMaxWidth())
+        val pull=androidx.compose.material3.pulltorefresh.rememberPullToRefreshState();val pullScope=rememberCoroutineScope()
+        PullToRefreshBox(isRefreshing=false,onRefresh={if(canRefresh)refresh();pullScope.launch{pull.animateToHidden()}},modifier=Modifier.weight(1f),state=pull) {
         LazyColumn(Modifier.fillMaxSize()){
             if(reapply){
                 if(m.reapplyHistory.isEmpty())item("reapply-empty"){Text("아직 재적용 기록이 없어요.",Modifier.fillMaxWidth().padding(vertical=24.dp),color=MaterialTheme.colorScheme.onSurfaceVariant)}
@@ -756,9 +761,6 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
         HorizontalDivider()
         // Third section (owner request): the first switch-on shows the risks with a 5-second wait.
         Row(Modifier.toggleable(value=m.backgroundWatch,enabled=!m.busy,role=androidx.compose.ui.semantics.Role.Switch,onValueChange={if(it&&!m.watchAcknowledged)watchConsent=true else backgroundWatchChanged(it)}),verticalAlignment=Alignment.CenterVertically){Text("백그라운드 감시",Modifier.weight(1f),style=MaterialTheme.typography.titleMedium);Switch(checked=m.backgroundWatch,onCheckedChange=null,enabled=!m.busy)}
-        // The switch is the user's choice; this line is the real state (it stops on restart, update or USB debugging off).
-        if(m.backgroundWatch)Text(when{m.watchRunning->"감시 중";m.watchStarting&&m.usbDebugging->"감시 시작 중…";else->"멈춤"},style=MaterialTheme.typography.bodyMedium,color=if(m.watchRunning||m.watchStarting&&m.usbDebugging)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
-        if(m.backgroundWatch&&!m.watchRunning&&!(m.watchStarting&&m.usbDebugging))Text(WatchNotification.advice(m.usbDebugging,m.autoManagement),style=MaterialTheme.typography.bodySmall)
         Text("USB 디버깅을 켜 두면 bluedotOFF를 열지 않아도 숨김이 풀린 앱을 감지하는 대로 다시 적용해요.",style=MaterialTheme.typography.bodySmall)
         if(m.backgroundWatch&&!m.usbDebugging)TextButton(onClick=openDeveloperOptions){Text("USB 디버깅 켜러 가기")}
         HorizontalDivider()

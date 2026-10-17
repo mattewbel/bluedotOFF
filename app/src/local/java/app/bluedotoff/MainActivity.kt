@@ -216,7 +216,7 @@ class MainActivity : ComponentActivity() {
                 val entries=withContext(Dispatchers.IO){markLocalEvents()}
                 model=model.copy(journalProblem=false)
                 if(userAction&&prefs.getBoolean("welcomed",false)&&scopes.resolved&&DeviceSupport.basic()&&BackgroundWatch.enabled(this@MainActivity)){
-                    // Settings shows "감시 시작 중…" instead of "멈춤" while a stopped watch is being started.
+                    // Home hides the "멈춰 있어요" card while a stopped watch is being started.
                     model=model.copy(watchStarting=!WatchClient.available(this@MainActivity))
                     try{withContext(Dispatchers.IO){WatchClient.ensureStarted(applicationContext)}}finally{model=model.copy(watchStarting=false)}
                 }

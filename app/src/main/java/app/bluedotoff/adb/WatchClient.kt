@@ -172,7 +172,8 @@ object WatchClient {
                         session.run{active->
                             val readyAt=SystemClock.elapsedRealtime();val firstRead=HashMap<String,Long>()
                             val allowed=names.filter{cooldown.allowed(it,SystemClock.elapsedRealtime())}.toSet()
-                            WatchEngine(active,JournalStore(c),System::currentTimeMillis,{BootSession.current(c)},observe={phase,s,wrote->firstRead.putIfAbsent(s.identity.packageName,SystemClock.elapsedRealtime());active.recordVerification(phase,s,wrote)})
+                            WatchEngine(active,JournalStore(c),System::currentTimeMillis,{BootSession.current(c)},observe={phase,s,wrote->firstRead.putIfAbsent(s.identity.packageName,SystemClock.elapsedRealtime());active.recordVerification(phase,s,wrote)},
+                                onSkip={pkgs,reason->WatchLog.event("skip","pkg=${pkgs.joinToString(",")} reason=$reason")})
                                 .reapply(allowed,{available(c)&&!BatchRuntime.state.value.busy},
                                     {_->},
                                     {result->val doneAt=SystemClock.elapsedRealtime();cooldown.result(result.packageName,doneAt,result.success)

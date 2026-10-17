@@ -241,7 +241,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         link(if(advanced)"고급 옵션 닫기" else "문제가 있나요? 고급 옵션"){advanced=!advanced;render()}
         if(advanced){
             if(p.stage==SetupStage.READY)button("홈으로 돌아가기"){session.close(keepScan=true);startActivity(Intent(this,app.bluedotoff.MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP));finish()}
-            text("네트워크 권한은 이 휴대폰의 연결에만 사용해요. 외부 서버로 데이터를 보내지 않아요.",14f)
+            text("네트워크 권한은 이 휴대폰의 연결에만 사용해요. 직접 켜는 업데이트 확인 말고는 인터넷을 쓰지 않아요.",14f)
             link("이 앱의 알림 설정"){openSettings(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,packageName))}
             link("무선 디버깅 화면 열기"){wirelessSettings()}
             link("연결할 기기 선택"){session.chooseConnection()}

@@ -13,6 +13,9 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /** One app process, one operation owner shared with Local ADB. The privileged daemon never owns journal data. */
+/** B-3: a live helper that stopped answering a read or control call within its deadline. */
+class UnresponsiveHelperException:java.io.IOException(WatchClient.UNRESPONSIVE)
+
 object WatchClient {
     internal data class Connection(val binder:IBinder,val profile:JSONObject,val death:IBinder.DeathRecipient)
     @Volatile private var current:Connection?=null
@@ -83,6 +86,18 @@ object WatchClient {
         LifecycleEvents.changed()
     }
     internal fun config(c:Context)=JSONArray(JournalStore(c).entries().filter(WatchPolicy::eligible).map{e->JSONObject().put("package",e.identity.packageName).put("uid",e.identity.uid)})
+    const val UNRESPONSIVE="감시 도우미가 응답하지 않아요. 휴대폰을 다시 시작한 뒤 Wi-Fi에 연결된 상태에서 bluedotOFF를 열어주세요."
+    private val rpcThreads=java.util.concurrent.Executors.newCachedThreadPool()
+    /** B-3: a helper that is alive but silent must not hold the app's session forever. Reads and control calls get a
+     *  deadline; a permission write never does (it is never retried elsewhere, so a late answer cannot write twice).
+     *  The stuck call stays on its own thread; the caller gets a clear error instead of waiting. */
+    private fun timedRpc(connection:Connection,code:Int,request:JSONObject,ms:Long):JSONObject {
+        val call=rpcThreads.submit<JSONObject>{rpc(connection,code,request)}
+        return try{call.get(ms,java.util.concurrent.TimeUnit.MILLISECONDS)}
+        catch(_:java.util.concurrent.TimeoutException){WatchLog.event("state","helperUnresponsive code=$code op=${request.optString("op")}");throw UnresponsiveHelperException()}
+        catch(e:java.util.concurrent.ExecutionException){throw e.cause?:e}
+    }
+    private fun isRead(request:JSONObject)=request.optString("op").let{it.startsWith("GET_")||it in setOf("PROFILE","HEALTH")}
     private fun rpc(connection:Connection,code:Int,request:JSONObject):JSONObject {
         val encoded=request.toString();require(encoded.toByteArray().size<=WatchProtocol.MAX_REQUEST)
         val data=Parcel.obtain();val reply=Parcel.obtain()
@@ -98,8 +113,8 @@ object WatchClient {
             check(current===connection&&available(c)&&LocalAdbSession.busy)
             return try{block(LocalAdbBackend(c,connection.profile){request->
                 check(current===connection&&connection.binder.isBinderAlive)
-                try{rpc(connection,WatchProtocol.REQUEST,request)}catch(e:SecurityException){throw HelperOperationRejectedException()}
-            })}finally{if(current===connection&&available(c))runCatching{rpc(connection,WatchProtocol.CONFIGURE,JSONObject().put("targets",config(c)))} }
+                try{if(isRead(request))timedRpc(connection,WatchProtocol.REQUEST,request,30_000) else rpc(connection,WatchProtocol.REQUEST,request)}catch(e:SecurityException){throw HelperOperationRejectedException()}
+            })}finally{if(current===connection&&available(c))runCatching{timedRpc(connection,WatchProtocol.CONFIGURE,JSONObject().put("targets",config(c)),10_000)} }
         }
     }
     internal fun <T> exclusive(c:Context,block:(Session)->T):T=LocalAdbSession.exclusive {
@@ -135,27 +150,33 @@ object WatchClient {
     fun stopNow(c:Context,reason:WatchNotification.Reason=WatchNotification.Reason.STOPPED)=LocalAdbSession.exclusive {
         val previous=current
         current=null
-        if(previous!=null){runCatching{rpc(previous,WatchProtocol.STOP,JSONObject())};runCatching{previous.binder.unlinkToDeath(previous.death,0)}}
+        if(previous!=null){runCatching{timedRpc(previous,WatchProtocol.STOP,JSONObject(),10_000)};runCatching{previous.binder.unlinkToDeath(previous.death,0)}}
         c.getSharedPreferences("ui-state",0).edit().putBoolean("watchRunning",false).commit()
         state(c);WatchNotification.stopped(c,reason)
     }
     /** Receiver/provider merely enqueue names. No Binder thread holds a client lock while calling back into the helper. */
+    /** First change signal of the current queue (elapsedRealtime), for the B-4 timing line. */
+    @Volatile private var firstSignalAt=0L
     internal fun signal(c:Context,packages:Set<String>){
         if(!available(c))return
-        synchronized(queueLock){pending+=packages;if(queued)return;queued=true}
+        synchronized(queueLock){if(pending.isEmpty())firstSignalAt=SystemClock.elapsedRealtime();pending+=packages;if(queued)return;queued=true}
         worker.execute{
             try{
                 while(true){
+                    val signalAt=synchronized(queueLock){firstSignalAt};val workerAt=SystemClock.elapsedRealtime()
                     val names=synchronized(queueLock){pending.toSet().also{pending.clear()}}
                     if(names.isEmpty()||!available(c))break
                     exclusive(c){session->
+                        val lockAt=SystemClock.elapsedRealtime()
                         if(BatchRuntime.state.value.busy){synchronized(queueLock){deferred+=names};return@exclusive}
                         session.run{active->
+                            val readyAt=SystemClock.elapsedRealtime();val firstRead=HashMap<String,Long>()
                             val allowed=names.filter{cooldown.allowed(it,SystemClock.elapsedRealtime())}.toSet()
-                            WatchEngine(active,JournalStore(c),System::currentTimeMillis,{BootSession.current(c)},observe=active::recordVerification)
+                            WatchEngine(active,JournalStore(c),System::currentTimeMillis,{BootSession.current(c)},observe={phase,s,wrote->firstRead.putIfAbsent(s.identity.packageName,SystemClock.elapsedRealtime());active.recordVerification(phase,s,wrote)})
                                 .reapply(allowed,{available(c)&&!BatchRuntime.state.value.busy},
                                     {_->},
-                                    {result->cooldown.result(result.packageName,SystemClock.elapsedRealtime(),result.success)
+                                    {result->val doneAt=SystemClock.elapsedRealtime();cooldown.result(result.packageName,doneAt,result.success)
+                                        WatchLog.event("timing","pkg=${result.packageName} ok=${result.success} toWorker=${workerAt-signalAt}ms lockWait=${lockAt-workerAt}ms connect=${readyAt-lockAt}ms checks=${doneAt-(firstRead[result.packageName]?:readyAt)}ms total=${doneAt-signalAt}ms")
                                         ReapplyHistoryStore(c).record(result,ReapplySource.BACKGROUND)
                                         if(result.success)c.getSystemService(android.app.NotificationManager::class.java).cancel(result.packageName.hashCode())})
                         }

@@ -42,7 +42,10 @@ class SharedGroupEngine(private val port:TargetPort,private val journal:Journal,
         val names=packages.sorted();val before=names.map(port::read);SharedGroupPolicy.validate(before)
         before.forEach{observe("before",it,false)}
         val identities=before.map{it.identity}
-        val all=journal.entries();val old=names.map{p->all.lastOrNull{it.identity.packageName==p&&it.identity.userId==0}}
+        val all=journal.entries();val old=names.map{p->all.lastOrNull{it.identity.packageName==p&&it.identity.userId==0}
+            // B-10: same rule as single apps (SafetyEngine.prepare): a restored, unregistered record or an old install's record
+            // does not block registering the group again; the fresh read is the original.
+            ?.takeUnless{!it.enabled&&(it.state==TargetState.INACTIVE_INSTALL||hide&&it.state==TargetState.NOT_APPLIED)}}
         if(old.any{it!=null}&&old.any{it==null})throw SafetyException("묶음 일부에만 등록 기록이 있어 변경하지 않았습니다.")
         if(!hide&&old.any{it==null})throw SafetyException("복원할 공유 앱 묶음 기록이 없습니다.")
         old.filterNotNull().forEachIndexed{i,e->
@@ -90,16 +93,67 @@ class SharedGroupEngine(private val port:TargetPort,private val journal:Journal,
             durable(failed);failed
         }
     }
+    /** B-1 (owner decision 2026-10-17): settle a group left PENDING by an interruption (app killed or the last journal
+     *  save failed), only when the app is opened. Every member must still be the recorded install with the recorded
+     *  ownership, firmware and other permission state, and the recorded originals must agree; otherwise it locks
+     *  (NEEDS_REVIEW) without writing. The recorded original is written back with the usual checks. An interrupted hide
+     *  stays registered as "reapply needed" (the reapply-on-open retries it); an interrupted restore finishes as restored. */
+    fun recover(packages:List<String>):List<Entry> = synchronized(SafetyEngine.writeLock) {
+        val names=packages.sorted()
+        val records=names.map{p->journal.entries().lastOrNull{it.identity.packageName==p&&it.identity.userId==0}}
+        val pendingStates=setOf(TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE)
+        if(records.any{it==null||it.state !in pendingStates})return records.filterNotNull()
+        val pending=records.filterNotNull()
+        val fw=port.compatibleFirmware()
+        val current=names.map(port::read);current.forEach{observe("before",it,false)}
+        val identities=pending.first().groupIdentities
+        val originals=pending.map{it.originalBit}.distinct()
+        val same=fw.osSupported&&pending.all{it.firmware.substringAfterLast('|')==fw.abiProfile}&&
+            pending.all{it.groupIdentities==identities}&&identities.map{it.packageName}==names&&
+            pending.zip(current).all{(e,s)->e.identity.sameInstall(s.identity)&&s.peers.sorted()==names&&s.sharedUserId==e.sharedUserId&&
+                e.invariantDigest.isNotBlank()&&e.invariantDigest==s.invariantDigest()}&&
+            originals.size==1&&current.map{it.fineFlags}.distinct().size==1
+        if(!same){
+            val locked=pending.map{it.copy(state=TargetState.NEEDS_REVIEW,error="중단된 공유 앱 묶음의 상태가 기록과 달라 변경하지 않았습니다.")}
+            durable(locked);return locked
+        }
+        val original=originals.single();var wrote=false
+        try{
+            if(current.first().bit!=original){wrote=true;port.writeFineGroupChecked(current,original)}
+            for(ms in listOf(0L,500L,1000L)){
+                if(ms>0)wait(ms)
+                val now=names.map(port::read);now.forEach{observe("recover",it,wrote)}
+                if(!SharedGroupPolicy.ownership(current,now)||!SharedGroupPolicy.same(current,now,original))throw SafetyException("recover")
+            }
+        }catch(e:Exception){
+            if(e is JournalPersistenceException)throw e
+            val failed=pending.map{it.copy(state=if(wrote)TargetState.FAILED_ROLLBACK else TargetState.NEEDS_REVIEW,error="중단된 공유 앱 묶음을 원래대로 되돌렸는지 확인하지 못했습니다. 추가 변경을 차단했습니다.")}
+            durable(failed);return failed
+        }
+        val hide=pending.first().state==TargetState.PENDING_HIDE
+        val settled=pending.zip(current).map{(e,s)->e.copy(identity=s.identity,enabled=hide,state=if(hide)TargetState.NEEDS_REAPPLY_POLICY else TargetState.NOT_APPLIED,
+            settlingVerified=true,lastVerifiedTime=now(),error=if(hide)INTERRUPTED else "")}
+        durable(settled);settled
+    }
+    companion object { const val INTERRUPTED="중간에 끊겨서 원래대로 돌려놨어요. 다시 적용해 주세요." }
 }
 
 object SharedGroupReconcile {
     fun read(e:Entry,all:Map<String,Snapshot?>,firmware:String,boot:String):Entry {
+        // B-10: not registered (enabled=false; registered or interrupted records are enabled) and a member is gone or
+        // reinstalled -> an old install's record, like a single app's INACTIVE_INSTALL. Registered groups keep every check.
+        // If this record's own app is uninstalled it is MISSING_TARGET like a single app (not listed as "새 설치").
+        if(!e.enabled&&e.state in setOf(TargetState.NOT_APPLIED,TargetState.INACTIVE_INSTALL,TargetState.NEEDS_REVIEW,TargetState.UNSUPPORTED_STATE,TargetState.MISSING_TARGET)&&
+            e.groupIdentities.any{id->all[id.packageName]?.identity?.let{!id.sameInstall(it)}?:true})
+            return e.copy(state=if(all[e.identity.packageName]==null)TargetState.MISSING_TARGET else TargetState.INACTIVE_INSTALL)
         if(e.state in setOf(TargetState.NEEDS_REVIEW,TargetState.FAILED_ROLLBACK,TargetState.SHARED_UID_CHANGED,TargetState.FAILED_SAFE))return e
         val members=e.groupIdentities.map{all[it.packageName]?:return e.copy(state=TargetState.NEEDS_REVIEW,error="공유 앱 묶음의 전체 설치 정보를 확인하지 못했습니다.")}
         if(e.groupIdentities.zip(members).any{(id,s)->!id.sameInstall(s.identity)})return e.copy(state=TargetState.NEEDS_REVIEW,error="공유 앱 묶음의 설치 정보가 바뀌었습니다.")
         if(members.any{it.peers.sorted()!=e.groupIdentities.map{p->p.packageName}||it.sharedUserId!=e.sharedUserId})return e.copy(state=TargetState.NEEDS_REVIEW,error=OwnershipChangedException().message!!)
         if(e.firmware!=firmware)return e.copy(state=TargetState.NEEDS_RECHECK_FIRMWARE)
-        if(e.state in setOf(TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE,TargetState.PENDING_SHOW))return e.copy(state=TargetState.NEEDS_REVIEW,error="중단된 공유 앱 묶음은 자동으로 변경하지 않습니다.")
+        // B-1: an interrupted group stays PENDING (not changeable by the watch or a batch) until SharedGroupEngine.recover
+        // settles it when the app is opened. Identity/ownership changes above still lock it.
+        if(e.state in setOf(TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE,TargetState.PENDING_SHOW))return e
         if(!e.enabled)return e
         if(e.groupIdentities.zip(members).any{(id,s)->id!=s.identity})return e.copy(state=TargetState.NEEDS_REAPPLY_UPDATE)
         try{SharedGroupPolicy.validate(members)}catch(_:Exception){return e.copy(state=TargetState.UNSUPPORTED_STATE)}

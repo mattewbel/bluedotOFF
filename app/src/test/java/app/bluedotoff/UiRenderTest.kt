@@ -66,6 +66,43 @@ class UiRenderTest {
         compose.onNodeWithText("큰 앱 묶음을 함께 선택할까요?").assertExists();compose.onNodeWithText("디바이스 찾기 외 92개 앱").assertExists()
         compose.onNodeWithText("Android 시스템 앱 포함").assertExists();compose.onNodeWithText("함께 선택").assertExists();compose.onNodeWithText("선택 안 함").assertExists()
     }
+    @Test fun updateQuestionIsAskedWithOffAsTheSafeAnswer(){
+        var answer:Boolean?=null
+        controller.get().setContent{BlueDotApp(model(applied=true).copy(updateOffer=true),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},updateOfferAnswer={answer=it})}
+        compose.onNodeWithText("새 버전이 나오면 알려드릴까요?").assertExists()
+        compose.onNodeWithText("끄면 bluedotOFF는 인터넷을 쓰지 않아요",substring=true).assertExists()
+        compose.onNodeWithText("끄기").performClick();org.junit.Assert.assertEquals(false,answer)
+    }
+    @Test fun updateQuestionWaitsForTheNotificationQuestion(){
+        controller.get().setContent{BlueDotApp(model(applied=true).copy(updateOffer=true,notificationOffer=true),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})}
+        compose.onNodeWithText("새 버전이 나오면 알려드릴까요?").assertDoesNotExist()
+    }
+    @Test fun newVersionCardOpensThePageOrSkips(){
+        var opened:String?=null;var skipped:String?=null
+        controller.get().setContent{BlueDotApp(model(applied=true).copy(updateCard="9.9.9"),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},openUpdate={opened=it},skipUpdate={skipped=it})}
+        compose.onNodeWithText("새 버전이 있어요").assertExists()
+        compose.onNodeWithText("bluedotOFF 9.9.9이 나왔어요. GitHub 출시 페이지에서 받을 수 있어요.").assertExists()
+        compose.onNodeWithText("출시 페이지 열기").performClick();org.junit.Assert.assertEquals("9.9.9",opened)
+        compose.onNodeWithText("이 버전 건너뛰기").performClick();org.junit.Assert.assertEquals("9.9.9",skipped)
+    }
+    @Test fun updateSwitchIsOffByDefaultAndShowsVersionsWhenOn(){
+        var changed:Boolean?=null;var checked=false;var opened:String?=null
+        val current=androidx.compose.runtime.mutableStateOf(model(page=Page.SETTINGS))
+        controller.get().setContent{BlueDotApp(current.value,{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},updateCheckChanged={changed=it},checkUpdateNow={checked=true},openUpdate={opened=it})}
+        val row=compose.onNode(isToggleable() and hasText("업데이트 확인")).performScrollTo()
+        row.assertIsOff();compose.onNodeWithText("지금 확인").assertDoesNotExist()
+        row.performClick();org.junit.Assert.assertEquals(true,changed)
+        compose.runOnIdle{current.value=current.value.copy(updateCheck=true)}
+        compose.onNodeWithText("현재 버전 ${BuildConfig.VERSION_NAME} · 최신 버전은 아직 확인 전").assertExists()
+        compose.onNodeWithText("지금 확인").performScrollTo().performClick();assertTrue(checked)
+        compose.onNodeWithText("출시 페이지 열기").assertDoesNotExist()
+        compose.runOnIdle{current.value=current.value.copy(latestVersion="9.9.9",updateStatus="새 버전 9.9.9이 있어요.")}
+        compose.onNodeWithText("현재 버전 ${BuildConfig.VERSION_NAME} · 최신 버전 9.9.9").assertExists()
+        compose.onNodeWithText("새 버전 9.9.9이 있어요.").assertExists()
+        compose.onNodeWithText("출시 페이지 열기").performScrollTo().performClick();org.junit.Assert.assertEquals("9.9.9",opened)
+        compose.runOnIdle{current.value=current.value.copy(updateChecking=true)}
+        compose.onNodeWithText("확인하는 중…").assertIsNotEnabled()
+    }
     @Test fun homeShowsLastCheckAndRefreshWithoutTakingOverTheScreen(){
         val base=model(applied=true).copy(lastCheckedAt=System.currentTimeMillis()-3*60_000L)
         render("90-home-last-checked",base)

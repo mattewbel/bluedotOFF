@@ -5,28 +5,42 @@ import org.json.JSONObject
 
 /** Presentation-only translation. Journal values, predicates, package labels and IPC stay intact. */
 object UiText {
-    private var catalog:Map<String,String>?=null
-    private var patterns:List<Pair<Regex,String>> = emptyList()
-    @Synchronized private fun load(context:Context):Map<String,String> {
-        catalog?.let{return it}
-        val j=JSONObject(context.assets.open("i18n/en.json").bufferedReader(Charsets.UTF_8).use{it.readText()})
-        val map=j.keys().asSequence().associateWith{j.getString(it)}
-        patterns=map.filterKeys{it.contains("{0}")}.map{(source,target)->
+    /** Catalogs in assets/i18n, keyed by the Korean source sentence. Korean shows the source itself. */
+    val LANGUAGES=listOf("en","es","pt-BR","hi","zh-Hant","zh-Hans")
+    private val catalogs=HashMap<String,Pair<Map<String,String>,List<Pair<Regex,String>>>>()
+    /** Catalog for a locale: null = Korean (source text). Unsupported languages use English (owner decision 2026-10-17). */
+    fun catalogFor(locale:java.util.Locale):String?=when(locale.language){
+        "ko"->null
+        "es"->"es"
+        "pt"->"pt-BR"
+        "hi"->"hi"
+        "zh"->if(locale.script=="Hant"||locale.script.isEmpty()&&locale.country in setOf("TW","HK","MO"))"zh-Hant" else "zh-Hans"
+        else->"en"
+    }
+    @Synchronized private fun load(context:Context,name:String):Pair<Map<String,String>,List<Pair<Regex,String>>> = catalogs.getOrPut(name){
+        val text=runCatching{context.assets.open("i18n/$name.json").bufferedReader(Charsets.UTF_8).use{it.readText()}}.getOrNull()
+        val map=text?.let{val j=JSONObject(it);j.keys().asSequence().associateWith{k->j.getString(k)}}?:emptyMap()
+        val patterns=map.filterKeys{it.contains("{0}")}.map{(source,target)->
             val pieces=source.split(Regex("\\{[0-9]+\\}"))
             Regex(pieces.joinToString("(.+?)"){Regex.escape(it)},RegexOption.DOT_MATCHES_ALL) to target
         }
-        catalog=map;return map
+        map to patterns
     }
-    fun text(context:Context,value:String):String {
-        if(context.resources.configuration.locales[0].language=="ko" || value.none{it in '가'..'힣'})return value
-        val map=load(context)
+    private fun lookup(context:Context,name:String,value:String):String? {
+        val (map,patterns)=load(context,name)
         map[value]?.let{return it}
         for((pattern,target)in patterns){
             val match=pattern.matchEntire(value)?:continue
             return Regex("\\{([0-9]+)\\}").replace(target){token->match.groupValues[token.groupValues[1].toInt()+1]}
         }
+        return null
+    }
+    fun text(context:Context,value:String):String {
+        val name=catalogFor(context.resources.configuration.locales[0])
+        if(name==null||value.none{it in '가'..'힣'})return value
+        // A sentence missing in a new catalog falls back to English, then to the Korean source.
         // Unknown diagnostics remain verbatim; never hide a real error with a success message.
-        return value
+        return lookup(context,name,value)?:(if(name!="en")lookup(context,"en",value) else null)?:value
     }
     const val GENERIC_ERROR="작업을 마치지 못했어요. 기기 연결을 확인한 뒤 다시 시도해주세요."
     /** Internal English diagnostics (helper codes, exception text) become plain guidance. Korean product messages pass through. */

@@ -17,9 +17,12 @@ for variant,suffix,expected in [('localDebug','','3b3b208f92d3d437acf30c333d9a7b
     assert int(manifest.attrib[android+'versionCode'])==result['versionCode']
     assert {e.attrib[android+'name'] for e in manifest.findall('uses-permission')}==permissions
     application=manifest.find('application');assert application.attrib[android+'allowBackup']=='false'
-    services=application.findall('service');assert len(services)==1
-    assert services[0].attrib[android+'name']=='app.bluedotoff.adb.PairingLifetimeService'
-    assert services[0].attrib[android+'exported']=='false' and services[0].attrib[android+'foregroundServiceType']=='shortService' and services[0].attrib[android+'stopWithTask']=='true'
+    services={s.attrib[android+'name']:s for s in application.findall('service')}
+    assert set(services)=={'app.bluedotoff.adb.PairingLifetimeService','app.bluedotoff.adb.WirelessReleaseJob','app.bluedotoff.UpdateCheckJob'}
+    pairing=services['app.bluedotoff.adb.PairingLifetimeService']
+    assert pairing.attrib[android+'exported']=='false' and pairing.attrib[android+'foregroundServiceType']=='shortService' and pairing.attrib[android+'stopWithTask']=='true'
+    for name in ['app.bluedotoff.adb.WirelessReleaseJob','app.bluedotoff.UpdateCheckJob']:
+        assert services[name].attrib[android+'exported']=='false' and services[name].attrib[android+'permission']=='android.permission.BIND_JOB_SERVICE'
     assert all('shizuku' not in str(e.attrib).lower() for e in manifest.iter())
     assert next(e for e in application.findall('activity') if e.attrib[android+'name'].endswith('LocalAdbSetupActivity')).attrib[android+'exported']=='false'
     assert next(e for e in application.findall('receiver') if e.attrib[android+'name'].endswith('PairingReplyReceiver')).attrib[android+'exported']=='false'
@@ -53,6 +56,10 @@ source=list((root/'app/src/main/java').rglob('*.kt'))+list((root/'app/src/local/
 for p in source:
     if p.name in {"MinimalPrivilegedHelper.kt","WirelessControls.kt"}:continue
     text=p.read_text(encoding='utf-8-sig');assert not re.search(r'Runtime\.getRuntime|ProcessBuilder|bindUserService\(|grantRuntimePermission\(|revokeRuntimePermission\(|setSystemProperty\(|Settings\.(?:Global|Secure|System)\.put|setLocationEnabled\(|import (?:rikka|moe)\.shizuku',text),p
+opens=[p.name for p in source for _ in re.finditer(r'openConnection\(|Socket\(|HttpClient|OkHttp|WebView',p.read_text(encoding='utf-8-sig'))]
+assert opens==['UpdateCheck.kt'],opens
+update=(root/'app/src/main/java/app/bluedotoff/UpdateCheck.kt').read_text(encoding='utf-8')
+assert 'const val API="https://api.github.com/repos/mattewbel/bluedotOFF/releases/latest"' in update and update.count('openConnection(')==1 and 'java.net.URL(API)' in update
 native=(root/'app/src/main/cpp/native_adb.cpp').read_text();assert 'addr.sin_addr.s_addr=htonl(INADDR_LOOPBACK)' in native and native.count('int r=connect(')==1
 helper=(root/'app/src/main/java/app/bluedotoff/adb/MinimalPrivilegedHelper.kt').read_text()
 assert helper.count('parcelRead("permissionmgr","updatePermissionFlags"')==1
@@ -69,7 +76,7 @@ assert not re.search(r'ProcessBuilder|Runtime\.getRuntime|updatePermissionFlags'
 # Provenance: which source the audited APKs came from, and whether it had uncommitted changes.
 git=lambda *a:subprocess.run(['git',*a],cwd=root,capture_output=True,text=True,check=True).stdout.strip()
 result['source']={'commit':git('rev-parse','HEAD'),'uncommittedChanges':bool(git('status','--porcelain','--','.'))}
-result['mergedPermissions']=sorted(permissions);result['staticAudit']='fixed-loopback, typed allowlist, single narrow FINE setter; pattern/manifest/dex checks, not a formal proof'
+result['mergedPermissions']=sorted(permissions);result['staticAudit']='fixed-loopback ADB + one opt-in GitHub release check, typed allowlist, single narrow FINE setter; pattern/manifest/dex checks, not a formal proof'
 (art/f"build-audit-{result['version']}.json").write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
 # Published next to the release APK so anyone (or any analysis tool) can confirm a file is the official build.
 rel=result['apks']['release'];sig=':'.join(rel['signerSha256'][i:i+2] for i in range(0,64,2)).upper()

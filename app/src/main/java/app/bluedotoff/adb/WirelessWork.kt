@@ -33,7 +33,9 @@ object WirelessWork {
     private fun setHeld(context:Context,on:Boolean){prefs(context).edit().putBoolean("heldOn",on).commit()}
     /** Turns a held wireless debugging off once no bluedotOFF screen is visible (called after leaving, and at process start
      *  in case the process died while holding). Never touches a lease in progress or a connection the user made. */
-    fun release(context:Context)=Thread{synchronized(lock){if(!ForegroundState.active)releaseLocked(context)}}.start()
+    fun release(context:Context)=Thread{releaseIfHidden(context)}.start()
+    /** Blocking form for [WirelessReleaseJob]: waits for a lease in progress, then releases only if no screen is visible. */
+    fun releaseIfHidden(context:Context)=synchronized(lock){if(!ForegroundState.active)releaseLocked(context)}
     /** Same cleanup right away (e.g. the user turns automatic management off while the app is open). */
     fun releaseNow(context:Context)=synchronized(lock){releaseLocked(context)}
     private fun releaseLocked(context:Context){

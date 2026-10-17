@@ -19,6 +19,17 @@ class UiTextTest {
         assertEquals("홈",UiText.text(language("ko-KR"),"홈"))
         assertEquals("Home",UiText.text(language("en-GB"),"홈"))
     }
+    /** 1.1.2: one catalog per language; unsupported languages use English; zh splits by script/region. */
+    @Test fun catalogIsChosenPerLanguageWithEnglishForTheRest(){
+        val cases=mapOf("ko-KR" to null,"en-US" to "en","fr-FR" to "en","de" to "en","es-MX" to "es","pt-PT" to "pt-BR","pt-BR" to "pt-BR",
+            "hi-IN" to "hi","zh-TW" to "zh-Hant","zh-HK" to "zh-Hant","zh-Hant-CN" to "zh-Hant","zh-CN" to "zh-Hans","zh-Hans" to "zh-Hans","zh" to "zh-Hans")
+        for((tag,expected) in cases)assertEquals(tag,expected,UiText.catalogFor(Locale.forLanguageTag(tag)))
+    }
+    /** A sentence missing in a language's catalog shows in English, never in Korean (unless English lacks it too). */
+    @Test fun missingTranslationFallsBackToEnglish(){
+        assertEquals("Home",UiText.text(language("fr-FR"),"홈"))
+        assertEquals("존재하지 않는 진단 문구",UiText.text(language("es"),"존재하지 않는 진단 문구"))
+    }
     @Test fun backgroundWatchTextsHaveEnglish(){
         for(k in listOf("백그라운드 감시","백그라운드 감시를 켤까요?","켜기 전에 꼭 읽어주세요.","USB 디버깅을 항상 켜 둬야 해요.",
             "bluedotOFF를 열지 않아도 숨김이 풀린 앱을 자동으로 다시 숨겨요.","백그라운드에서 동작해서 배터리 사용량이 늘 수 있어요.",
@@ -37,8 +48,10 @@ class UiTextTest {
         assertFalse(WatchNotification.advice(usbOn=true,autoManaged=true).contains("USB"))
         for(usb in listOf(true,false))for(auto in listOf(true,false)){val k=WatchNotification.advice(usb,auto);assertNotEquals(k,k,UiText.text(language("en"),k))}
     }
+    /** 1.1.2: languages without a catalog still show English; supported ones show their own catalog. */
     @Test fun everyNonKoreanLanguageFallsBackToEnglish(){
-        for(tag in listOf("es-ES","zh-CN","ja-JP","de-DE"))assertEquals(tag,"Home",UiText.text(language(tag),"홈"))
+        for(tag in listOf("fr-FR","ja-JP","de-DE","ru-RU"))assertEquals(tag,"Home",UiText.text(language(tag),"홈"))
+        for(tag in listOf("es-ES","pt-BR","hi-IN","zh-TW","zh-CN")){val shown=UiText.text(language(tag),"홈");assertNotEquals(tag,"홈",shown);assertNotEquals(tag,"Home",shown)}
     }
     @Test fun dynamicCountsAndCompletionTranslateWithoutTouchingValues(){
         assertEquals("35 / 70 apps checked · 50%",UiText.text(language("en"),"35 / 70개 확인 · 50%"))

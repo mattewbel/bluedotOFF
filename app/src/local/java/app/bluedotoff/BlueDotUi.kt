@@ -749,6 +749,7 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
                 style=MaterialTheme.typography.bodyLarge,color=if(m.busy)MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary)
         }
         Text(m.applicationScope.description,style=MaterialTheme.typography.bodySmall)
+        Text(if(m.applicationScope==ApplicationScope.NORMAL)"일반 적용을 누르면 적용 범위를 변경할 수 있어요." else "전체 적용을 누르면 적용 범위를 변경할 수 있어요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         if(m.scopePending)Text("범위 변경이 완료되지 않았어요. 제외되는 앱을 복원해야 범위를 낮출 수 있어요.",color=MaterialTheme.colorScheme.error)
         HorizontalDivider()
         Row(Modifier.toggleable(value=m.autoManagement,enabled=!m.busy||(m.autoManagement&&!m.autoReapplying),role=androidx.compose.ui.semantics.Role.Switch,onValueChange={if(m.backgroundWatch)watchOwnsConnection=true else if(it)autoConsent=true else managementChanged(false)}),verticalAlignment=Alignment.CenterVertically){Text("무선 디버깅 자동 관리",Modifier.weight(1f),style=MaterialTheme.typography.titleMedium);Switch(checked=m.autoManagement,onCheckedChange=null,enabled=(!m.busy||m.autoManagement)&&!m.backgroundWatch)}

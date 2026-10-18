@@ -773,6 +773,7 @@ class UiRenderTest {
         controller.get().setContent{BlueDotApp(model(page=Page.SETTINGS),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},scopeChange={called=true})}
         // The scope name opens the scope choice; there is no separate button any more.
         compose.onNodeWithText("적용 범위 변경").assertDoesNotExist()
+        compose.onNodeWithText("전체 적용을 누르면 적용 범위를 변경할 수 있어요.").assertExists()
         compose.onNode(hasText("전체 적용") and hasClickAction()).performScrollTo().performClick();org.junit.Assert.assertTrue(called)
     }
     @Test fun settingsShowsScopeAndCurrentLevelOnTheSameLine(){
@@ -781,6 +782,11 @@ class UiRenderTest {
         val level=compose.onNodeWithText("전체 적용").fetchSemanticsNode().boundsInRoot
         org.junit.Assert.assertTrue(kotlin.math.abs(heading.center.y-level.center.y)<2f)
         org.junit.Assert.assertTrue(heading.right<=level.left)
+        // The hint names the scope shown, so the user knows the blue name is what to tap.
+        compose.onNodeWithText("전체 적용을 누르면 적용 범위를 변경할 수 있어요.").assertExists()
+        render("82-scope-settings-normal",model(page=Page.SETTINGS).copy(applicationScope=ApplicationScope.NORMAL))
+        compose.onNodeWithText("일반 적용을 누르면 적용 범위를 변경할 수 있어요.").assertExists()
+        compose.onNodeWithText("전체 적용을 누르면 적용 범위를 변경할 수 있어요.").assertDoesNotExist()
     }
     @Test fun settingsExitShortcutInvokesCallbackWithoutLosingResult(){var opened=false;val m=model(applied=true,page=Page.SETTINGS);controller.get().setContent{BlueDotApp(m,{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},wirelessExit={opened=true})};compose.onNodeWithText("무선 디버깅 끄기").performScrollTo().performClick();org.junit.Assert.assertTrue(opened);org.junit.Assert.assertTrue(m.entries.single().settlingVerified)}
     @Test fun automaticManagementRequiresConfirmationAndCancelDoesNotGrant(){

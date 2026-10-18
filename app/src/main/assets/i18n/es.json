@@ -856,7 +856,6 @@
   "지금 확인": "Comprobar ahora",
   "확인하지 못했어요. 인터넷 연결을 확인한 뒤 다시 시도해주세요.": "No se pudo comprobar. Revisa tu conexión a internet e inténtalo de nuevo.",
   "새 버전 {0}이 있어요.": "Hay una versión nueva: {0}.",
-  "최신 버전을 쓰고 있어요.": "Tienes la última versión.",
   "업데이트 알림": "Avisos de actualización",
   "새 버전이 나왔을 때 한 번만 알려드려요.": "Te avisa una sola vez cuando sale una versión nueva.",
   "bluedotOFF {0}이 나왔어요. 눌러서 GitHub 출시 페이지를 열어요.": "Ya está disponible bluedotOFF {0}. Toca para abrir la página de la versión en GitHub.",
@@ -874,5 +873,7 @@
   "앱을 켤 때만 적용": "Solo al abrir la app",
   "백그라운드 자동 감시": "Monitoreo automático en segundo plano",
   "위치 설정을 따로 쓰는 앱. 조건을 통과한 기본 설치 앱도 포함해요.": "Apps con ajustes de ubicación independientes. Se incluyen las apps preinstaladas que cumplan los requisitos.",
-  "공유 앱과 시스템 앱까지 선택할 수 있어요.": "También puedes elegir apps compartidas y del sistema."
+  "공유 앱과 시스템 앱까지 선택할 수 있어요.": "También puedes elegir apps compartidas y del sistema.",
+  "전체 적용을 누르면 적용 범위를 변경할 수 있어요.": "Toca «Modo todas las apps» para cambiar el modo de selección de aplicaciones.",
+  "일반 적용을 누르면 적용 범위를 변경할 수 있어요.": "Toca «Modo estándar» para cambiar el modo de selección de aplicaciones."
 }

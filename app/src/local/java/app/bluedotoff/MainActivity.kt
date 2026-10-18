@@ -612,7 +612,7 @@ class MainActivity : ComponentActivity() {
             val status=when{
                 release==null->"확인하지 못했어요. 인터넷 연결을 확인한 뒤 다시 시도해주세요."
                 UpdatePolicy.newer(release.tag,UpdateCheck.current())->"새 버전 ${release.tag}이 있어요."
-                else->"최신 버전을 쓰고 있어요."
+                else->""
             }
             if(release!=null&&UpdatePolicy.newer(release.tag,UpdateCheck.current()))UpdateCheck.markNotified(this@MainActivity,release.tag)
             model=model.copy(updateChecking=false,updateStatus=status,latestVersion=UpdateCheck.latest(this@MainActivity))

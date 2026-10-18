@@ -4,7 +4,7 @@
 
 **[⬇ Download the latest APK](https://github.com/mattewbel/bluedotOFF/releases/latest)** — get `bluedotOFF-1.1.3-release.apk` under Assets.
 
-> 🔒 **Open source · No ads, analytics or external servers · No root**  
+> 🔒 **Open source · No ads, analytics or tracking · No root**  
 > The wireless debugging connection stays inside the phone (127.0.0.1). Location permissions are untouched; only one indicator flag (`0x100`) changes.  
 > To confirm a download is the official file, see `checksums.txt` on the release. Signing certificate SHA-256: `61:9F:E1:EC:BD:F5:9D:5D:0B:83:8D:DC:64:20:E5:8B:E9:0F:82:8B:E1:1C:B6:1F:E6:C8:E6:AA:4C:EA:AD:62`
 
@@ -12,7 +12,7 @@ An app for Samsung One UI 9 (Android 17) phones that **hides the blue location i
 Location permissions and location history stay as they are. bluedotOFF changes a single setting that controls the status bar indicator, and it records the previous state so you can undo it in the app.
 
 - No root, no bootloader unlock, no computer needed. It only uses the phone's built-in **Wireless debugging** (and USB debugging if you turn on background watch).
-- No server communication, no ads, no analytics, no tracking.
+- No ads, no analytics, no tracking. The internet is used only if you turn on the optional [update check](#update-check) (off by default), to check GitHub for a new version.
 
 > **Note:** bluedotOFF is a personal project and is not affiliated with Samsung or Google. It uses Developer options and Wireless debugging; use it at your own risk. You can restore the original state from the app, but **restore everything before uninstalling the app**.
 

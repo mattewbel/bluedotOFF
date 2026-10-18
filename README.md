@@ -146,7 +146,7 @@ Off by default. The app asks once (choose **Turn on** or **Turn off**), and you 
 
 - **When on:** once a day at most, the app asks GitHub for the version number of the latest bluedotOFF release. Pre-releases are ignored. No account, device or app information is sent (not even the phone model); like any web request, GitHub can see your IP address.
 - **When a new version is out:** with background watch, one system notification; otherwise a card on Home the next time you open the app. Each version is announced only once, and **Skip this version** silences it. The app never downloads or installs anything: tapping opens the GitHub release page, and you install the new APK yourself.
-- **Check now** in Settings checks at once and shows the current and latest version.
+- The ↻ button next to **Check for updates** in Settings checks at once and shows the current and latest version.
 - **No internet or a failure:** nothing is shown; it tries again next time.
 
 ## Good to know

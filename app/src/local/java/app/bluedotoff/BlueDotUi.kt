@@ -566,9 +566,9 @@ private fun pickerReason(a:DiscoveredApp,scope:ApplicationScope=ApplicationScope
     }
 }
 /** Small circular-arrow button; spins while the registered apps are being re-read. */
-@Composable private fun RefreshButton(spinning:Boolean,enabled:Boolean,onClick:()->Unit){
+@Composable private fun RefreshButton(spinning:Boolean,enabled:Boolean,onClick:()->Unit,label:String="다시 확인"){
     val ctx=LocalContext.current;val color=MaterialTheme.colorScheme.primary
-    IconButton(onClick=onClick,enabled=enabled&&!spinning,modifier=Modifier.semantics{contentDescription=UiText.text(ctx,"다시 확인")}){
+    IconButton(onClick=onClick,enabled=enabled&&!spinning,modifier=Modifier.semantics{contentDescription=UiText.text(ctx,label)}){
         if(spinning)CircularProgressIndicator(Modifier.size(18.dp),strokeWidth=2.dp)
         else androidx.compose.foundation.Canvas(Modifier.size(20.dp).alpha(if(enabled)1f else 0.38f)){
             val stroke=2.dp.toPx();val r=size.minDimension/2f-stroke*1.5f;val c=center
@@ -743,11 +743,13 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
         // One line when both fit; otherwise the scope goes under the title instead of squeezing it (long languages).
         FlowRow(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalArrangement=Arrangement.spacedBy(4.dp)){
             Text("현재 적용 범위",Modifier.align(Alignment.CenterVertically).padding(end=12.dp),style=MaterialTheme.typography.titleMedium)
-            Text(m.applicationScope.title,Modifier.align(Alignment.CenterVertically),style=MaterialTheme.typography.bodyMedium)
+            // The scope name itself opens the scope choice (owner request 1.1.4; was a separate scope-change button).
+            Text(m.applicationScope.title,Modifier.align(Alignment.CenterVertically).heightIn(min=48.dp).clip(RoundedCornerShape(12.dp))
+                .clickable(enabled=!m.busy,role=androidx.compose.ui.semantics.Role.Button,onClick=scopeChange).wrapContentHeight(Alignment.CenterVertically).padding(start=8.dp),
+                style=MaterialTheme.typography.bodyLarge,color=if(m.busy)MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary)
         }
         Text(m.applicationScope.description,style=MaterialTheme.typography.bodySmall)
         if(m.scopePending)Text("범위 변경이 완료되지 않았어요. 제외되는 앱을 복원해야 범위를 낮출 수 있어요.",color=MaterialTheme.colorScheme.error)
-        OutlinedButton(onClick=scopeChange,enabled=!m.busy){Text("적용 범위 변경")}
         HorizontalDivider()
         Row(Modifier.toggleable(value=m.autoManagement,enabled=!m.busy||(m.autoManagement&&!m.autoReapplying),role=androidx.compose.ui.semantics.Role.Switch,onValueChange={if(m.backgroundWatch)watchOwnsConnection=true else if(it)autoConsent=true else managementChanged(false)}),verticalAlignment=Alignment.CenterVertically){Text("무선 디버깅 자동 관리",Modifier.weight(1f),style=MaterialTheme.typography.titleMedium);Switch(checked=m.autoManagement,onCheckedChange=null,enabled=(!m.busy||m.autoManagement)&&!m.backgroundWatch)}
         Text(when{!m.backgroundWatch->"앱을 사용하는 동안 연결을 유지하고, 앱을 나가면 잠시 후 무선 디버깅을 꺼요.";m.autoManagement->"백그라운드 감시를 쓰는 동안에는 평소에 무선 디버깅을 켜지 않아요. 재부팅이나 업데이트 뒤 감시를 다시 켤 때만 잠깐 켜요.";else->"백그라운드 감시를 다시 켜려면 Wi-Fi에 연결하고 무선 디버깅을 직접 켠 뒤 앱을 열어주세요."},style=MaterialTheme.typography.bodySmall)
@@ -775,15 +777,15 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
         Row(Modifier.toggleable(value=m.autoReapply,role=androidx.compose.ui.semantics.Role.Switch,onValueChange=autoReapplyChanged),verticalAlignment=Alignment.CenterVertically){Text("앱을 열 때 자동 재적용",Modifier.weight(1f),style=MaterialTheme.typography.titleMedium);Switch(checked=m.autoReapply,onCheckedChange=null)}
         Text("숨김이 풀린 앱을 앱을 열 때 자동으로 다시 적용해요. 무선 디버깅 자동 관리나 백그라운드 감시를 켠 경우에 동작해요.",style=MaterialTheme.typography.bodySmall)
         HorizontalDivider()
-        Row(Modifier.toggleable(value=m.updateCheck,role=androidx.compose.ui.semantics.Role.Switch,onValueChange=updateCheckChanged),verticalAlignment=Alignment.CenterVertically){Text("업데이트 확인",Modifier.weight(1f),style=MaterialTheme.typography.titleMedium);Switch(checked=m.updateCheck,onCheckedChange=null)}
+        Row(Modifier.toggleable(value=m.updateCheck,role=androidx.compose.ui.semantics.Role.Switch,onValueChange=updateCheckChanged),verticalAlignment=Alignment.CenterVertically){
+            // Check now: the refresh icon next to the title (owner request 1.1.4; was a text button).
+            Row(Modifier.weight(1f),verticalAlignment=Alignment.CenterVertically){Text("업데이트 확인",Modifier.weight(1f,fill=false),style=MaterialTheme.typography.titleMedium);if(m.updateCheck)RefreshButton(m.updateChecking,true,checkUpdateNow,"지금 확인")}
+            Switch(checked=m.updateCheck,onCheckedChange=null)}
         Text("켜면 하루에 한 번 GitHub에서 새 버전이 있는지만 확인해요. 다운로드나 설치는 하지 않아요. 끄면 bluedotOFF는 인터넷을 쓰지 않아요.",style=MaterialTheme.typography.bodySmall)
         if(m.updateCheck){
             val latest=m.latestVersion
             Text(if(latest==null)"현재 버전 ${BuildConfig.VERSION_NAME} · 최신 버전은 아직 확인 전" else "현재 버전 ${BuildConfig.VERSION_NAME} · 최신 버전 $latest",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-            FlowRow{
-                TextButton(onClick=checkUpdateNow,enabled=!m.updateChecking){Text(if(m.updateChecking)"확인하는 중…" else "지금 확인")}
-                if(latest!=null&&UpdatePolicy.newer(latest,BuildConfig.VERSION_NAME))TextButton(onClick={openUpdate(latest)}){Text("출시 페이지 열기")}
-            }
+            if(latest!=null&&UpdatePolicy.newer(latest,BuildConfig.VERSION_NAME))TextButton(onClick={openUpdate(latest)}){Text("출시 페이지 열기")}
             if(m.updateStatus.isNotEmpty()&&!m.updateChecking)Text(m.updateStatus,style=MaterialTheme.typography.bodySmall)
         }
         HorizontalDivider()

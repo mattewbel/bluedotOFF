@@ -90,18 +90,20 @@ class UiRenderTest {
         val current=androidx.compose.runtime.mutableStateOf(model(page=Page.SETTINGS))
         controller.get().setContent{BlueDotApp(current.value,{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},updateCheckChanged={changed=it},checkUpdateNow={checked=true},openUpdate={opened=it})}
         val row=compose.onNode(isToggleable() and hasText("업데이트 확인")).performScrollTo()
-        row.assertIsOff();compose.onNodeWithText("지금 확인").assertDoesNotExist()
+        row.assertIsOff();compose.onNodeWithContentDescription("지금 확인").assertDoesNotExist()
         row.performClick();org.junit.Assert.assertEquals(true,changed)
         compose.runOnIdle{current.value=current.value.copy(updateCheck=true)}
         compose.onNodeWithText("현재 버전 ${BuildConfig.VERSION_NAME} · 최신 버전은 아직 확인 전").assertExists()
-        compose.onNodeWithText("지금 확인").performScrollTo().performClick();assertTrue(checked)
+        // The refresh icon next to the title checks now; it does not flip the switch around it.
+        changed=null;compose.onNodeWithContentDescription("지금 확인").performScrollTo().performClick();assertTrue(checked);org.junit.Assert.assertNull(changed)
+        compose.onNodeWithText("지금 확인").assertDoesNotExist()
         compose.onNodeWithText("출시 페이지 열기").assertDoesNotExist()
         compose.runOnIdle{current.value=current.value.copy(latestVersion="9.9.9",updateStatus="새 버전 9.9.9이 있어요.")}
         compose.onNodeWithText("현재 버전 ${BuildConfig.VERSION_NAME} · 최신 버전 9.9.9").assertExists()
         compose.onNodeWithText("새 버전 9.9.9이 있어요.").assertExists()
         compose.onNodeWithText("출시 페이지 열기").performScrollTo().performClick();org.junit.Assert.assertEquals("9.9.9",opened)
         compose.runOnIdle{current.value=current.value.copy(updateChecking=true)}
-        compose.onNodeWithText("확인하는 중…").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("지금 확인").assertIsNotEnabled()
     }
     @Test fun homeShowsLastCheckAndRefreshWithoutTakingOverTheScreen(){
         val base=model(applied=true).copy(lastCheckedAt=System.currentTimeMillis()-3*60_000L)
@@ -769,7 +771,9 @@ class UiRenderTest {
         compose.onNodeWithText("신뢰하는 앱 선택").assertDoesNotExist()
         var called=false
         controller.get().setContent{BlueDotApp(model(page=Page.SETTINGS),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},scopeChange={called=true})}
-        compose.onNodeWithText("적용 범위 변경").performScrollTo().performClick();org.junit.Assert.assertTrue(called)
+        // The scope name opens the scope choice; there is no separate button any more.
+        compose.onNodeWithText("적용 범위 변경").assertDoesNotExist()
+        compose.onNode(hasText("전체 적용") and hasClickAction()).performScrollTo().performClick();org.junit.Assert.assertTrue(called)
     }
     @Test fun settingsShowsScopeAndCurrentLevelOnTheSameLine(){
         render("82-scope-settings",model(page=Page.SETTINGS).copy(applicationScope=ApplicationScope.ALL))

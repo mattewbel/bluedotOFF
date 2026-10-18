@@ -2,10 +2,10 @@ package app.bluedotoff.core
 
 /** User-selected admission policy; never part of a permission or installation invariant. */
 enum class ApplicationScope(val level:Int,val title:String,val description:String) {
-    NORMAL(1,"일반 적용","위험도 낮음 · 위치 설정을 따로 쓰는 앱. 조건을 통과한 기본 설치 앱도 포함해요."),
+    NORMAL(1,"일반 적용","위치 설정을 따로 쓰는 앱. 조건을 통과한 기본 설치 앱도 포함해요."),
     // Legacy wire value remains valid for old helper requests and interrupted restores.
-    GROUPS(2,"전체 적용","위험도 보통 · 공유 앱과 시스템 앱까지 선택할 수 있어요."),
-    ALL(3,"전체 적용","위험도 보통 · 공유 앱과 시스템 앱까지 선택할 수 있어요.");
+    GROUPS(2,"전체 적용","공유 앱과 시스템 앱까지 선택할 수 있어요."),
+    ALL(3,"전체 적용","공유 앱과 시스템 앱까지 선택할 수 있어요.");
     companion object {
         val choices get()=listOf(NORMAL,ALL)
         fun fromLevel(level:Int)=entries.single{it.level==level}

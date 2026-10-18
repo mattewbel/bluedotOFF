@@ -39,11 +39,13 @@ class ScopeDialogsTest {
     @Test fun twoOptionsMapLegacyMiddleScopeToAllWithoutCommitting(){
         var chosen:ApplicationScope?=null
         dialog=ScopeDialogs.choose(controller.get(),ApplicationScope.GROUPS,tint=0f){chosen=it}
-        compose.onNodeWithText("위험도 보통").assertIsDisplayed()
+        // 1.1.4: no risk level is shown; each scope only says what it includes.
+        compose.onNodeWithText("일반 적용에 공유 앱과 핵심 시스템 앱을 더해요.",substring=true).assertIsDisplayed()
+        compose.onNodeWithText("위험도",substring=true).assertDoesNotExist()
         compose.onNodeWithText("3단계").assertDoesNotExist()
         compose.onAllNodesWithText("일반 적용").onFirst().performClick()
-        compose.onNodeWithText("위험도 낮음").assertIsDisplayed()
-        compose.onNodeWithText("위험도 보통").assertDoesNotExist()
+        compose.onNodeWithText("위치 설정을 따로 쓰는 앱만 선택해요.",substring=true).assertIsDisplayed()
+        compose.onNodeWithText("위험도",substring=true).assertDoesNotExist()
         compose.onNodeWithText("다음").assertIsDisplayed();Assert.assertNull(chosen)
         screenshot("84-scope-choice-ko")
         compose.onNodeWithText("다음").performClick();Assert.assertEquals(ApplicationScope.NORMAL,chosen)
@@ -59,10 +61,10 @@ class ScopeDialogsTest {
         compose.onNodeWithText("demo.directory").performScrollTo().assertIsDisplayed()
         Assert.assertFalse(confirmed);compose.onNodeWithText("취소").performClick();Assert.assertFalse(confirmed)
     }
-    @Test @Config(qualifiers="en-rUS-w412dp-h915dp-night-xxhdpi") fun darkEnglishUsesTwoOptionsAndModerateRisk(){
+    @Test @Config(qualifiers="en-rUS-w412dp-h915dp-night-xxhdpi") fun darkEnglishUsesTwoOptionsWithoutARiskLevel(){
         dialog=ScopeDialogs.choose(controller.get(),ApplicationScope.ALL,tint=0f){}
         compose.onNodeWithText("Standard mode").assertIsDisplayed();compose.onAllNodesWithText("All apps mode").onFirst().assertIsDisplayed();compose.onNodeWithText("Level 3").assertDoesNotExist()
-        compose.onNodeWithText("Moderate risk").assertIsDisplayed();compose.onNodeWithText("Next").assertIsDisplayed()
+        compose.onNodeWithText("risk",substring=true,ignoreCase=true).assertDoesNotExist();compose.onNodeWithText("Next").assertIsDisplayed()
         screenshot("84-scope-choice-en-dark")
     }
     @Test @Config(qualifiers="ko-rKR-w412dp-h915dp-xxhdpi",fontScale=1.5f) fun largeFontKeepsActionsReachable(){

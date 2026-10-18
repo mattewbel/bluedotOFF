@@ -112,14 +112,13 @@ Pairing is needed only once.
 
 ### Scope
 
-| Scope | Risk | Included apps |
-|---|---|---|
-| Standard mode | Low | Regular apps that have their own location setting (including preinstalled apps that pass the checks) |
-| All apps mode | Medium | Standard + app groups that share a location setting with other apps, system apps, apps without a home screen icon |
+| Scope | Included apps |
+|---|---|
+| Standard mode | Regular apps that have their own location setting (including preinstalled apps that pass the checks) |
+| All apps mode | Standard + app groups that share a location setting with other apps, system apps, apps without a home screen icon |
 
 - Apps that share a setting with other apps are hidden and restored together as a group. Large groups (10 or more apps) and Android system groups (e.g. Find My Mobile) ask once more before they are selected. Groups in which no app uses location are not listed.
 - Lowering the scope first restores the apps that fall outside the new scope, then changes the scope.
-- Risk is a rough guide for understanding, not a failure rate.
 
 ### Manage wireless debugging automatically
 

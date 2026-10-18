@@ -11,7 +11,6 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -271,17 +270,10 @@ object ScopeDialogs {
     val context=LocalContext.current
     val normal=scope==ApplicationScope.NORMAL
     val title=if(normal)"일반 적용" else "전체 적용"
-    val risk=if(normal)"위험도 낮음" else "위험도 보통"
     val description=if(normal)"위치 설정을 따로 쓰는 앱만 선택해요. 조건을 통과한 기본 설치 앱도 포함해요." else "일반 적용에 공유 앱과 핵심 시스템 앱을 더해요. 기기와 위치 권한 상태에 따라 실제 추가되는 앱은 적을 수 있어요."
-    val dark=BlueDotAppearance.dark(context)
-    val riskBackground=if(normal){if(dark)Color(0xFF183D2B) else Color(0xFFDCF3E4)}else{if(dark)Color(0xFF443B16) else Color(0xFFFFF0BC)}
-    val riskForeground=if(normal){if(dark)Color(0xFFB6EFCB) else Color(0xFF185C35)}else{if(dark)Color(0xFFFFE291) else Color(0xFF654B00)}
     Surface(Modifier.fillMaxWidth(),shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surfaceContainerHigh){
         Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
             Text(UiText.text(context,title),style=MaterialTheme.typography.titleMedium)
-            Surface(shape=RoundedCornerShape(8.dp),color=riskBackground,contentColor=riskForeground){
-                Text(UiText.text(context,risk),Modifier.padding(horizontal=10.dp,vertical=4.dp),style=MaterialTheme.typography.labelMedium)
-            }
             Copy(description)
             if(!normal)Copy("공유 앱은 구성원을 확인하고 묶음 전체에 적용해요. 시스템 묶음은 다른 기능의 위치 표시에도 영향을 줄 수 있어요.",small=true)
         }

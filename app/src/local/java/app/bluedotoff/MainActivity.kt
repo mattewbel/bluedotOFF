@@ -441,7 +441,7 @@ class MainActivity : ComponentActivity() {
     /** [auto]: started by [maybeAutoReapply] when the user opened the app; shown as a small line instead of the full overlay. */
     private fun perform(requested: List<String>, hide: Boolean, show: Boolean = false, auto: Boolean = false, beforeUninstall: Boolean = false) {
         val (packages,needsCheck)=if(hide||show)requested to 0 else model.restorePlan(requested)
-        if(packages.isEmpty()&&requested.isNotEmpty()&&!model.busy){model=model.copy(notice=if(needsCheck==0)"삭제된 앱은 복원할 필요가 없어요. 앱을 지우면 위치 표시 설정도 함께 사라져요." else "선택한 앱은 지금 복원할 수 없어요. 앱을 하나씩 열어 상태를 확인해주세요.");return}
+        if(packages.isEmpty()&&requested.isNotEmpty()&&!model.busy){model=model.copy(notice=if(needsCheck==0)"삭제된 앱은 복원할 필요가 없어요. 앱을 지우면 위치 표시 설정도 함께 사라져요." else "선택한 앱은 지금 복원할 수 없어요. 홈의 ‘등록한 앱’에서 앱을 하나씩 눌러 상태를 확인해주세요.");return}
         if(model.busy||BatchRuntime.state.value.busy||packages.isEmpty())return
         refreshJob?.cancel()
         if(!BuildConfig.LOCAL_WRITES_ENABLED){model=model.copy(notice="읽기 전용 검증 빌드예요. 설정은 바꾸지 않아요.");return}

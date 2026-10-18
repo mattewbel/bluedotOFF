@@ -228,9 +228,16 @@ object Reconcile {
     private fun pending(entry: Entry) = entry.state in listOf(TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE,TargetState.PENDING_SHOW)
     fun boot(entry: Entry) = if (entry.enabled && !review(entry) && !pending(entry)) entry.copy(state = TargetState.NEEDS_REAPPLY_BOOT) else entry
     fun update(entry: Entry) = if (entry.enabled && !review(entry) && !pending(entry)) entry.copy(state = TargetState.NEEDS_REAPPLY_UPDATE) else entry
+    /** A lock whose app is verifiably back at its original (same install, owner, firmware and other permission state):
+     *  nothing is uncertain any more. It drops to "다시 확인 필요" without a write; from there the usual rules apply
+     *  (an update since then makes it "재적용 필요", as after any failed check).
+     *  Otherwise the lock had no way out in the app (QA, 2026-10-18: an update landed during the checks). */
+    private fun original(entry:Entry,s:Snapshot?,firmware:String)=entry.state==TargetState.FAILED_ROLLBACK&&s!=null&&entry.firmware==firmware&&
+        entry.identity.sameInstall(s.identity)&&entry.sharedUserId==s.sharedUserId&&s.peers==listOf(s.identity.packageName)&&
+        s.bit==entry.originalBit&&entry.invariantDigest.isNotBlank()&&entry.invariantDigest==s.invariantDigest()
     fun read(entry: Entry, snapshot: Snapshot?, firmware: String, bootSession: String,all:Map<String,Snapshot?> = emptyMap()): Entry {
         if(entry.groupIdentities.isNotEmpty())return SharedGroupReconcile.read(entry,all,firmware,bootSession)
-        if (review(entry)) return entry
+        if (review(entry)) return if(original(entry,snapshot,firmware))entry.copy(state=TargetState.FAILED_SAFE,changedByUs=false,error="변경 후 상태를 확인하지 못해 원래 표시 상태로 되돌렸어요. 다시 확인해 주세요.") else entry
         if (entry.firmware != firmware) return if(pending(entry)) entry.copy(error="기기 업데이트 후 중단된 작업의 안전성을 다시 확인해야 합니다.") else entry.copy(state = TargetState.NEEDS_RECHECK_FIRMWARE)
         if (snapshot == null) return entry.copy(state = TargetState.MISSING_TARGET)
         if (!entry.identity.sameInstall(snapshot.identity)) return entry.copy(state = TargetState.INACTIVE_INSTALL, enabled = false)

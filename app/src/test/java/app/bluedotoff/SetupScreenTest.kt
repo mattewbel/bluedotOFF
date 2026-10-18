@@ -194,7 +194,7 @@ class SetupScreenTest {
         val views=show("14-recommended-management-en-large")
         assertTrue(views.filterIsInstance<TextView>().any{it.text=="Choose how to stay connected"})
         assertTrue(views.filterIsInstance<TextView>().any{it.text=="Not now"})
-        assertEquals(listOf("Manage wireless debugging automatically","Keep through USB debugging (background watch)"),views.filterIsInstance<Button>().map{it.text.toString()})
+        assertEquals(listOf("Manage wireless debugging automatically","Keep active with USB debugging (background watch)"),views.filterIsInstance<Button>().map{it.text.toString()})
     }
     @Test fun greyedOutWirelessSwitchLeadsToAutoBlockerGuide(){
         runtime.paired=true;runtime.wireless=false;val views=show("09-wireless-off-auto-blocker-hint")

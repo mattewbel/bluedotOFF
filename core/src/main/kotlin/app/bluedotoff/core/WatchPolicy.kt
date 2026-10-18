@@ -37,6 +37,22 @@ object WatchPolicy {
     }
 }
 
+/** D-2a: one event window of the watch helper (the 750 ms check or the 5 s follow-up). Each event restarts the [delay];
+ *  a steady stream used to postpone the check forever. Once the window has been open for [cap], [add] hands back its
+ *  names to send right away, and keeps them, so every app is still checked a full [delay] after its latest event. */
+class EventWindow(val delay:Long,private val cap:Long) {
+    private val names=linkedSetOf<String>()
+    private var since=-1L
+    fun add(pkg:String,now:Long):Set<String> {
+        val flush=if(since>=0&&now-since>=cap){since=now;names.toSet()} else emptySet()
+        if(since<0)since=now
+        names+=pkg
+        return flush
+    }
+    /** The scheduled end of the window: everything collected, window closed. */
+    fun take():Set<String>{since=-1L;return names.toSet().also{names.clear()}}
+}
+
 /** Bound event bursts and avoid a hot retry loop when Android repeatedly resets a flag or a write fails. */
 class WatchCooldown(private val retryMs:Long=30_000) {
     private val failures=mutableMapOf<String,Long>()

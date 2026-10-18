@@ -39,7 +39,7 @@ class UiTextTest {
             "진단 정보를 복사하고 메일 앱을 열었어요. 내용을 확인한 뒤 보내 주세요. 설치된 앱 목록이나 위치 기록은 들어 있지 않아요.")+WatchNotification.Reason.entries.map{it.message})
             assertNotEquals(k,k,UiText.text(language("en"),k))
         assertEquals("OK (3s)",UiText.text(language("en"),"확인 (3초)"))
-        assertEquals("Could not open a mail app, so the diagnostic info was only copied. Paste it into a mail to a@b.c.",UiText.text(language("en"),"메일 앱을 열 수 없어서 진단 정보를 복사만 했어요. a@b.c 로 붙여넣어 보내 주세요."))
+        assertEquals("Couldn't open an email app. Diagnostic info was copied. Paste it into an email and send it to a@b.c.",UiText.text(language("en"),"메일 앱을 열 수 없어서 진단 정보를 복사만 했어요. a@b.c 로 붙여넣어 보내 주세요."))
     }
     /** The stop advice names USB debugging when it is off, and wireless debugging when the app cannot turn it on itself. */
     @Test fun watchStopAdviceMatchesTheSituation(){

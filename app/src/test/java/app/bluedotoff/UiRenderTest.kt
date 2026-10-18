@@ -671,7 +671,7 @@ class UiRenderTest {
     @Test fun reapply(){render("08-reapply",model(page=Page.REAPPLY));compose.onNodeWithText("모두 재적용").assertExists()}
     @Test @Config(qualifiers="ko-rKR-w412dp-h915dp-night-xxhdpi") fun dark(){render("09-dark",model(applied=true))}
     @Test @Config(qualifiers="ko-rKR-w960dp-h750dp-xhdpi") fun fold(){render("10-fold-wide",model(applied=true))}
-    private val notice="선택한 앱은 지금 복원할 수 없어요. 앱을 하나씩 열어 상태를 확인해주세요."
+    private val notice="선택한 앱은 지금 복원할 수 없어요. 홈의 ‘등록한 앱’에서 앱을 하나씩 눌러 상태를 확인해주세요."
     /** The notice is drawn in the system theme's colours (not inverted) and closes as soon as it is tapped. */
     private fun noticeShot(name:String){
         compose.mainClock.autoAdvance=false

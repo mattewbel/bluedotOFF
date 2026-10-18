@@ -16,7 +16,7 @@ class WatchEngineTest {
     }
     private inner class Rig(initial:List<Entry> = listOf(entry())) {
         val store=Store(initial);var snapshot=base;val writes=mutableListOf<Int>();val phases=mutableListOf<String>();val waits=mutableListOf<Long>();val detected=mutableListOf<String>();val results=mutableListOf<BatchResult>();val skips=mutableListOf<String>()
-        var failSettling=false;var failAfterWrite=false;var cancel=false
+        var resets=0;var failAfterWrite=false;var cancel=false
         val port=object:TargetPort {
             override fun compatibleFirmware()=fw
             override fun read(packageName:String)=snapshot
@@ -27,7 +27,7 @@ class WatchEngineTest {
             }
         }
         fun run(names:Set<String> = setOf(id.packageName),boot:String="boot",canStart:()->Boolean={!cancel})=
-            WatchEngine(port,store,{300},{boot},wait={ms->waits+=ms;if(failSettling){snapshot=snapshot.copy(fineFlags=base.fineFlags);failSettling=false}},observe={phase,_,_->phases+=phase},onSkip={_,reason->skips+=reason})
+            WatchEngine(port,store,{300},{boot},wait={ms->waits+=ms;if(resets>0&&ms<5_000){snapshot=snapshot.copy(fineFlags=base.fineFlags,lastLocationAccess=ms);resets--}},observe={phase,_,_->phases+=phase},onSkip={_,reason->skips+=reason})
                 .reapply(names,canStart,detected::add,results::add)
     }
     @Test fun realResetUsesDurableRecordAndExistingThreeChecks(){val r=Rig();r.run();assertEquals(listOf(0),r.writes);assertEquals(listOf(500L,1000L),r.waits);assertTrue(r.phases.containsAll(listOf("preflight","immediate","settled_500ms","settled_1500ms")));assertEquals(256,r.store.values.single().originalBit);assertTrue(r.results.single().success)}
@@ -60,7 +60,12 @@ class WatchEngineTest {
     @Test fun currentScopeAndPermissionAreRequired(){for(s in listOf(base.copy(fineGranted=false),base.copy(fineDeclared=false),base.copy(persistent=true,systemCritical=true,applicationScope=ApplicationScope.NORMAL))){val r=Rig();r.snapshot=s;r.run();assertTrue(r.writes.isEmpty())}}
     @Test fun otherPermissionChangesRequireReviewWithoutWriting(){val r=Rig();r.snapshot=base.copy(coarseFlags=0x200);r.run();assertTrue(r.writes.isEmpty());assertEquals(TargetState.UNSUPPORTED_STATE,r.store.values.single().state)}
     @Test fun failedDurableCommitCannotReachSetter(){val r=Rig();r.store.durable=false;r.run();assertTrue(r.writes.isEmpty());assertFalse(r.results.single().success)}
-    @Test fun verificationFailureRollsBackAndDoesNotReportSuccess(){val r=Rig();r.failSettling=true;r.run();assertFalse(r.results.single().success);assertEquals(base.fineFlags,r.snapshot.fineFlags);assertEquals(TargetState.FAILED_SAFE,r.store.values.single().state)}
+    @Test fun verificationFailureRollsBackAndDoesNotReportSuccess(){val r=Rig();r.resets=4;r.run();assertFalse(r.results.single().success);assertEquals(base.fineFlags,r.snapshot.fineFlags);assertEquals(TargetState.FAILED_SAFE,r.store.values.single().state);assertEquals(listOf(0,0,0,0),r.writes)}
+    /** Toss, 2026-10-18: Android reset the flag once more during the checks right after an update. Retried, not locked. */
+    @Test fun androidResetDuringChecksIsRetried(){val r=Rig();r.resets=1;r.run();assertEquals(listOf(0,0),r.writes);assertTrue(r.waits.contains(5_000L));assertTrue(r.results.single().success);assertEquals(TargetState.APPLIED,r.store.values.single().state);assertEquals(256,r.store.values.single().originalBit)}
+    @Test fun otherChangeDuringChecksStaysLocked(){val r=Rig();var once=true
+        WatchEngine(r.port,r.store,{300},{"boot"},wait={if(once){r.snapshot=r.snapshot.copy(fineFlags=base.fineFlags,coarseFlags=0x200);once=false}}).reapply(setOf(id.packageName),{true},{},r.results::add)
+        assertEquals(listOf(0),r.writes);assertFalse(r.results.single().success);assertNotEquals(TargetState.APPLIED,r.store.values.single().state)}
     @Test fun partialSetterFailureExecutesNarrowRollback(){val r=Rig();r.failAfterWrite=true;r.run();assertFalse(r.results.single().success);assertEquals(listOf(0,256),r.writes);assertEquals(base.fineFlags,r.snapshot.fineFlags)}
     @Test fun switchOffAfterSetterStillFinishesTheSafetyChecks(){val r=Rig();r.run(canStart={if(r.writes.isNotEmpty())false else true});assertEquals(listOf(0),r.writes);assertTrue(r.results.single().success);assertTrue(r.phases.contains("settled_1500ms"))}
     @Test fun switchOffBeforeSetterStopsWriting(){val r=Rig();var calls=0;r.run(canStart={++calls<3});assertTrue(r.writes.isEmpty())}
@@ -110,6 +115,48 @@ class WatchEngineTest {
         }
         WatchEngine(port,store,{300},{"boot"},wait={}).reapply(setOf(id.packageName),{true},{},results::add)
         assertEquals(1,writes);assertEquals(2,results.size);assertTrue(results.all{it.success});assertTrue(store.values.all{it.originalBit==256})
+    }
+    /** Group whose shared flag Android resets [resets] times during the checks (all members back exactly as before). */
+    private fun groupResetDuringChecks(resets:Int):Pair<Int,List<BatchResult>>{
+        val ids=listOf(id,id.copy(packageName="test.peer"));val names=ids.map{it.packageName}
+        val start=ids.associate{it.packageName to base.copy(identity=it,peers=names,sharedUserId="test.shared")}
+        val current=start.toMutableMap();var left=resets;var writes=0;val results=mutableListOf<BatchResult>()
+        val store=Store(ids.map{identity->entry().copy(identity=identity,sharedUserId="test.shared",groupIdentities=ids,invariantDigest=start.getValue(identity.packageName).invariantDigest())})
+        val port=object:TargetPort{
+            override fun compatibleFirmware()=fw
+            override fun read(packageName:String)=current.getValue(packageName)
+            override fun writeFineBit(packageName:String,originalBit:Int):Unit=error("must be a group write")
+            override fun writeFineGroupChecked(expected:List<Snapshot>,wanted:Int){writes++;current.replaceAll{_,s->s.copy(fineFlags=(s.fineFlags and 256.inv()) or wanted)}}
+        }
+        WatchEngine(port,store,{300},{"boot"},wait={ms->if(left>0&&ms<5_000){current.putAll(start);left--}}).reapply(setOf(id.packageName),{true},{},results::add)
+        return writes to results
+    }
+    @Test fun groupResetDuringChecksIsRetriedToo(){
+        val (writes,results)=groupResetDuringChecks(1)
+        assertEquals("first try + one retry, no rollback write needed",2,writes);assertEquals(2,results.size);assertTrue(results.all{it.success})
+        val (always,failed)=groupResetDuringChecks(9)
+        assertEquals("bounded: first try + 3 retries",4,always);assertTrue(failed.none{it.success})
+    }
+    /** D-2a: a lone event keeps its timing; a steady stream is sent at the cap; every app is still taken at the end. */
+    @Test fun eventWindowCapsAStreamWithoutDroppingTheLastCheck(){
+        val lone=EventWindow(750,3_000);assertTrue(lone.add("a",0).isEmpty());assertEquals(setOf("a"),lone.take());assertTrue(lone.take().isEmpty())
+        val w=EventWindow(750,3_000);val sent=mutableListOf<Pair<Long,Set<String>>>()
+        assertTrue(w.add("a",0).isEmpty())
+        for(t in 500L..10_000L step 500)w.add("b",t).takeIf{it.isNotEmpty()}?.let{sent+=t to it}
+        assertEquals(listOf(3_000L,6_000L,9_000L),sent.map{it.first})
+        assertTrue("a stays checked after its early send","a" in sent.first().second)
+        assertEquals("the end of the window still has both",setOf("a","b"),w.take())
+    }
+    /** QA 2026-10-18: a lock is lowered only when the app is verifiably at its original; never otherwise, never a write. */
+    @Test fun lockOnAnAppBackAtItsOriginalDropsToCheckNeeded(){
+        val locked=entry().copy(state=TargetState.FAILED_ROLLBACK,changedByUs=true,error="x")
+        val back=Reconcile.read(locked,base,fw.key,"boot")
+        assertEquals(TargetState.FAILED_SAFE,back.state);assertFalse(back.changedByUs);assertTrue(back.enabled);assertFalse(WatchPolicy.eligible(back))
+        for(s in listOf(base.copy(fineFlags=0x200),base.copy(coarseFlags=0x200),base.copy(identity=id.copy(firstInstallTime=999)),base.copy(peers=listOf(id.packageName,"other"))))
+            assertEquals(TargetState.FAILED_ROLLBACK,Reconcile.read(locked,s,fw.key,"boot").state)
+        assertEquals(TargetState.FAILED_ROLLBACK,Reconcile.read(locked,null,fw.key,"boot").state)
+        assertEquals(TargetState.FAILED_ROLLBACK,Reconcile.read(locked,base,"other-firmware","boot").state)
+        assertEquals(TargetState.NEEDS_REVIEW,Reconcile.read(locked.copy(state=TargetState.NEEDS_REVIEW),base,fw.key,"boot").state)
     }
     @Test fun watchCooldownPreventsTightRetriesButDoesNotThrottleSuccess(){val c=WatchCooldown();assertTrue(c.allowed("p",1));c.result("p",100,false);assertFalse(c.allowed("p",29_999));assertTrue(c.allowed("p",30_100));c.result("p",30_101,true);assertTrue(c.allowed("p",30_102))}
 }

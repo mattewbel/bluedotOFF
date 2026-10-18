@@ -26,10 +26,8 @@ object ResidentWatchHelper {
     private val operationLock=Any()
     private val callbacks=Executors.newSingleThreadExecutor()
     private val targets=java.util.concurrent.ConcurrentHashMap<String,Int>()
-    private val immediatePackages=mutableSetOf<String>()
-    private val followupPackages=mutableSetOf<String>()
-    private val immediate=Runnable{val names=immediatePackages.toSet();immediatePackages.clear();if(names.isNotEmpty())send("event",names)}
-    private val followup=Runnable{val names=followupPackages.toSet();followupPackages.clear();if(names.isNotEmpty())send("event",names)}
+    private val windows=listOf(app.bluedotoff.core.EventWindow(750,3_000),app.bluedotoff.core.EventWindow(5_000,15_000))
+    private val ends=windows.map{w->Runnable{val names=w.take();if(names.isNotEmpty())send("event",names)}}
     private val receivers=mutableListOf<Any>()
     @Volatile private var stopping=false
     private var permissionListener:Any?=null
@@ -101,9 +99,11 @@ object ResidentWatchHelper {
         if(!targets.containsKey(pkg)||stopping)return
         // PermissionController may recompute flags asynchronously after PACKAGE_CHANGED. Two bounded checks, no polling.
         main.post{
-            immediatePackages+=pkg;followupPackages+=pkg
-            main.removeCallbacks(immediate);main.postDelayed(immediate,750)
-            main.removeCallbacks(followup);main.postDelayed(followup,5000)
+            val now=SystemClock.uptimeMillis()
+            windows.forEachIndexed{i,w->
+                val due=w.add(pkg,now);if(due.isNotEmpty())send("event",due)
+                main.removeCallbacks(ends[i]);main.postDelayed(ends[i],w.delay)
+            }
         }
     }
     /** Resolve and validate the runtime Stub's public generated mapping, without restricted TRANSACTION_* fields. */

@@ -24,11 +24,33 @@ class WatchEngine(private val port:TargetPort,private val journal:Journal,privat
                 if(skip!=null){onSkip(names,skip);continue}
                 if(!canStart())continue
                 fresh.filter{it.bit==SENSITIVITY_BIT}.forEach{onUnhidden(it.identity.packageName)}
-                val results=if(latest.size==1)listOf(SafetyEngine(port,journal,now,boot,wait,observe).userOne(names.single(),true,canStart))
-                    else SharedGroupEngine(port,journal,now,boot,wait,observe).execute(names,true,canStart)
+                val results=hide(names,fresh,reconciled,firmware,canStart)
                 results.forEach{e->onResult(BatchResult(e.identity.packageName,e,if(e.state==TargetState.APPLIED)"" else e.error.ifBlank{"WATCH_VERIFICATION_FAILED"}))}
                 if(results.any{it.state!=TargetState.APPLIED})break
             }catch(e:Exception){names.forEach{onResult(BatchResult(it,error=e.message?:"WATCH_FAILED"))};break}
         }
+    }
+    /** Right after an app update Android can reset the flag again while the write is being verified (Toss on the Fold7,
+     *  2026-10-18: two re-hides, the third rolled back and stayed locked). If every app is then exactly as it was before
+     *  the write, nothing else changed: wait, re-check with the watch rules and try again, at most 3 more times.
+     *  Only when the write itself went through and a later check failed (a setter error is not retried). Groups alike. */
+    private fun hide(names:List<String>,before:List<Snapshot>,records:List<Entry>,firmware:Firmware,canStart:()->Boolean):List<Entry> {
+        var checked=false
+        val watched:(String,Snapshot,Boolean)->Unit={phase,s,wrote->if(wrote)checked=true;observe(phase,s,wrote)}
+        val run={if(names.size==1)listOf(SafetyEngine(port,journal,now,boot,wait,watched).userOne(names.single(),true,canStart))
+            else SharedGroupEngine(port,journal,now,boot,wait,watched).execute(names,true,canStart)}
+        // The apps' location use may tick between reads; everything else must match the pre-write read.
+        fun unchanged(current:List<Snapshot>)=current.zip(before).all{(s,b)->s.copy(lastLocationAccess=b.lastLocationAccess)==b}
+        var results=run()
+        repeat(3){
+            if(!checked||results.any{it.state!=TargetState.FAILED_SAFE}||!unchanged(names.map(port::read)))return results
+            wait(5_000)
+            val again=names.map(port::read)
+            if(!canStart()||!unchanged(again)||WatchPolicy.skipReason(records,again,firmware,boot())!=null)return results
+            if(!(if(records.size==1)journal.commit(records.single()) else journal.commitGroup(records)))throw JournalPersistenceException()
+            checked=false
+            results=run()
+        }
+        return results
     }
 }

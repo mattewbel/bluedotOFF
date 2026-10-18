@@ -740,9 +740,10 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
     }
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(top=16.dp,bottom=48.dp),verticalArrangement=Arrangement.spacedBy(22.dp)) {
         Text("설정",style=MaterialTheme.typography.headlineLarge)
-        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
-            Text("현재 적용 범위",Modifier.weight(1f),style=MaterialTheme.typography.titleMedium)
-            Text(m.applicationScope.title,style=MaterialTheme.typography.bodyMedium,maxLines=1,overflow=TextOverflow.Ellipsis,textAlign=androidx.compose.ui.text.style.TextAlign.End)
+        // One line when both fit; otherwise the scope goes under the title instead of squeezing it (long languages).
+        FlowRow(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalArrangement=Arrangement.spacedBy(4.dp)){
+            Text("현재 적용 범위",Modifier.align(Alignment.CenterVertically).padding(end=12.dp),style=MaterialTheme.typography.titleMedium)
+            Text(m.applicationScope.title,Modifier.align(Alignment.CenterVertically),style=MaterialTheme.typography.bodyMedium)
         }
         Text(m.applicationScope.description,style=MaterialTheme.typography.bodySmall)
         if(m.scopePending)Text("범위 변경이 완료되지 않았어요. 제외되는 앱을 복원해야 범위를 낮출 수 있어요.",color=MaterialTheme.colorScheme.error)

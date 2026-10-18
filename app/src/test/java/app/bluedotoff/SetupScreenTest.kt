@@ -158,6 +158,7 @@ class SetupScreenTest {
         assertTrue("no option is drawn as the main button",views.filterIsInstance<Button>().isEmpty())
         val (one,two)=listOf("① 앱을 켤 때만 적용","② 백그라운드 자동 감시").map{card(views,it)}
         assertEquals(one.width,two.width);assertEquals(one.background.javaClass,two.background.javaClass)
+        assertTrue("short Korean titles keep the debugging on the same line",listOf(one,two).all{((it as ViewGroup).getChildAt(0) as android.widget.LinearLayout).orientation==android.widget.LinearLayout.HORIZONTAL})
         assertTrue(views.filterIsInstance<TextView>().any{it.text=="지금은 사용하지 않기"})
         assertTrue(views.filterIsInstance<TextView>().any{it.text.contains("일부 은행·결제 앱이 안 열릴 수 있어요")})
         assertEquals(0,runtime.managementCalls);assertNull(shadowOf(controller!!.get()).nextStartedActivity)
@@ -208,6 +209,12 @@ class SetupScreenTest {
         assertTrue(views.filterIsInstance<TextView>().any{it.text=="Choose how to stay connected"})
         assertTrue(views.filterIsInstance<TextView>().any{it.text=="Not now"})
         assertTrue(views.filterIsInstance<Button>().isEmpty())
+        // Long titles at a large font: the debugging moves under the title instead of squeezing it.
+        listOf("① Only when you open the app","② Automatic background watch").forEach{assertEquals(android.widget.LinearLayout.VERTICAL,((card(views,it) as ViewGroup).getChildAt(0) as android.widget.LinearLayout).orientation)}
+    }
+    @Test @Config(qualifiers="en-rUS-w412dp-h915dp-xxhdpi") fun englishStepNineAtNormalFont(){
+        runtime.managementChoiceResolved=false;runtime.paired=true;runtime.connectEndpoint=LocalAdbDiscovery.Endpoint("saved",42000)
+        val views=show("14b-recommended-management-en")
         listOf("① Only when you open the app","② Automatic background watch").forEach{card(views,it)}
     }
     @Test fun greyedOutWirelessSwitchLeadsToAutoBlockerGuide(){

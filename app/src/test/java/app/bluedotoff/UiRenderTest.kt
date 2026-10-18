@@ -337,6 +337,19 @@ class UiRenderTest {
         val base=model(applied=true).entries.single()
         render("99d-en-large-narrow-home",model(applied=true).copy(entries=listOf(base.copy(state=TargetState.NEEDS_REAPPLY_POLICY))))
     }
+    /** Longer (es) and taller (hi) languages, large text, cover-screen width: screenshots of every main page for review. */
+    private fun longLanguageScreens(tag:String){
+        val apps=listOf("Weather","Maps").mapIndexed{i,l->DiscoveredApp("demo.app$i",l,11000+i,launcher=true,hasLocationDeclaration=true,indicator=IndicatorAssessment(IndicatorEligibility.STRONG_CANDIDATE))}
+        val base=model(applied=true).entries.single()
+        render("99e-$tag-home",model(applied=true).copy(entries=listOf(base.copy(state=TargetState.NEEDS_REAPPLY_POLICY)),discovered=apps,historyAvailable=true))
+        render("99e-$tag-picker",model(page=Page.PICK).copy(entries=emptyList(),discovered=apps,historyAvailable=true))
+        render("99e-$tag-history",model(applied=true,page=Page.HISTORY).copy(discovered=apps,historyAvailable=true))
+        render("99e-$tag-settings",model(applied=true,page=Page.SETTINGS).copy(backgroundWatch=true,usbDebugging=true,watchRunning=true))
+        render("99e-$tag-detail",model(applied=true,page=Page.DETAIL).copy(selected=base.identity.packageName))
+        render("99e-$tag-restore",model(applied=true,page=Page.RESTORE))
+    }
+    @Test @Config(qualifiers="es-rES-w360dp-h780dp-xxhdpi",fontScale=1.3f) fun spanishLargeNarrowScreens()=longLanguageScreens("es")
+    @Test @Config(qualifiers="hi-rIN-w360dp-h780dp-xxhdpi",fontScale=1.3f) fun hindiLargeNarrowScreens()=longLanguageScreens("hi")
     /** The US-model notice can be confirmed once; the callback stores that and the notice is gone. */
     @Test fun usNoticeCanBeConfirmed(){
         var dismissed=false

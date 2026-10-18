@@ -127,8 +127,21 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
             if(medium)typeface=Typeface.create("sans-serif-medium",Typeface.NORMAL)
             setLineHeight(android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP,if(size>=16f)24f else 20f,resources.displayMetrics).toInt())
         }
-        // Title on the left, the debugging it uses on the right of its first line (baselines aligned).
-        addView(LinearLayout(this@LocalAdbSetupActivity).apply{
+        // Title and the debugging it uses share one line when both fit (baselines aligned); otherwise the debugging
+        // goes under the title, so long titles (English, large fonts) are not squeezed into a narrow column.
+        addView(object:LinearLayout(this@LocalAdbSetupActivity){
+            override fun onMeasure(widthSpec:Int,heightSpec:Int){
+                val free=View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED)
+                val (name,kind)=getChildAt(0) to getChildAt(1);name.measure(free,free);kind.measure(free,free)
+                val wanted=if(name.measuredWidth+dp(12)+kind.measuredWidth<=View.MeasureSpec.getSize(widthSpec))HORIZONTAL else VERTICAL
+                if(orientation!=wanted){
+                    orientation=wanted
+                    name.layoutParams=LayoutParams(if(wanted==HORIZONTAL)0 else -1,-2,if(wanted==HORIZONTAL)1f else 0f)
+                    kind.layoutParams=LayoutParams(-2,-2).apply{if(wanted==HORIZONTAL)marginStart=dp(12) else topMargin=dp(4)}
+                }
+                super.onMeasure(widthSpec,heightSpec)
+            }
+        }.apply{
             orientation=LinearLayout.HORIZONTAL
             addView(label(title,16f,this@LocalAdbSetupActivity.colors.onSurface,true),LinearLayout.LayoutParams(0,-2,1f))
             addView(label(way,14f,this@LocalAdbSetupActivity.colors.primary,true),LinearLayout.LayoutParams(-2,-2).apply{marginStart=dp(12)})

@@ -399,10 +399,10 @@ class UiRenderTest {
         row.performClick()
         compose.mainClock.advanceTimeBy(100)
         compose.onNodeWithText("USB 디버깅을 항상 켜 둬야 해요.").assertExists()
-        compose.onNodeWithText("확인 (5초)").assertIsNotEnabled().performClick()
+        compose.onNodeWithText("켜기 (5초)").assertIsNotEnabled().performClick()
         org.junit.Assert.assertNull(turnedOn)
         compose.mainClock.advanceTimeBy(5100)
-        compose.onNodeWithText("확인").assertIsEnabled().performClick()
+        compose.onNodeWithText("켜기").assertIsEnabled().performClick()
         org.junit.Assert.assertEquals(true,turnedOn)
     }
     /** Background watch is the third Settings section: after the scope and wireless debugging, before the reapply notice. */
@@ -705,7 +705,7 @@ class UiRenderTest {
     @Test fun autoBlockerOpensACenteredGuideInsteadOfASnackbar(){
         controller.get().setContent { BlueDotApp(model(applied=true).copy(notice=app.bluedotoff.adb.AutoBlocker.MESSAGE),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}) }
         compose.waitForIdle()
-        compose.onNodeWithText("보안 위험 자동 차단을 꺼주세요").assertExists();compose.onNodeWithText("보안 설정 열기").assertExists();compose.onNodeWithText("확인").assertExists()
+        compose.onNodeWithText("보안 위험 자동 차단을 꺼주세요").assertExists();compose.onNodeWithText("보안 설정 열기").assertExists();compose.onNodeWithText("닫기").assertExists()
         compose.onNodeWithText("자동 차단 끄기",substring=true).assertExists()
         val view=checkNotNull(org.robolectric.shadows.ShadowDialog.getLatestDialog().window).decorView
         val image=Bitmap.createBitmap(view.width,view.height,Bitmap.Config.ARGB_8888);compose.runOnIdle{view.draw(Canvas(image))}

@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.os.Looper
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import app.bluedotoff.core.ApplicationScope
@@ -102,5 +103,20 @@ class ScopeDialogsTest {
         dialog=ScopeDialogs.lowering(controller.get(),ApplicationScope.NORMAL,load={it(null,"조회 실패")}){}
         compose.onNodeWithText("조회 실패").assertExists()
         compose.onNodeWithText("이 범위 사용").assertIsNotEnabled()
+    }
+    /** Owner 2026-10-18: no platform dialogs; setup and Home dialogs share the panel look. */
+    @Test fun setupNoticesUseThePanelStyle(){
+        var done=0
+        dialog=ScopeDialogs.alert(controller.get(),"알림을 켜면 더 쉽게 연결할 수 있어요","본문","알림 허용" to {done+=1},"분할 화면으로 계속" to {done+=2},"돌아가기" to {},onClose={done+=10})
+        compose.onNodeWithText("돌아가기").assertIsDisplayed();screenshot("86-setup-notice-panel")
+        compose.onNodeWithText("분할 화면으로 계속").performClick();Assert.assertEquals("action ran and the panel closed",12,done)
+        dialog=ScopeDialogs.watch(controller.get()){};compose.onNodeWithText("일부 은행·결제 앱이 열리지 않을 수 있어요.").assertIsDisplayed();screenshot("86-watch-risk-panel")
+        dialog?.close();dialog=ScopeDialogs.autoBlocker(controller.get());compose.onNodeWithText("보안 설정 열기").assertIsDisplayed();screenshot("86-setup-auto-blocker-panel")
+    }
+    @Test fun updateOfferUsesThePanelStyle(){
+        var answer:Boolean?=null
+        controller.get().setContent{androidx.compose.material3.MaterialTheme(colorScheme=BlueDotAppearance.scheme(controller.get())){UpdateOfferDialog{answer=it}}}
+        compose.onNodeWithText("끄기").assertIsDisplayed();screenshot("86-update-offer-panel")
+        compose.onNodeWithText("켜기").performClick();Assert.assertEquals(true,answer)
     }
 }

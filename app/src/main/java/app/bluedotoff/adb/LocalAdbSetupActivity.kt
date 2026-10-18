@@ -32,7 +32,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
     private var permissionDialog=false
     private var notificationSettingsOpened=false
     private var batterySettingsOpened=false
-    private var notificationReminder:android.app.AlertDialog?=null
+    private var notificationReminder:AutoCloseable?=null
     private var code:EditText?=null
     private val changed:()->Unit={runOnUiThread{render()}}
     private fun dp(value:Int)=(value*resources.displayMetrics.density).toInt()
@@ -47,7 +47,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         val gutter=dp(if(resources.configuration.screenWidthDp>=760)BlueDotAppearance.WIDE_GUTTER else BlueDotAppearance.PAGE_GUTTER)
         val root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setBackgroundColor(colors.surface.toArgb())}
         root.addView(LinearLayout(this).apply {
-            orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL
+            orientation=LinearLayout.HORIZONTAL
             setPadding(gutter,0,gutter,0);minimumHeight=dp(BlueDotAppearance.HEADER_HEIGHT)
             addView(TextView(this@LocalAdbSetupActivity).apply {
                 setText(app.bluedotoff.R.string.brand_name);textSize=24f;letterSpacing=-0.033f;includeFontPadding=false;setTextColor(colors.onSurface.toArgb())
@@ -89,7 +89,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
     override fun onResume(){super.onResume();foreground=true;if(notificationSettingsOpened){notificationSettingsOpened=false;session.notificationsResult()};if(!permissionDialog){if(batterySettingsOpened){batterySettingsOpened=false;session.batterySettingsReturned()}else session.resume()};render()}
     override fun onPause(){foreground=false;super.onPause()}
     override fun onSaveInstanceState(state:Bundle){state.putBoolean("permissionDialog",permissionDialog);state.putBoolean("usbChoicePending",usbChoicePending);state.putBoolean("notificationSettingsOpened",notificationSettingsOpened);state.putBoolean("batterySettingsOpened",batterySettingsOpened);super.onSaveInstanceState(state)}
-    override fun onDestroy(){notificationReminder?.dismiss();code?.text?.clear();session.detach(changed);if(isFinishing&&!isChangingConfigurations)session.close();super.onDestroy()}
+    override fun onDestroy(){notificationReminder?.close();code?.text?.clear();session.detach(changed);if(isFinishing&&!isChangingConfigurations)session.close();super.onDestroy()}
     private fun add(view:View){
         box.addView(view,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(BlueDotAppearance.SECTION_GAP)})
     }
@@ -116,24 +116,32 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         background=RippleDrawable(ColorStateList.valueOf(colors.primary.copy(alpha=0.12f).toArgb()),GradientDrawable().apply{setStroke(dp(1),this@LocalAdbSetupActivity.colors.outlineVariant.toArgb());cornerRadius=dp(BlueDotAppearance.BUTTON_RADIUS).toFloat()},null)
         setOnClickListener{action()}
     }
+    /** Step 9: the two ways to stay connected look alike, so neither reads as the recommended one. */
+    private fun choice(title:String,way:String,body:String,action:()->Unit){add(object:LinearLayout(this){
+        override fun getAccessibilityClassName():CharSequence=Button::class.java.name
+    }.apply{
+        orientation=LinearLayout.VERTICAL;setPadding(dp(20),dp(16),dp(20),dp(16));isClickable=true;isFocusable=true
+        background=RippleDrawable(ColorStateList.valueOf(colors.primary.copy(alpha=0.12f).toArgb()),GradientDrawable().apply{setColor(this@LocalAdbSetupActivity.colors.surfaceContainerLow.toArgb());setStroke(dp(1),this@LocalAdbSetupActivity.colors.outlineVariant.toArgb());cornerRadius=dp(16).toFloat()},null)
+        fun label(value:String,size:Float,color:androidx.compose.ui.graphics.Color,medium:Boolean)=TextView(this@LocalAdbSetupActivity).apply{
+            text=app.bluedotoff.UiText.text(this@LocalAdbSetupActivity,value);textSize=size;includeFontPadding=false;setTextColor(color.toArgb())
+            if(medium)typeface=Typeface.create("sans-serif-medium",Typeface.NORMAL)
+            setLineHeight(android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP,if(size>=16f)24f else 20f,resources.displayMetrics).toInt())
+        }
+        // Title on the left, the debugging it uses on the right of its first line (baselines aligned).
+        addView(LinearLayout(this@LocalAdbSetupActivity).apply{
+            orientation=LinearLayout.HORIZONTAL
+            addView(label(title,16f,this@LocalAdbSetupActivity.colors.onSurface,true),LinearLayout.LayoutParams(0,-2,1f))
+            addView(label(way,14f,this@LocalAdbSetupActivity.colors.primary,true),LinearLayout.LayoutParams(-2,-2).apply{marginStart=dp(12)})
+        },LinearLayout.LayoutParams(-1,-2))
+        addView(label(body,14f,colors.onSurfaceVariant,false),LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(8)})
+        setOnClickListener{action()}
+    })}
     /** Step 9, USB option: the same risk notice as Settings (confirm unlocks after 5 seconds), then USB debugging, then the
      *  same permission as automatic management - it starts watching again after a restart or an update. */
     private var usbChoicePending=false
     private fun chooseUsbWatch(){
-        val t={v:String->app.bluedotoff.UiText.text(this,v)}
-        val dialog=android.app.AlertDialog.Builder(this).setTitle(t("백그라운드 감시를 켤까요?"))
-            .setMessage(t("켜기 전에 꼭 읽어주세요.")+"\n\n"+app.bluedotoff.BackgroundWatch.RISKS.joinToString("\n"){"• "+t(it)})
-            .setPositiveButton(t("확인 (5초)"),null).setNegativeButton(t("취소"),null).create()
-        dialog.setOnShowListener{
-            val ok=dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE);ok.isEnabled=false
-            var left=5
-            val tick=object:Runnable{override fun run(){if(!dialog.isShowing)return;left--
-                if(left>0){ok.text=t("확인 (${left}초)");ok.postDelayed(this,1000)}else{ok.text=t("확인");ok.isEnabled=true}}}
-            ok.postDelayed(tick,1000)
-            ok.setOnClickListener{dialog.dismiss();usbChoicePending=true;render()
-                if(!app.bluedotoff.adb.WatchClient.usbEnabled(this))app.bluedotoff.SettingsEntrypoints.developerOptions(this)}
-        }
-        dialog.show()
+        app.bluedotoff.ScopeDialogs.watch(this){usbChoicePending=true;render()
+            if(!app.bluedotoff.adb.WatchClient.usbEnabled(this))app.bluedotoff.SettingsEntrypoints.developerOptions(this)}
     }
     /** Runs once step 9 is showing again (setup re-checks the connection after a visit to Settings) and USB debugging is on. */
     private fun finishUsbChoice(){
@@ -199,7 +207,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
             })
         }
         text(if(session.manualInput&&p.stage in listOf(SetupStage.WAIT_FOR_PAIRING_ADVERTISEMENT,SetupStage.PAIRING_NOTIFICATION_READY))"분할 화면에서 설정과 bluedotOFF를 함께 열어 코드를 입력하세요. 코드 창을 닫으면 연결할 수 없어요." else p.body)
-        if(p.action!=SetupAction.NONE){if(session.manualInput&&p.stage==SetupStage.WAIT_FOR_PAIRING_ADVERTISEMENT)link(p.button){act(p.action)}else button(p.button){act(p.action)}}
+        if(p.action!=SetupAction.NONE&&p.stage!=SetupStage.AUTOMATIC_MANAGEMENT){if(session.manualInput&&p.stage==SetupStage.WAIT_FOR_PAIRING_ADVERTISEMENT)link(p.button){act(p.action)}else button(p.button){act(p.action)}}
         // Without automatic management the app cannot see Auto Blocker; a greyed-out switch is the sign the user sees.
         if(p.stage==SetupStage.WIRELESS_DEBUGGING_OFF&&!f.autoBlocked)add(TextView(this).apply{
             text=app.bluedotoff.UiText.text(this@LocalAdbSetupActivity,"무선 디버깅 버튼이 회색으로 잠겨 있나요? 눌러서 해결 방법 보기")
@@ -217,7 +225,9 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         }else if(p.stage in listOf(SetupStage.PAIRING,SetupStage.CONNECTING,SetupStage.VERIFYING,SetupStage.FINAL_CHECK,SetupStage.ENABLING_MANAGEMENT))add(ProgressBar(this).apply{indeterminateTintList=ColorStateList.valueOf(colors.primary.toArgb())})
         if(p.stage==SetupStage.AUTOMATIC_MANAGEMENT){
             if(session.managementError.isNotBlank())text(session.managementError,14f)
-            add(outlinedButton("USB 디버깅으로 유지 (백그라운드 감시)"){chooseUsbWatch()})
+            choice(p.button,"무선 디버깅","bluedotOFF를 열 때 풀린 앱을 다시 숨겨요. 앱을 닫으면 무선 디버깅도 꺼져요."){act(p.action)}
+            choice("② 백그라운드 자동 감시","USB 디버깅","앱을 열지 않아도 풀린 앱을 알아서 다시 숨겨요. USB 디버깅을 켜 둬야 해서 일부 은행·결제 앱이 안 열릴 수 있어요."){chooseUsbWatch()}
+            text("두 방법 모두 bluedotOFF에 시스템 설정 변경 권한을 줘요.",14f)
             if(usbChoicePending&&app.bluedotoff.adb.WatchClient.usbEnabled(this))box.post{finishUsbChoice()}
             if(usbChoicePending)text("개발자 옵션에서 ‘USB 디버깅’을 켠 뒤 이 화면으로 돌아오세요. 켜져 있으면 자동으로 다음 단계로 넘어가요.",14f)
             link("지금은 사용하지 않기"){usbChoicePending=false;if(app.bluedotoff.BackgroundWatch.enabled(this@LocalAdbSetupActivity))app.bluedotoff.BackgroundWatch.set(this@LocalAdbSetupActivity,false);session.skipManagement()}
@@ -253,27 +263,12 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
                 if(session.diagnosticResult.isNotBlank())text(session.diagnosticResult,14f)
             }
             link("이 앱의 페어링 초기화"){
-                android.app.AlertDialog.Builder(this).setTitle(app.bluedotoff.UiText.text(this,"이 앱의 연결 정보 초기화")).setMessage(app.bluedotoff.UiText.text(this,"bluedotOFF의 키만 삭제해요. Android 설정의 페어링된 기기 목록은 직접 관리할 수 있어요. 등록 앱의 표시 설정은 바뀌지 않아요."))
-                    .setNegativeButton(app.bluedotoff.UiText.text(this,"취소"),null).setPositiveButton(app.bluedotoff.UiText.text(this,"초기화")){_,_->if(!LocalAdbSession.busy){AdbHostIdentity(this).reset();session.beginPairing()}}.show()
+                app.bluedotoff.ScopeDialogs.alert(this,"이 앱의 연결 정보 초기화","bluedotOFF의 키만 삭제해요. Android 설정의 페어링된 기기 목록은 직접 관리할 수 있어요. 등록 앱의 표시 설정은 바뀌지 않아요.",
+                    "초기화" to {if(!LocalAdbSession.busy){AdbHostIdentity(this).reset();session.beginPairing()}},"취소" to {})
             }
         }
     }
-    /** Same two-picture guide as the Home dialog, for setup where the block cannot be detected. */
-    private fun autoBlockerHelp(){
-        val content=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(24),dp(8),dp(24),0)}
-        fun line(value:String,bold:Boolean=false)=content.addView(TextView(this).apply{text=value;textSize=15f;setPadding(0,dp(8),0,dp(8));if(bold)typeface=Typeface.create("sans-serif-medium",Typeface.BOLD)})
-        line(app.bluedotoff.UiText.text(this,"이 기능이 켜져 있으면 휴대폰이 무선 디버깅을 막아서 bluedotOFF가 연결할 수 없어요. 아래 순서대로 끈 뒤 다시 시도해주세요."))
-        listOf(GuideStep.AUTO_BLOCKER,GuideStep.AUTO_BLOCKER_OFF).forEach{step->
-            val guide=app.bluedotoff.GuideContent.load(this,GuideSelection(step))
-            line("${step.number}  ${guide.title}",bold=true);content.addView(app.bluedotoff.GuideArtwork(this,GuideSelection(step)));line(guide.body)
-        }
-        // The pictures scroll; the button stays visible below them.
-        val frame=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;addView(android.widget.ScrollView(this@LocalAdbSetupActivity).apply{addView(content)},LinearLayout.LayoutParams(-1,-2,1f))}
-        val dialog=android.app.AlertDialog.Builder(this).setTitle(app.bluedotoff.UiText.text(this,"보안 위험 자동 차단을 꺼주세요")).setView(frame)
-            .setNegativeButton(app.bluedotoff.UiText.text(this,"확인"),null).create()
-        frame.addView(primaryButton("보안 설정 열기"){dialog.dismiss();app.bluedotoff.SettingsEntrypoints.autoBlocker(this)},LinearLayout.LayoutParams(-1,-2).apply{setMargins(dp(24),dp(12),dp(24),0)})
-        dialog.show()
-    }
+    private fun autoBlockerHelp(){app.bluedotoff.ScopeDialogs.autoBlocker(this)}
     private fun chooseScope(){
         // Owner choice (2026-10-17): one explicit "이 범위로 시작". Choosing a scope here changes no app, so the
         // repeated confirmation was dropped; lowering an applied scope still asks first (MainActivity).
@@ -309,13 +304,10 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         else finish()
     }
     private fun recommendNotifications(){
-        if(notificationReminder?.isShowing==true)return
-        notificationReminder=android.app.AlertDialog.Builder(this)
-            .setTitle(app.bluedotoff.UiText.text(this,"알림을 켜면 더 쉽게 연결할 수 있어요"))
-            .setMessage(app.bluedotoff.UiText.text(this,"알림에서 코드를 입력하면 설정 화면을 나갈 필요가 없어요. 알림 없이 계속하려면 설정과 이 앱을 분할 화면으로 함께 열어야 해요."))
-            .setPositiveButton(app.bluedotoff.UiText.text(this,"알림 허용")){_,_->requestNotifications()}
-            .setNegativeButton(app.bluedotoff.UiText.text(this,"분할 화면으로 계속")){_,_->session.skipNotifications()}
-            .setNeutralButton(app.bluedotoff.UiText.text(this,"돌아가기"),null).show()
+        if(notificationReminder!=null)return
+        notificationReminder=app.bluedotoff.ScopeDialogs.alert(this,"알림을 켜면 더 쉽게 연결할 수 있어요",
+            "알림에서 코드를 입력하면 설정 화면을 나갈 필요가 없어요. 알림 없이 계속하려면 설정과 이 앱을 분할 화면으로 함께 열어야 해요.",
+            "알림 허용" to {requestNotifications()},"분할 화면으로 계속" to {session.skipNotifications()},"돌아가기" to {},onClose={notificationReminder=null})
     }
     private fun requestNotifications(){
         if(session.notifications){session.notificationsResult();return}

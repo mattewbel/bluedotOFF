@@ -209,23 +209,20 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
                 }
             }
         }
-        if(showAutoBlocker&&!model.busy) AlertDialog(onDismissRequest={showAutoBlocker=false},title={Text("보안 위험 자동 차단을 꺼주세요")},
-            text={Column(verticalArrangement=Arrangement.spacedBy(12.dp)){Column(Modifier.weight(1f,fill=false).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(16.dp)){Text("이 기능이 켜져 있으면 휴대폰이 무선 디버깅을 막아서 bluedotOFF가 연결할 수 없어요. 아래 순서대로 끈 뒤 다시 시도해주세요.");GuideCard(GuideSelection(GuideStep.AUTO_BLOCKER));GuideCard(GuideSelection(GuideStep.AUTO_BLOCKER_OFF))};Primary("보안 설정 열기",{showAutoBlocker=false;SettingsEntrypoints.autoBlocker(context)})}},
-            confirmButton={TextButton(onClick={showAutoBlocker=false}){Text("확인")}})
-        if(model.notificationOffer&&model.gate==Gate.READY&&!model.busy) AlertDialog(onDismissRequest=dismissNotifications,title={Text("재적용 알림")},text={Text("휴대폰 재시작이나 등록 앱 업데이트로 숨김이 풀릴 수 있을 때 알려드려요. 광고나 상시 알림은 없어요. 알림 없이도 핵심 기능은 쓸 수 있어요.")},confirmButton={TextButton(onClick=allowNotifications){Text("알림 허용")}},dismissButton={TextButton(onClick=dismissNotifications){Text("나중에")}})
-        // Opt-in update check (1.1.2): asked once, default off. Closing the question counts as "off".
-        if(model.updateOffer&&!model.notificationOffer&&model.gate==Gate.READY&&!model.busy) AlertDialog(onDismissRequest={updateOfferAnswer(false)},title={Text("새 버전이 나오면 알려드릴까요?")},
-            text={Text("켜면 하루에 한 번 GitHub에서 최신 버전 번호만 확인해요. 다운로드나 설치는 하지 않아요. 끄면 bluedotOFF는 인터넷을 쓰지 않아요. 나중에 설정에서 바꿀 수 있어요.")},
-            confirmButton={TextButton(onClick={updateOfferAnswer(true)}){Text("켜기")}},dismissButton={TextButton(onClick={updateOfferAnswer(false)}){Text("끄기")}})
-        if(model.rejectedGroupList.isNotEmpty()&&model.bigGroups.isEmpty()&&!model.busy) AlertDialog(onDismissRequest=rejectedDismiss,title={Text("선택하지 않은 앱 묶음")},
+        if(showAutoBlocker&&!model.busy) PanelAlert(onDismissRequest={showAutoBlocker=false},title={Text("보안 위험 자동 차단을 꺼주세요")},
+            text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(16.dp)){Text("이 기능이 켜져 있으면 휴대폰이 무선 디버깅을 막아서 bluedotOFF가 연결할 수 없어요. 아래 순서대로 끈 뒤 다시 시도해주세요.");GuideCard(GuideSelection(GuideStep.AUTO_BLOCKER));GuideCard(GuideSelection(GuideStep.AUTO_BLOCKER_OFF))}},
+            confirmButton={DialogAction(onClick={showAutoBlocker=false;SettingsEntrypoints.autoBlocker(context)}){Text("보안 설정 열기")}},dismissButton={DialogCancel(onClick={showAutoBlocker=false}){Text("닫기")}})
+        if(model.notificationOffer&&model.gate==Gate.READY&&!model.busy) PanelAlert(onDismissRequest=dismissNotifications,title={Text("재적용 알림")},text={Text("휴대폰 재시작이나 등록 앱 업데이트로 숨김이 풀릴 수 있을 때 알려드려요. 광고나 상시 알림은 없어요. 알림 없이도 핵심 기능은 쓸 수 있어요.")},confirmButton={DialogAction(onClick=allowNotifications){Text("알림 허용")}},dismissButton={DialogCancel(onClick=dismissNotifications){Text("나중에")}})
+        if(model.updateOffer&&!model.notificationOffer&&model.gate==Gate.READY&&!model.busy) UpdateOfferDialog(updateOfferAnswer)
+        if(model.rejectedGroupList.isNotEmpty()&&model.bigGroups.isEmpty()&&!model.busy) PanelAlert(onDismissRequest=rejectedDismiss,title={Text("선택하지 않은 앱 묶음")},
             text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)){
                 Text("아래 묶음은 안전하게 함께 바꿀 수 있는지 확인하지 못해서 선택하지 않았어요. 다른 앱 선택에는 영향이 없어요.")
                 model.rejectedGroupList.forEach{g->Column{
                     Text(if(g.size>1)"${g.label} 외 ${g.size-1}개 앱" else g.label,style=MaterialTheme.typography.titleSmall,translate=g.size>1)
                     Text(g.reason,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 }}
-            }},confirmButton={TextButton(onClick=rejectedDismiss){Text("확인")}})
-        if(model.bigGroups.isNotEmpty()&&!model.busy) AlertDialog(onDismissRequest=bigGroupsDismiss,title={Text("큰 앱 묶음을 함께 선택할까요?")},
+            }},confirmButton={DialogAction(onClick=rejectedDismiss){Text("확인")}})
+        if(model.bigGroups.isNotEmpty()&&!model.busy) PanelAlert(onDismissRequest=bigGroupsDismiss,title={Text("큰 앱 묶음을 함께 선택할까요?")},
             text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)){
                 Text("아래 묶음은 여러 앱이 위치 설정 하나를 함께 써요. 하나만 고를 수 없어서, 선택하면 묶음 전체가 함께 숨겨지고 함께 복원돼요.")
                 model.bigGroups.forEach{g->Column{
@@ -233,9 +230,9 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
                     if(g.system)Text("Android 시스템 앱 포함",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
                 }}
             }},
-            confirmButton={TextButton(onClick=bigGroupsAccept){Text("함께 선택")}},dismissButton={TextButton(onClick=bigGroupsDismiss){Text("선택 안 함")}})
+            confirmButton={DialogAction(onClick=bigGroupsAccept){Text("함께 선택")}},dismissButton={DialogCancel(onClick=bigGroupsDismiss){Text("선택 안 함")}})
         model.sharedOffer?.let{offer->
-            AlertDialog(onDismissRequest=sharedDismiss,title={Text("위치 설정을 함께 쓰는 앱")},text={
+            PanelAlert(onDismissRequest=sharedDismiss,title={Text("위치 설정을 함께 쓰는 앱")},text={
                 Column(Modifier.heightIn(max=420.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)){
                     Text("아래 앱은 위치 표시 설정을 공유해요. 하나만 따로 바꿀 수 없고, 함께 숨기거나 함께 복원해요.")
                     if(offer.loading)CircularProgressIndicator()
@@ -243,18 +240,18 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
                     if(offer.error.isNotBlank())Text(UiText.error(offer.error),color=MaterialTheme.colorScheme.error)
                     if(!offer.loading&&offer.error.isBlank())Text("앱의 위치 권한은 그대로예요. 묶음 전체의 원래 표시 상태를 저장하고, 구성원이 바뀌면 더 이상 바꾸지 않아요.",style=MaterialTheme.typography.bodySmall)
                 }
-            },confirmButton={if(!offer.loading&&offer.error.isBlank())TextButton(onClick=sharedAccept){Text(if(!offer.hide)"함께 복원" else if(offer.direct)"함께 재적용" else "묶음 전체 선택")}},dismissButton={TextButton(onClick=sharedDismiss){Text("취소")}})
+            },confirmButton={if(!offer.loading&&offer.error.isBlank())DialogAction(onClick=sharedAccept){Text(if(!offer.hide)"함께 복원" else if(offer.direct)"함께 재적용" else "묶음 전체 선택")}},dismissButton={DialogCancel(onClick=sharedDismiss){Text("취소")}})
         }
         if(showSkipped&&model.otherCheckCount>0)CheckNeededDialog(model,{showSkipped=false}){pkg->showSkipped=false;select(pkg)}
         if(showReapplyNeeded&&model.gate==Gate.READY&&!model.busy&&model.reapplyCount>0) ReapplyNeededDialog(model,{showReapplyNeeded=false},{packages->showReapplyNeeded=false;reapplyNeeded(packages)},{showReapplyNeeded=false;openBackend()})
-        if(showRestoreMenu) AlertDialog(onDismissRequest={showRestoreMenu=false},title={Text("앱 복원")},
+        if(showRestoreMenu) PanelAlert(onDismissRequest={showRestoreMenu=false},title={Text("앱 복원")},
             text={Text("숨긴 앱을 원래 표시 상태로 되돌려요. 위치 권한과 사용 기록은 그대로예요. 앱을 지우기 전에는 모두 복원해 주세요.")},
-            confirmButton={if(model.canOperate)TextButton(onClick={showRestoreMenu=false;showRestoreAll=true}){Text("모두 복원")} else TextButton(onClick={showRestoreMenu=false;openBackend()}){Text("연결 후 모두 복원")}},
-            dismissButton={TextButton(onClick={showRestoreMenu=false;editHome()}){Text("골라서 복원")}})
-        model.uninstallCheck?.takeIf{!model.busy}?.let{left->AlertDialog(onDismissRequest=uninstallDismiss,title={Text("앱 삭제 전 복원")},
+            confirmButton={if(model.canOperate)DialogAction(onClick={showRestoreMenu=false;showRestoreAll=true}){Text("모두 복원")} else DialogAction(onClick={showRestoreMenu=false;openBackend()}){Text("연결 후 모두 복원")}},
+            dismissButton={DialogCancel(onClick={showRestoreMenu=false;editHome()}){Text("골라서 복원")}})
+        model.uninstallCheck?.takeIf{!model.busy}?.let{left->PanelAlert(onDismissRequest=uninstallDismiss,title={Text("앱 삭제 전 복원")},
             text={Text(if(left==0)"숨긴 앱을 모두 원래 상태로 되돌렸어요. 이제 bluedotOFF를 삭제해도 돼요. 앱을 삭제하면 권한과 연결 정보도 함께 지워져요. 무선 디버깅이 켜져 있다면 개발자 옵션에서 꺼주세요." else "${left}개 앱을 지금 복원하지 못했어요. 홈의 ‘등록한 앱’에서 상태를 확인한 뒤 다시 눌러주세요. 이 앱들이 남아 있는 동안에는 bluedotOFF를 삭제하지 마세요.")},
-            confirmButton={if(left==0)TextButton(onClick={uninstallDismiss();openAppInfo()}){Text("앱 정보 열기")} else TextButton(onClick=uninstallDismiss){Text("확인")}},
-            dismissButton={if(left==0)TextButton(onClick=uninstallDismiss){Text("닫기")}})}
+            confirmButton={if(left==0)DialogAction(onClick={uninstallDismiss();openAppInfo()}){Text("앱 정보 열기")} else DialogAction(onClick=uninstallDismiss){Text("확인")}},
+            dismissButton={if(left==0)DialogCancel(onClick=uninstallDismiss){Text("닫기")}})}
         if(showRestoreAll) RestoreAllDialog(model.entries.count{it.enabled},{showRestoreAll=false},{showRestoreAll=false;restoreAll()})
     }
 }
@@ -434,9 +431,9 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
             Primary("${m.showPicked.size}개 숨김 풀기",{confirm=true},enabled=m.showPicked.isNotEmpty()&&m.canOperate&&!m.busy)
         }
     }
-    if(confirm)AlertDialog(onDismissRequest={confirm=false},title={Text("숨김 풀기")},
+    if(confirm)PanelAlert(onDismissRequest={confirm=false},title={Text("숨김 풀기")},
         text={Text("선택한 ${m.showPicked.size}개 앱의 숨김을 풀어요(파란 위치 표시 설정을 켜요). 시스템에서 표시를 제외하는 앱은 숨김을 풀어도 파란 위치 표시가 나타나지 않을 수 있어요. 위치 권한과 사용 기록은 그대로예요.")},
-        confirmButton={TextButton(onClick={confirm=false;show()}){Text("숨김 풀기")}},dismissButton={TextButton(onClick={confirm=false}){Text("취소")}})
+        confirmButton={DialogAction(onClick={confirm=false;show()}){Text("숨김 풀기")}},dismissButton={DialogCancel(onClick={confirm=false}){Text("취소")}})
 }
 
 /** Same layout as "앱 추가": search, select all, checkboxes, and one button at the bottom. Checked = restore. */
@@ -545,7 +542,7 @@ private fun pickerReason(a:DiscoveredApp,scope:ApplicationScope=ApplicationScope
                 appRows(unavailable)
             }
         }
-        reason?.let{message->AlertDialog(onDismissRequest={reason=null},title={Text("앱 확인 결과")},text={Text(message)},confirmButton={TextButton(onClick={reason=null}){Text("확인")}})}
+        reason?.let{message->PanelAlert(onDismissRequest={reason=null},title={Text("앱 확인 결과")},text={Text(message)},confirmButton={DialogAction(onClick={reason=null}){Text("확인")}})}
         if(available.isEmpty()&&unavailable.isEmpty()&&!m.loadingApps)Text("조건에 맞는 앱이 없어요.",style=MaterialTheme.typography.bodySmall)
         Column(Modifier.fillMaxWidth().bottomActions().padding(bottom=8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){Text(if(unmanagedNotSensitive)"‘숨김 남음 · 기록 없음’은 bluedotOFF 기록 없이 이미 숨겨져 있는 앱이에요. 다시 숨길 필요가 없고, 설정 → ‘숨김이 남은 앱’에서 숨김을 풀 수 있어요." else "선택한 앱을 등록하고 파란 위치 표시를 숨겨요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);Primary("${m.picked.size}개 추가",add,enabled=m.picked.isNotEmpty()&&!m.busy)}
     }
@@ -705,7 +702,7 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
         Triple("fiat-crypto","Apache License 2.0","licenses/Fiat-Crypto-LICENSE.txt")
     ).map{(name,license,path)->Triple(name,license,runCatching{context.assets.open(path).bufferedReader().use{it.readText()}}.getOrDefault(""))}}
     var open by remember{mutableStateOf<String?>(null)}
-    AlertDialog(onDismissRequest=close,title={Text("오픈소스 라이선스")},confirmButton={TextButton(onClick=close){Text("닫기")}},text={
+    PanelAlert(onDismissRequest=close,title={Text("오픈소스 라이선스")},confirmButton={DialogAction(onClick=close){Text("닫기")}},text={
         Column(Modifier.heightIn(max=480.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)){
             Text("bluedotOFF는 아래 오픈소스를 사용해요. AndroidX와 Kotlin 표준 라이브러리도 Apache License 2.0으로 배포돼요.",style=MaterialTheme.typography.bodySmall)
             items.forEach{(name,license,body)->
@@ -719,21 +716,21 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
 @Composable private fun SettingsScreen(m:UiModel,notificationChanged:(Boolean)->Unit,open:()->Unit,refresh:()->Unit,help:()->Unit,wirelessExit:()->Unit,managementChanged:(Boolean)->Unit,removeManagementPermission:()->Unit,scopeChange:()->Unit,openShow:()->Unit={},beforeUninstall:()->Unit={},copyDiagnostics:()->Unit={},autoReapplyChanged:(Boolean)->Unit={},backgroundWatchChanged:(Boolean)->Unit={},openDeveloperOptions:()->Unit={},openBattery:(Boolean)->Unit={},updateCheckChanged:(Boolean)->Unit={},checkUpdateNow:()->Unit={},openUpdate:(String)->Unit={}) {
     var uninstallConfirm by remember{mutableStateOf(false)}
     val toRestore=m.entries.count{it.enabled&&it.state!=TargetState.MISSING_TARGET}
-    if(uninstallConfirm)AlertDialog(onDismissRequest={uninstallConfirm=false},title={Text("앱 삭제 전 복원")},
+    if(uninstallConfirm)PanelAlert(onDismissRequest={uninstallConfirm=false},title={Text("앱 삭제 전 복원")},
         text={Text("등록한 ${toRestore}개 앱을 모두 원래 표시 상태로 되돌려요. 끝나면 bluedotOFF를 삭제해도 되는지 알려드려요.")},
-        confirmButton={TextButton(onClick={uninstallConfirm=false;beforeUninstall()}){Text("복원 시작")}},dismissButton={TextButton(onClick={uninstallConfirm=false}){Text("취소")}})
+        confirmButton={DialogAction(onClick={uninstallConfirm=false;beforeUninstall()}){Text("복원 시작")}},dismissButton={DialogCancel(onClick={uninstallConfirm=false}){Text("취소")}})
     val context=LocalContext.current
     var autoConsent by remember{mutableStateOf(false)}
     var watchConsent by remember{mutableStateOf(false)}
     var watchOwnsConnection by remember{mutableStateOf(false)}
-    if(watchOwnsConnection)AlertDialog(onDismissRequest={watchOwnsConnection=false},title={Text("백그라운드 감시를 쓰는 중이에요")},
+    if(watchOwnsConnection)PanelAlert(onDismissRequest={watchOwnsConnection=false},title={Text("백그라운드 감시를 쓰는 중이에요")},
         text={Text("백그라운드 감시를 쓰는 동안에는 USB 디버깅으로 연결해요. 자동 관리는 재부팅이나 업데이트 뒤 감시를 다시 켤 때만 써요. 바꾸려면 백그라운드 감시를 먼저 꺼주세요.")},
-        confirmButton={TextButton(onClick={watchOwnsConnection=false}){Text("확인")}})
+        confirmButton={DialogAction(onClick={watchOwnsConnection=false}){Text("확인")}})
     if(watchConsent)WatchRiskDialog({watchConsent=false;backgroundWatchChanged(true)},{watchConsent=false})
     var advancedSettings by rememberSaveable{mutableStateOf(false)}
     var showLicenses by rememberSaveable{mutableStateOf(false)}
     if(showLicenses)OpenSourceLicenses{showLicenses=false}
-    if(autoConsent)AlertDialog(onDismissRequest={autoConsent=false},title={Text("무선 디버깅 자동 관리")},text={Text("bluedotOFF를 쓰는 동안만 무선 디버깅을 켜 두고, 앱을 나가면 잠시 후 꺼요. 이를 위해 시스템 설정 변경 권한을 처음 한 번 받고, 무선 디버깅을 켜고 끄는 데만 써요. 다른 무선 디버깅 연결도 함께 끊길 수 있어요.")},confirmButton={TextButton(onClick={autoConsent=false;managementChanged(true)}){Text("자동 관리 사용")}},dismissButton={TextButton(onClick={autoConsent=false}){Text("취소")}})
+    if(autoConsent)PanelAlert(onDismissRequest={autoConsent=false},title={Text("무선 디버깅 자동 관리")},text={Text("bluedotOFF를 쓰는 동안만 무선 디버깅을 켜 두고, 앱을 나가면 잠시 후 꺼요. 이를 위해 시스템 설정 변경 권한을 처음 한 번 받고, 무선 디버깅을 켜고 끄는 데만 써요. 다른 무선 디버깅 연결도 함께 끊길 수 있어요.")},confirmButton={DialogAction(onClick={autoConsent=false;managementChanged(true)}){Text("자동 관리 사용")}},dismissButton={DialogCancel(onClick={autoConsent=false}){Text("취소")}})
     @Composable fun LinkRow(label:String,detail:String="",onClick:()->Unit){
         Row(Modifier.fillMaxWidth().heightIn(min=52.dp).clip(RoundedCornerShape(12.dp)).clickable(onClick=onClick).padding(vertical=8.dp),verticalAlignment=Alignment.CenterVertically){
             Text(label,Modifier.weight(1f),style=MaterialTheme.typography.bodyLarge)
@@ -851,20 +848,6 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
         Text("루팅이나 부트로더 해제는 필요 없어요. 휴대폰의 무선 디버깅 기능(백그라운드 감시를 켜면 USB 디버깅도)만 쓰고, 앱의 위치 권한과 보안 설정은 바꾸지 않아요. 네트워크 권한은 휴대폰 안의 무선 디버깅 연결과, 직접 켠 경우의 업데이트 확인(GitHub)에만 써요. 광고·분석·추적 기능은 없어요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
-/** First switch-on of "백그라운드 감시": the risks, and a confirm button that unlocks after a visible 5-second wait. */
-@Composable private fun WatchRiskDialog(confirm:()->Unit,dismiss:()->Unit){
-    var left by remember{mutableStateOf(5)}
-    LaunchedEffect(Unit){while(left>0){delay(1000);left--}}
-    AlertDialog(onDismissRequest=dismiss,title={Text("백그라운드 감시를 켤까요?")},
-        text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)){
-            Text("켜기 전에 꼭 읽어주세요.")
-            BackgroundWatch.RISKS.forEach{risk->
-                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){Text("•",translate=false);Text(risk,style=MaterialTheme.typography.bodyMedium)}}
-            LinearProgressIndicator(progress={(5-left)/5f},modifier=Modifier.fillMaxWidth())
-        }},
-        confirmButton={TextButton(onClick=confirm,enabled=left==0){Text(if(left>0)"확인 (${left}초)" else "확인")}},
-        dismissButton={TextButton(onClick=dismiss){Text("취소")}})
-}
 private val LocalBottomActions=staticCompositionLocalOf<(Int)->Unit>{{}}
 /** Marks a page's pinned bottom buttons; their height lifts notices above them. */
 @Composable private fun Modifier.bottomActions():Modifier{val report=LocalBottomActions.current;DisposableEffect(report){onDispose{report(0)}};return onSizeChanged{report(it.height)}}
@@ -910,7 +893,7 @@ private fun demo(applied:Boolean=false,gate:Gate=Gate.READY,page:Page=Page.HOME)
 
 /** Home's "상태 확인 필요": the apps behind the number. Tapping one opens its detail, which explains the state. */
 @Composable private fun CheckNeededDialog(m:UiModel,close:()->Unit,open:(String)->Unit){
-    AlertDialog(onDismissRequest=close,title={Text("상태 확인이 필요한 앱")},
+    PanelAlert(onDismissRequest=close,title={Text("상태 확인이 필요한 앱")},
         text={Column(Modifier.heightIn(max=420.dp).verticalScroll(rememberScrollState())){
             Text("앱을 누르면 상태와 할 수 있는 일을 볼 수 있어요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             m.checkEntries.forEach{e->
@@ -921,7 +904,7 @@ private fun demo(applied:Boolean=false,gate:Gate=Gate.READY,page:Page=Page.HOME)
                 HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant.copy(alpha=0.35f))
             }
         }},
-        confirmButton={TextButton(onClick=close){Text("닫기")}})
+        confirmButton={DialogAction(onClick=close){Text("닫기")}})
 }
 
 /** App language (Android 13+ per-app language; the same list appears in Android Settings > Apps > bluedotOFF > Language).
@@ -938,7 +921,7 @@ private val APP_LANGUAGES=listOf("" to "시스템 기본값","en" to "English","
         Text("언어",Modifier.weight(1f),style=MaterialTheme.typography.bodyLarge)
         Text(currentName,style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant,translate=current.isEmpty())
     }
-    if(open)AlertDialog(onDismissRequest={open=false},title={Text("언어")},
+    if(open)PanelAlert(onDismissRequest={open=false},title={Text("언어")},
         text={Column(Modifier.verticalScroll(rememberScrollState())){APP_LANGUAGES.forEach{(tag,name)->
             Row(Modifier.fillMaxWidth().heightIn(min=48.dp).clickable{
                 open=false
@@ -948,5 +931,5 @@ private val APP_LANGUAGES=listOf("" to "시스템 기본값","en" to "English","
                 Text(name,Modifier.padding(start=12.dp),style=MaterialTheme.typography.bodyLarge,translate=tag.isEmpty())
             }
         }}},
-        confirmButton={TextButton(onClick={open=false}){Text("닫기")}})
+        confirmButton={DialogAction(onClick={open=false}){Text("닫기")}})
 }

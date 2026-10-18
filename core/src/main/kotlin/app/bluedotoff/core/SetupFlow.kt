@@ -63,7 +63,7 @@ object SetupFlow {
             SetupStage.PAIRING->SetupPresentation(s,7,"코드를 확인하고 있어요","잠시만 기다려주세요.",SetupAction.NONE)
             SetupStage.CONNECTING->SetupPresentation(s,8,"이 기기에 연결하고 있어요","저장된 연결 정보를 확인하고 있어요. 새 코드를 입력할 필요는 없어요.",SetupAction.NONE)
             SetupStage.VERIFYING->SetupPresentation(s,8,"기기와 앱을 확인하고 있어요","기기 호환성과 앱의 복원 기록을 먼저 확인해요. 적용 범위를 고른 뒤 전체 앱을 확인해요. 설정은 변경하지 않아요.",SetupAction.NONE)
-            SetupStage.AUTOMATIC_MANAGEMENT->SetupPresentation(s,9,"연결 유지 방법을 골라주세요","숨김이 풀린 앱을 언제 다시 숨길지 골라주세요. 두 방법 모두 이 앱에 시스템 설정 변경 권한을 추가하고, 나중에 설정에서 바꿀 수 있어요.\n\n• 앱을 열 때 다시 숨기기 (무선 디버깅 자동 관리): bluedotOFF를 쓰는 동안만 무선 디버깅을 켜고, 나가면 꺼요.\n• 앱을 닫아도 다시 숨기기 (USB 디버깅으로 유지): 백그라운드 감시가 풀린 앱을 감지하는 대로 다시 숨겨요. USB 디버깅을 계속 켜 둬야 하고, 일부 은행·결제 앱이 실행되지 않을 수 있어요.",SetupAction.AUTOMATIC_MANAGEMENT,"무선 디버깅 자동 관리")
+            SetupStage.AUTOMATIC_MANAGEMENT->SetupPresentation(s,9,"연결 유지 방법을 골라주세요","숨김이 풀린 앱을 다시 숨기는 방법이에요. 나중에 설정에서 바꿀 수 있어요.",SetupAction.AUTOMATIC_MANAGEMENT,"① 앱을 켤 때만 적용")
             SetupStage.ENABLING_MANAGEMENT->SetupPresentation(s,9,"자동 관리를 준비하고 있어요","연결 종료까지 확인한 뒤 적용 범위를 선택해요. 잠시만 기다려주세요.",SetupAction.NONE)
             SetupStage.BATTERY_OPTIMIZATION->SetupPresentation(s,10,"배터리 사용 제한을 해제할까요?","화면이 꺼진 동안에도 감시가 덜 늦어지도록, 배터리 설정을 ‘제한 없음’으로 바꿀 수 있어요. 배터리 사용량이 늘 수 있어요. 필수 설정은 아니며, 나중에 설정에서도 바꿀 수 있어요.",SetupAction.BATTERY_OPTIMIZATION,"배터리 사용 제한 해제")
             SetupStage.APPLICATION_SCOPE->SetupPresentation(s,10+extra,"적용 범위를 선택해주세요","믿는 앱의 파란 위치 표시를 숨겨요. 나중에 설정에서 범위를 바꿀 수 있어요.",SetupAction.APPLICATION_SCOPE,"적용 범위 선택")

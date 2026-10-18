@@ -21,7 +21,7 @@ import java.io.File
 
 object BackgroundWatch {
     /** Shown before the first switch-on, in Settings and in setup step 9. */
-    val RISKS=listOf("USB 디버깅을 항상 켜 둬야 해요.","bluedotOFF를 열지 않아도 숨김이 풀린 앱을 자동으로 다시 숨겨요.","백그라운드에서 동작해서 배터리 사용량이 늘 수 있어요.","일부 은행·결제 앱은 USB 디버깅이 켜져 있으면 실행되지 않을 수 있어요.","USB 디버깅과 무선 디버깅이 모두 꺼지면 감시가 멈춰요.")
+    val RISKS=listOf("USB 디버깅을 항상 켜 둬야 해요.","일부 은행·결제 앱이 열리지 않을 수 있어요.","배터리를 조금 더 쓸 수 있어요.","USB·무선 디버깅이 모두 꺼지면 감시가 멈춰요.")
     private fun prefs(c:Context)=c.getSharedPreferences("ui-state",Context.MODE_PRIVATE)
     fun enabled(c:Context)=prefs(c).getBoolean("backgroundWatch",false)
     /** The risk notice was confirmed once (after its 5-second wait); later switch-ons do not ask again. */

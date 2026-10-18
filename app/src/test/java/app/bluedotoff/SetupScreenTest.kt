@@ -13,12 +13,18 @@ import android.widget.TextView
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import app.bluedotoff.adb.*
 import app.bluedotoff.core.SetupFlow
 import app.bluedotoff.core.SetupStage
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -33,6 +39,10 @@ import java.io.File
 @Config(sdk=[34],application=Application::class,qualifiers="ko-rKR-w412dp-h915dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class SetupScreenTest {
+    /** The setup dialogs are the shared Compose panels (ScopeDialogs). */
+    @get:Rule val compose=createEmptyComposeRule()
+    /** Step 9 choice card: the clickable box around its title row. */
+    private fun card(views:List<View>,title:String)=views.filterIsInstance<TextView>().single{it.text.toString()==title}.parent.parent as View
     @Test fun usbBatteryOfferHasTwelveStepsAndAnExplicitSkip(){
         runtime.finalCheckResolved=false;runtime.managementChoiceResolved=false;runtime.batteryChoiceRequired=true;runtime.batteryChoiceResolved=false
         runtime.paired=true;runtime.connectEndpoint=LocalAdbDiscovery.Endpoint("saved",42000)
@@ -81,10 +91,9 @@ class SetupScreenTest {
         activity.onRequestPermissionsResult(70,arrayOf("android.permission.POST_NOTIFICATIONS"),intArrayOf(android.content.pm.PackageManager.PERMISSION_DENIED))
         assertEquals(SetupStage.NOTIFICATION_PERMISSION,SetupFlow.stage(session.facts))
         activity.onBackPressedDispatcher.onBackPressed()
-        val dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog()
-        assertTrue(dialog.isShowing);assertFalse(activity.isFinishing)
-        assertEquals("알림 허용",dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).text)
-        dialog.getButton(android.content.DialogInterface.BUTTON_NEGATIVE).performClick()
+        assertFalse(activity.isFinishing)
+        compose.onNodeWithText("알림 허용").assertIsEnabled()
+        compose.onNodeWithText("분할 화면으로 계속").performClick()
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals(SetupStage.DEVELOPER_OPTIONS_OFF,SetupFlow.stage(session.facts))
     }
@@ -146,9 +155,11 @@ class SetupScreenTest {
         runtime.managementChoiceResolved=false;runtime.paired=true;runtime.connectEndpoint=LocalAdbDiscovery.Endpoint("saved",42000)
         val views=show("13-recommended-management")
         // Step 9 offers both ways to stay connected, plus a visible skip.
-        assertEquals(listOf("무선 디버깅 자동 관리","USB 디버깅으로 유지 (백그라운드 감시)"),views.filterIsInstance<Button>().map{it.text.toString()})
+        assertTrue("no option is drawn as the main button",views.filterIsInstance<Button>().isEmpty())
+        val (one,two)=listOf("① 앱을 켤 때만 적용","② 백그라운드 자동 감시").map{card(views,it)}
+        assertEquals(one.width,two.width);assertEquals(one.background.javaClass,two.background.javaClass)
         assertTrue(views.filterIsInstance<TextView>().any{it.text=="지금은 사용하지 않기"})
-        assertTrue(views.filterIsInstance<TextView>().any{it.text.contains("일부 은행·결제 앱이 실행되지 않을 수 있어요")})
+        assertTrue(views.filterIsInstance<TextView>().any{it.text.contains("일부 은행·결제 앱이 안 열릴 수 있어요")})
         assertEquals(0,runtime.managementCalls);assertNull(shadowOf(controller!!.get()).nextStartedActivity)
     }
     /** USB debugging already on: confirming the 5-second risk dialog must continue by itself (no Settings visit
@@ -157,13 +168,12 @@ class SetupScreenTest {
         android.provider.Settings.Global.putInt(context.contentResolver,android.provider.Settings.Global.ADB_ENABLED,1)
         runtime.managementChoiceResolved=false;runtime.paired=true;runtime.connectEndpoint=LocalAdbDiscovery.Endpoint("saved",42000)
         val views=show("13b-usb-choice-usb-on")
-        views.filterIsInstance<Button>().single{it.text.toString()=="USB 디버깅으로 유지 (백그라운드 감시)"}.performClick()
-        shadowOf(Looper.getMainLooper()).idle()
-        val dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog() as android.app.AlertDialog
-        val ok=dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)
-        assertFalse(ok.isEnabled)
-        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(6))
-        assertTrue(ok.isEnabled);ok.performClick()
+        compose.mainClock.autoAdvance=false
+        card(views,"② 백그라운드 자동 감시").performClick()
+        shadowOf(Looper.getMainLooper()).idle();compose.mainClock.advanceTimeBy(100)
+        compose.onNodeWithText("켜기 (5초)").assertIsNotEnabled()
+        compose.mainClock.advanceTimeBy(5100)
+        compose.onNodeWithText("켜기").assertIsEnabled().performClick()
         shadowOf(Looper.getMainLooper()).idle()
         // The choice was finished: watch preference set and the management work queued (then run here).
         assertTrue(BackgroundWatch.enabled(context));assertFalse(queue.tasks.isEmpty())
@@ -177,10 +187,13 @@ class SetupScreenTest {
         android.provider.Settings.Global.putInt(context.contentResolver,android.provider.Settings.Global.ADB_ENABLED,0)
         runtime.managementChoiceResolved=false;runtime.paired=true;runtime.connectEndpoint=LocalAdbDiscovery.Endpoint("saved",42000)
         val views=show("13c-usb-choice-usb-off")
-        views.filterIsInstance<Button>().single{it.text.toString()=="USB 디버깅으로 유지 (백그라운드 감시)"}.performClick()
+        compose.mainClock.autoAdvance=false
+        card(views,"② 백그라운드 자동 감시").performClick()
+        shadowOf(Looper.getMainLooper()).idle();compose.mainClock.advanceTimeBy(100)
+        compose.onNodeWithText("켜기 (5초)").assertIsNotEnabled()
+        compose.mainClock.advanceTimeBy(5100)
+        compose.onNodeWithText("켜기").assertIsEnabled().performClick()
         shadowOf(Looper.getMainLooper()).idle()
-        val ok=(org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog() as android.app.AlertDialog).getButton(android.app.AlertDialog.BUTTON_POSITIVE)
-        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(6));ok.performClick();shadowOf(Looper.getMainLooper()).idle()
         assertFalse(BackgroundWatch.enabled(context));assertEquals(0,runtime.managementCalls)
         // The user turns USB debugging on in Developer options and returns.
         android.provider.Settings.Global.putInt(context.contentResolver,android.provider.Settings.Global.ADB_ENABLED,1)
@@ -194,15 +207,14 @@ class SetupScreenTest {
         val views=show("14-recommended-management-en-large")
         assertTrue(views.filterIsInstance<TextView>().any{it.text=="Choose how to stay connected"})
         assertTrue(views.filterIsInstance<TextView>().any{it.text=="Not now"})
-        assertEquals(listOf("Manage wireless debugging automatically","Keep active with USB debugging (background watch)"),views.filterIsInstance<Button>().map{it.text.toString()})
+        assertTrue(views.filterIsInstance<Button>().isEmpty())
+        listOf("① Only when you open the app","② Automatic background watch").forEach{card(views,it)}
     }
     @Test fun greyedOutWirelessSwitchLeadsToAutoBlockerGuide(){
         runtime.paired=true;runtime.wireless=false;val views=show("09-wireless-off-auto-blocker-hint")
         val hint=views.filterIsInstance<android.widget.TextView>().single{it.text.toString().startsWith("무선 디버깅 버튼이 회색으로 잠겨 있나요?")}
         hint.performClick();shadowOf(Looper.getMainLooper()).idle()
-        val dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog() as android.app.AlertDialog
-        assertTrue(dialog.isShowing);assertEquals("확인",dialog.getButton(android.app.AlertDialog.BUTTON_NEGATIVE).text.toString())
-        assertTrue(dialog.findViewById<android.view.ViewGroup>(android.R.id.content).let{root->generateSequence(listOf<android.view.View>(root)){level->level.flatMap{v->(v as? android.view.ViewGroup)?.let{g->(0 until g.childCount).map(g::getChildAt)}?:emptyList()}.ifEmpty{null}}.flatten().any{it is Button&&it.text.toString()=="보안 설정 열기"}})
+        compose.onNodeWithText("보안 설정 열기").assertIsEnabled();compose.onNodeWithText("닫기").assertIsEnabled()
     }
     @Test fun pairedWirelessOffDoesNotShowAnyCodeFields(){runtime.paired=true;runtime.wireless=false;val views=show("02-paired-wireless-off");assertEquals(listOf("무선 디버깅 열기"),views.filterIsInstance<Button>().map{it.text.toString()});assertTrue(views.filterIsInstance<EditText>().isEmpty())}
     @Test fun advertisementReadyKeepsSettingsNotificationAsPrimaryAction(){runtime.pairEndpoint=LocalAdbDiscovery.Endpoint("own",37000);val views=show("03-code-notification-ready");assertTrue(views.filterIsInstance<Button>().isEmpty());assertTrue(views.filterIsInstance<EditText>().isEmpty());assertTrue(views.filterIsInstance<TextView>().any{it.text.contains("코드 입력")})}

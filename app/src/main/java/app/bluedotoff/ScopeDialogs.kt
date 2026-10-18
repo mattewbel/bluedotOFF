@@ -15,12 +15,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import app.bluedotoff.core.ApplicationScope
+import kotlinx.coroutines.delay
 
 /** Presentation shared by native onboarding and Compose settings; no reads or writes. */
 object ScopeDialogs {
@@ -109,14 +111,40 @@ object ScopeDialogs {
             }
         }
 
-    private fun show(activity:ComponentActivity,tint:Float,content:@Composable (()->Unit)->Unit):AutoCloseable {
+    /** Setup step 9: the same risk notice as Settings. */
+    fun watch(activity:ComponentActivity,onConfirm:()->Unit):AutoCloseable =
+        show(activity,1f){close->WatchRiskPanel(close){close();onConfirm()}}
+
+    /** A notice for the native setup screen: the first action is the main button, the others text buttons below it;
+     *  every action closes the panel first. */
+    fun alert(activity:ComponentActivity,title:String,body:String,vararg actions:Pair<String,()->Unit>,onClose:()->Unit={},
+        extra:(@Composable ()->Unit)?=null):AutoCloseable =
+        show(activity,1f,onClose){close->
+            PanelLayout({Text(UiText.text(activity,title))},{DialogAction({close();actions[0].second()}){Text(UiText.text(activity,actions[0].first))}},
+                {actions.drop(1).forEach{(label,run)->DialogCancel({close();run()}){Text(UiText.text(activity,label))}}}){
+                Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(16.dp)){Copy(body);extra?.invoke()}
+            }
+        }
+    /** Setup: Auto Blocker cannot be detected there, so the same two-picture guide as the Home dialog. */
+    fun autoBlocker(activity:ComponentActivity):AutoCloseable =
+        alert(activity,"보안 위험 자동 차단을 꺼주세요","이 기능이 켜져 있으면 휴대폰이 무선 디버깅을 막아서 bluedotOFF가 연결할 수 없어요. 아래 순서대로 끈 뒤 다시 시도해주세요.",
+            "보안 설정 열기" to {SettingsEntrypoints.autoBlocker(activity)},"닫기" to {},extra={
+                listOf(app.bluedotoff.core.GuideStep.AUTO_BLOCKER,app.bluedotoff.core.GuideStep.AUTO_BLOCKER_OFF).forEach{step->
+                    val guide=GuideContent.load(activity,app.bluedotoff.core.GuideSelection(step))
+                    Text("${step.number}  ${guide.title}",style=MaterialTheme.typography.titleSmall)
+                    AndroidView({GuideArtwork(it,app.bluedotoff.core.GuideSelection(step))},Modifier.fillMaxWidth())
+                    Copy(guide.body)
+                }
+            })
+
+    private fun show(activity:ComponentActivity,tint:Float,onClose:()->Unit={},content:@Composable (()->Unit)->Unit):AutoCloseable {
         // Attach to the existing activity so lifecycle, saved state and the
         // native setup screen's window policy are inherited by Dialog.
         val view=ComposeView(activity)
         var closed=false
         lateinit var observer:DefaultLifecycleObserver
         val close={
-            if(!closed){closed=true;activity.lifecycle.removeObserver(observer);(view.parent as? ViewGroup)?.removeView(view);view.disposeComposition()}
+            if(!closed){closed=true;activity.lifecycle.removeObserver(observer);(view.parent as? ViewGroup)?.removeView(view);view.disposeComposition();onClose()}
         }
         observer=object:DefaultLifecycleObserver{override fun onDestroy(owner:LifecycleOwner){close()}}
         activity.lifecycle.addObserver(observer)
@@ -140,6 +168,55 @@ object ScopeDialogs {
 @Composable private fun Copy(value:String,small:Boolean=false){
     Text(UiText.text(LocalContext.current,value),style=if(small)MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
         color=if(small)MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+}
+
+/** "백그라운드 감시" risks; the confirm button unlocks after a visible 5-second wait. */
+@Composable private fun WatchRiskPanel(cancel:()->Unit,confirm:()->Unit){
+    var left by remember{mutableStateOf(5)}
+    LaunchedEffect(Unit){while(left>0){delay(1000);left--}}
+    ScopePanel("백그라운드 감시를 켤까요?",if(left>0)"켜기 (${left}초)" else "켜기",cancel,confirm,enabled=left==0){
+        Copy("켜기 전에 꼭 읽어주세요.")
+        BackgroundWatch.RISKS.forEach{risk->Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){Text("•");Copy(risk)}}
+        LinearProgressIndicator(progress={(5-left)/5f},modifier=Modifier.fillMaxWidth())
+    }
+}
+
+@Composable private fun PanelDialog(dismiss:()->Unit,content:@Composable ()->Unit){
+    val context=LocalContext.current
+    Dialog(onDismissRequest=dismiss,properties=DialogProperties(usePlatformDefaultWidth=false)){
+        Box(Modifier.fillMaxWidth().padding(24.dp),contentAlignment=Alignment.Center){
+            Box(Modifier.widthIn(max=560.dp).fillMaxWidth().heightIn(max=(context.resources.configuration.screenHeightDp*0.82f).dp)){content()}
+        }
+    }
+}
+
+/** The one dialog look of the app (owner 2026-10-18): title, content, a full-width main button, text buttons below. */
+@Composable internal fun PanelLayout(title:@Composable ()->Unit,confirm:@Composable ()->Unit,dismiss:(@Composable ()->Unit)?=null,text:@Composable ()->Unit){
+    Surface(shape=RoundedCornerShape(24.dp),color=MaterialTheme.colorScheme.surface,contentColor=MaterialTheme.colorScheme.onSurface){
+        Column(Modifier.padding(24.dp),verticalArrangement=Arrangement.spacedBy(16.dp)){
+            ProvideTextStyle(MaterialTheme.typography.titleLarge,title)
+            // Long content scrolls inside; the buttons stay visible below it.
+            Box(Modifier.weight(1f,fill=false)){ProvideTextStyle(MaterialTheme.typography.bodyMedium,text)}
+            confirm()
+            dismiss?.invoke()
+        }
+    }
+}
+@Composable internal fun DialogAction(onClick:()->Unit,enabled:Boolean=true,content:@Composable RowScope.()->Unit)=
+    Button(onClick=onClick,enabled=enabled,modifier=Modifier.fillMaxWidth().heightIn(min=52.dp),shape=RoundedCornerShape(BlueDotAppearance.BUTTON_RADIUS.dp),content=content)
+@Composable internal fun DialogCancel(onClick:()->Unit,content:@Composable RowScope.()->Unit)=
+    TextButton(onClick=onClick,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp),colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.onSurface),content=content)
+/** Same slots as Material's AlertDialog, drawn as [PanelLayout]. */
+@Composable internal fun PanelAlert(onDismissRequest:()->Unit,confirmButton:@Composable ()->Unit,dismissButton:(@Composable ()->Unit)?=null,
+    title:@Composable ()->Unit,text:@Composable ()->Unit)=PanelDialog(onDismissRequest){PanelLayout(title,confirmButton,dismissButton,text)}
+
+@Composable internal fun WatchRiskDialog(confirm:()->Unit,dismiss:()->Unit)=PanelDialog(dismiss){WatchRiskPanel(dismiss,confirm)}
+
+/** Opt-in update check (1.1.2): asked once, default off. Closing the question counts as "off". */
+@Composable internal fun UpdateOfferDialog(answer:(Boolean)->Unit)=PanelDialog({answer(false)}){
+    ScopePanel("새 버전이 나오면 알려드릴까요?","켜기",{answer(false)},{answer(true)},cancelLabel="끄기"){
+        Copy("켜면 하루에 한 번 GitHub에서 최신 버전 번호만 확인해요. 다운로드나 설치는 하지 않아요. 끄면 bluedotOFF는 인터넷을 쓰지 않아요. 나중에 설정에서 바꿀 수 있어요.")
+    }
 }
 
 @Composable internal fun RestoreAllDialog(count:Int,cancel:()->Unit,confirm:()->Unit){
@@ -182,18 +259,11 @@ object ScopeDialogs {
     }
 }
 
-@Composable private fun ScopePanel(title:String,action:String,cancel:()->Unit,confirm:()->Unit,enabled:Boolean=true,body:@Composable ColumnScope.()->Unit){
-    Surface(shape=RoundedCornerShape(24.dp),color=MaterialTheme.colorScheme.surface,contentColor=MaterialTheme.colorScheme.onSurface){
-        Column(Modifier.padding(24.dp),verticalArrangement=Arrangement.spacedBy(16.dp)){
-            Text(UiText.text(LocalContext.current,title),style=MaterialTheme.typography.titleLarge)
-            // Only accessibility font sizes, landscape or an expanded restore list
-            // need scrolling. Actions stay outside the scrollable area.
-            Column(Modifier.weight(1f,fill=false).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(16.dp),content=body)
-            Button(onClick=confirm,enabled=enabled,modifier=Modifier.fillMaxWidth().heightIn(min=52.dp),shape=RoundedCornerShape(BlueDotAppearance.BUTTON_RADIUS.dp)){
-                Text(UiText.text(LocalContext.current,action))
-            }
-            TextButton(onClick=cancel,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)){Copy("취소")}
-        }
+@Composable private fun ScopePanel(title:String,action:String,cancel:()->Unit,confirm:()->Unit,enabled:Boolean=true,cancelLabel:String="취소",body:@Composable ColumnScope.()->Unit){
+    val context=LocalContext.current
+    // Only accessibility font sizes, landscape or an expanded restore list need scrolling.
+    PanelLayout({Text(UiText.text(context,title))},{DialogAction(confirm,enabled){Text(UiText.text(context,action))}},{DialogCancel(cancel){Copy(cancelLabel)}}){
+        Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(16.dp),content=body)
     }
 }
 

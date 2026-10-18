@@ -108,14 +108,6 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         background=RippleDrawable(ColorStateList.valueOf(colors.onPrimary.copy(alpha=0.16f).toArgb()),rounded(colors.primary.toArgb()),null)
         setOnClickListener{action()}
     }
-    private fun outlinedButton(label:String,action:()->Unit)=Button(this).apply{
-        text=app.bluedotoff.UiText.text(this@LocalAdbSetupActivity,label);isAllCaps=false;textSize=14f
-        typeface=Typeface.create("sans-serif-medium",Typeface.NORMAL);includeFontPadding=false
-        minHeight=dp(BlueDotAppearance.BUTTON_HEIGHT);minimumHeight=minHeight
-        setPadding(dp(24),dp(16),dp(24),dp(16));setTextColor(colors.primary.toArgb());backgroundTintList=null
-        background=RippleDrawable(ColorStateList.valueOf(colors.primary.copy(alpha=0.12f).toArgb()),GradientDrawable().apply{setStroke(dp(1),this@LocalAdbSetupActivity.colors.outlineVariant.toArgb());cornerRadius=dp(BlueDotAppearance.BUTTON_RADIUS).toFloat()},null)
-        setOnClickListener{action()}
-    }
     /** Step 9: the two ways to stay connected look alike, so neither reads as the recommended one. */
     private fun choice(title:String,way:String,body:String,action:()->Unit){add(object:LinearLayout(this){
         override fun getAccessibilityClassName():CharSequence=Button::class.java.name

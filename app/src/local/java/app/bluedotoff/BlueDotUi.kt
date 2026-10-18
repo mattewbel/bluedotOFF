@@ -506,7 +506,7 @@ private fun pickerReason(a:DiscoveredApp,scope:ApplicationScope=ApplicationScope
         // While searching, a matching app that cannot be hidden is listed after them with the reason, so the
         // user does not think the search or the scan missed it. Nothing about it can be selected.
         // Picked apps are not "unavailable": a chosen shared group leaves the list and shows as chips above.
-        val unavailable=if(m.query.isBlank())emptyList() else rows.filterNot{it in available||it.packageName in m.picked}
+        val unavailable=if(m.query.isBlank())emptyList() else available.toHashSet().let{shown->rows.filterNot{it in shown||it.packageName in m.picked}}
         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
             // Keep normal text-field padding while allowing larger accessibility text to grow.
             val searchHeight=(32f+20f*LocalDensity.current.fontScale).coerceAtLeast(52f).dp

@@ -15,7 +15,6 @@ object WatchPolicy {
     }
     /** A fresh read must match the recorded install. An app update is allowed; reinstall/UID/signature change is not.
      *  A group uses the same rule as the manual group write: one usable member, companions pinned but never granted. */
-    fun mayReapply(entries:List<Entry>,fresh:List<Snapshot>,firmware:Firmware,boot:String)=skipReason(entries,fresh,firmware,boot)==null
     private fun updated(e:Entry,s:Snapshot)=e.state==TargetState.NEEDS_REAPPLY_UPDATE||e.identity.versionCode!=s.identity.versionCode||e.identity.lastUpdateTime!=s.identity.lastUpdateTime
     /** Why the watch leaves this unit alone (null = go ahead). Logged without changing anything. */
     fun skipReason(entries:List<Entry>,fresh:List<Snapshot>,firmware:Firmware,boot:String):String? {

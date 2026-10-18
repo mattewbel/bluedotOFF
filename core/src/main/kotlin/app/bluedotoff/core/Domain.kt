@@ -165,9 +165,8 @@ class SafetyEngine(private val port: TargetPort, private val journal: Journal, p
             if(!result.success){stopped=true;if(reason.isBlank())reason=result.error}
             if(!callbackFailed)try{onResult(result)}catch(_:Exception){callbackFailed=true;stopped=true;reason="작업 결과를 확인하지 못했습니다. 등록 기록을 유지했습니다."}
         }
-        fun result(pkg:String,entry:Entry)=BatchResult(pkg,entry,if(entry.state in listOf(TargetState.APPLIED,TargetState.NOT_APPLIED))"" else entry.error.ifBlank{"현재 상태 확인 필요"})
         fun failure(operation:Verification,error:Exception) {
-            try { publish(result(operation.before.identity.packageName,failed(operation,error))) }
+            try { publish(BatchResult.of(operation.before.identity.packageName,failed(operation,error))) }
             catch(storage:JournalPersistenceException){storageFailed=true;publish(BatchResult(operation.before.identity.packageName,operation.pending,storage.message!!))}
         }
         while(cursor<packages.size || waiting.isNotEmpty()) {
@@ -182,7 +181,7 @@ class SafetyEngine(private val port: TargetPort, private val journal: Journal, p
                     val operation=due.operation
                     checkSettled(operation.before,operation.wanted,operation.wrote,if(due.phase==1)"settled_500ms" else "settled_1500ms")
                     if(due.phase==1){due.phase=2;due.due=elapsed()+1000}
-                    else {waiting.remove(due);publish(result(operation.before.identity.packageName,finished(operation)))}
+                    else {waiting.remove(due);publish(BatchResult.of(operation.before.identity.packageName,finished(operation)))}
                 }catch(error:Exception){waiting.remove(due);failure(due.operation,error)}
                 continue
             }
@@ -190,7 +189,7 @@ class SafetyEngine(private val port: TargetPort, private val journal: Journal, p
                 val pkg=packages[cursor++]
                 try {
                     when(val prepared=prepare(pkg,hide,canStart,waiting.map{it.operation.before.identity.uid}.toSet(),show)) {
-                        is Started.Finished -> publish(result(pkg,prepared.entry))
+                        is Started.Finished -> publish(BatchResult.of(pkg,prepared.entry))
                         is Started.Checking -> {
                             val operation=prepared.operation
                             try {
@@ -260,12 +259,4 @@ object Reconcile {
         if (entry.identity.versionCode != snapshot.identity.versionCode || entry.identity.lastUpdateTime != snapshot.identity.lastUpdateTime || entry.state == TargetState.NEEDS_REAPPLY_UPDATE) return entry.copy(state = TargetState.NEEDS_REAPPLY_UPDATE)
         return entry.copy(state = if (snapshot.bit == 0) TargetState.APPLIED else TargetState.NEEDS_REAPPLY_POLICY)
     }
-}
-
-/** Access timestamps are display data, never permission invariants or synthetic recency. */
-object CandidateOrder {
-    fun sort(items: List<Snapshot>, historyAvailable: Boolean): List<Snapshot> = items.sortedWith(
-        if (historyAvailable) compareByDescending<Snapshot> { it.lastLocationAccess ?: Long.MIN_VALUE }.thenBy { it.label.lowercase() }.thenBy { it.identity.packageName }
-        else compareBy<Snapshot> { it.label.lowercase() }.thenBy { it.identity.packageName }
-    )
 }

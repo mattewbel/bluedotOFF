@@ -21,26 +21,32 @@ data class UiModel(val gate: Gate = Gate.CHECKING, val page: Page = Page.HOME, v
     }
     val canOperate get()=connected||automaticReady
     val displayApps get() = if(discovered.isNotEmpty()) discovered else candidates.map{s->DiscoveredApp(s.identity.packageName,s.label,s.identity.uid,launcher=true,access=LocationAccess(fine=s.lastLocationAccess),block=s.copy(applicationScope=applicationScope).rejectionReason(),uidClass=s.ownership.uidClass,sharedUserId=s.sharedUserId,uidPeers=s.peers)}
-    val managedPackages get() = entries.filter{it.enabled}.map{it.identity.packageName}.toSet()
+    // Per-row lookups, built once per model. Every change makes a new UiModel (copy), so they are never stale.
+    // 1.1.4: each picker row searched every record several times (~40 ms per key typed in the full add-apps list).
+    private val entriesByPackage by lazy{entries.groupBy{it.identity.packageName}}
+    private val candidateByPackage by lazy{HashMap<String,Snapshot>().also{m->candidates.forEach{m.putIfAbsent(it.identity.packageName,it)}}}
+    private val discoveredByUid by lazy{discovered.groupBy{it.uid}}
+    private fun entriesOf(pkg:String)=entriesByPackage[pkg].orEmpty()
+    val managedPackages by lazy{entries.filter{it.enabled}.map{it.identity.packageName}.toSet()}
     val appHistory get() = HistoryPolicy.list(displayApps,managedPackages,HistoryView.APPS)
     // Home always summarizes curated history, independently of the selected History tab.
     val recentHistoryApp get() = appHistory.firstOrNull()
     val historyApps get() = HistoryPolicy.list(displayApps,managedPackages,historyView)
     val pickerApps get() = pickerRows ?: ScopePolicy.list(displayApps,applicationScope,filter,query,historyAvailable)
-    fun groupChosen(pkg:String)=approvedGroups.any{pkg in it}||entries.any{it.enabled&&it.identity.packageName==pkg&&it.groupIdentities.isNotEmpty()}
-    fun selectionGroup(pkg:String)=approvedGroups.firstOrNull{pkg in it}?:entries.firstOrNull{it.identity.packageName==pkg&&it.groupIdentities.isNotEmpty()}?.groupIdentities?.map{it.packageName}?:listOf(pkg)
-    fun canAct(a:DiscoveredApp)=(a.canCheck||(applicationScope==ApplicationScope.ALL&&a.check==CandidateCheck.AVAILABLE&&a.block.isEmpty())||((applicationScope!=ApplicationScope.NORMAL&&a.uidPeers.size>1)&&groupChosen(a.packageName))) && entries.none{it.identity.packageName==a.packageName&&it.state in listOf(TargetState.FAILED_ROLLBACK,TargetState.SHARED_UID_CHANGED,TargetState.NEEDS_REVIEW)} && (candidates.firstOrNull{it.identity.packageName==a.packageName}?.let{ScopePolicy.includes(it,applicationScope)&&(it.copy(applicationScope=applicationScope).safe()||groupChosen(a.packageName))}!=false)
+    fun groupChosen(pkg:String)=approvedGroups.any{pkg in it}||entriesOf(pkg).any{it.enabled&&it.groupIdentities.isNotEmpty()}
+    fun selectionGroup(pkg:String)=approvedGroups.firstOrNull{pkg in it}?:entriesOf(pkg).firstOrNull{it.groupIdentities.isNotEmpty()}?.groupIdentities?.map{it.packageName}?:listOf(pkg)
+    fun canAct(a:DiscoveredApp)=(a.canCheck||(applicationScope==ApplicationScope.ALL&&a.check==CandidateCheck.AVAILABLE&&a.block.isEmpty())||((applicationScope!=ApplicationScope.NORMAL&&a.uidPeers.size>1)&&groupChosen(a.packageName))) && entriesOf(a.packageName).none{it.state in listOf(TargetState.FAILED_ROLLBACK,TargetState.SHARED_UID_CHANGED,TargetState.NEEDS_REVIEW)} && (candidateByPackage[a.packageName]?.let{ScopePolicy.includes(it,applicationScope)&&(it.copy(applicationScope=applicationScope).safe()||groupChosen(a.packageName))}!=false)
     /** Already hidden and verified: selecting it again would only re-check, so the picker leaves it out. */
-    fun isApplied(pkg:String)=entries.any{it.identity.packageName==pkg&&it.enabled&&it.state==TargetState.APPLIED&&it.settlingVerified}
+    fun isApplied(pkg:String)=entriesOf(pkg).any{it.enabled&&it.state==TargetState.APPLIED&&it.settlingVerified}
     /** Selectable in the picker: actionable and not already hidden. Applied apps stay in the main list as "적용 중". */
     fun canSelect(a:DiscoveredApp)=canAct(a)&&!isApplied(a.packageName)&&!leftOff(a)
     /** Location indicator OFF (latest read) and no bluedotOFF record that could restore it, e.g. after bluedotOFF was
      *  removed and installed again. Hiding it changes nothing, so the picker does not offer it; "표시 켜기" can turn it on. */
     fun leftOff(a:DiscoveredApp):Boolean {
-        if(a.packageName in managedPackages||entries.any{it.identity.packageName==a.packageName&&it.state in listOf(TargetState.FAILED_ROLLBACK,TargetState.SHARED_UID_CHANGED,TargetState.NEEDS_REVIEW)})return false
+        if(a.packageName in managedPackages||entriesOf(a.packageName).any{it.state in listOf(TargetState.FAILED_ROLLBACK,TargetState.SHARED_UID_CHANGED,TargetState.NEEDS_REVIEW)})return false
         // The latest read wins over the inventory classification, which may predate a restore to an original OFF or
         // Android's own change (GPT review 2026-10-11). Without a read, the inventory classification is used.
-        val s=candidates.firstOrNull{it.identity.packageName==a.packageName}?:return PickerPolicy.alreadyNotSensitive(a)
+        val s=candidateByPackage[a.packageName]?:return PickerPolicy.alreadyNotSensitive(a)
         return a.canCheck&&a.launcher&&!a.internalService&&s.fineDeclared&&s.fineGranted&&s.fineMode in listOf(0,4)&&s.bit==0
     }
     val leftOffApps get()=displayApps.filter(::leftOff).sortedWith(compareBy<DiscoveredApp>{it.preinstalled}.thenBy{it.label.lowercase()})
@@ -52,14 +58,14 @@ data class UiModel(val gate: Gate = Gate.CHECKING, val page: Page = Page.HOME, v
     fun canPickGroup(a:DiscoveredApp)=canInspectGroup(a)&&!groupChosen(a.packageName)&&a.check!=CandidateCheck.NEEDS_CHECK&&a.packageName !in rejectedGroups&&groupMayShowIndicator(a)
     /** A shared group is offered only if some member declares precise location: groups without it never show the blue
      *  indicator and would only be rejected after reading them (e.g. NFC, MTP). Unclassified members keep the group offered. */
-    private fun groupMayShowIndicator(a:DiscoveredApp)=discovered.filter{it.uid==a.uid}.ifEmpty{listOf(a)}.any{it.indicator.eligibility!=IndicatorEligibility.INELIGIBLE_OP}
+    private fun groupMayShowIndicator(a:DiscoveredApp)=discoveredByUid[a.uid].orEmpty().ifEmpty{listOf(a)}.any{it.indicator.eligibility!=IndicatorEligibility.INELIGIBLE_OP}
     fun canInspectGroup(a:DiscoveredApp)=applicationScope!=ApplicationScope.NORMAL&&a.uidPeers.size>1
     fun canActFromHistory(a:DiscoveredApp)=canSelect(a)&&HistoryPolicy.relevant(a,managedPackages)
     fun historyStatus(a:DiscoveredApp):String {
-        val e=entries.lastOrNull{it.identity.packageName==a.packageName&&it.enabled}
+        val e=entriesOf(a.packageName).lastOrNull{it.enabled}
         if(e!=null) return status(e)
         if(a.block.isNotEmpty())return a.block
-        val s=candidates.firstOrNull{it.identity.packageName==a.packageName}
+        val s=candidateByPackage[a.packageName]
         if(s!=null&&!s.safe())return "지원 안 됨 · ${s.rejectionReason()}"
         if(!HistoryPolicy.relevant(a,emptySet()))return "위치 사용 기록 · 파란 위치 표시 대상인지 확인 안 됨"
         return if(connected && a.access.fine!=null && s?.safe()==true && s.bit!=0 && a.packageName in freshPackages) "파란 위치 표시 대상" else "앱 상태 확인 필요"

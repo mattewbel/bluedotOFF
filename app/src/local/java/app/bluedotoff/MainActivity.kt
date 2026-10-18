@@ -484,7 +484,7 @@ class MainActivity : ComponentActivity() {
                             while(groups.size<8&&at<targets.size){val g=groupMap[targets[at]]?:break;groups+=g;at+=g.size}
                             SharedGroupEngine(active,journal,System::currentTimeMillis,{BootSession.current(app)},observe={phase,s,wrote->active.recordVerification(phase,s,wrote);if(phase=="settled_1500ms")observed[s.identity.packageName]=s})
                                 .executeWindow(groups,hide,{ForegroundState.canStartTargets}){group,outcome->
-                                    val groupResults=outcome.fold({members->members.map{e->BatchResult(e.identity.packageName,e,if(e.state in setOf(TargetState.APPLIED,TargetState.NOT_APPLIED))"" else e.error.ifBlank{"현재 상태 확인 필요"})}},{e->
+                                    val groupResults=outcome.fold({members->members.map{e->BatchResult.of(e.identity.packageName,e)}},{e->
                                         val saved=runCatching{journal.entries()}.getOrDefault(emptyList())
                                         group.map{p->BatchResult(p,saved.lastOrNull{it.identity.packageName==p},e.message?:"공유 앱 묶음을 확인해야 해요.")}
                                     })

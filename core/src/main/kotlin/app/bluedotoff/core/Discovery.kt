@@ -96,7 +96,14 @@ object DiscoveryPolicy {
     },historyAvailable)
 }
 
-data class BatchResult(val packageName: String, val entry: Entry? = null, val error: String = "") { val success get() = error.isEmpty() && entry != null }
+data class BatchResult(val packageName: String, val entry: Entry? = null, val error: String = "") {
+    val success get() = error.isEmpty() && entry != null
+    companion object {
+        /** The only states a finished operation may end in without an error. */
+        val DONE=setOf(TargetState.APPLIED,TargetState.NOT_APPLIED)
+        fun of(pkg:String,entry:Entry)=BatchResult(pkg,entry,if(entry.state in DONE)"" else entry.error.ifBlank{"현재 상태 확인 필요"})
+    }
+}
 /** Each target has its own durable transaction. No batch rollback exists. */
 object TargetBatch {
     /** One stop latch spans all helper connections of the same user operation. */
@@ -107,7 +114,7 @@ object TargetBatch {
             else try {
                 val e=action(pkg)
                 if(e.state in listOf(TargetState.FAILED_ROLLBACK,TargetState.SHARED_UID_CHANGED,TargetState.NEEDS_REVIEW))stopped=true
-                if(e.state in listOf(TargetState.APPLIED,TargetState.NOT_APPLIED))BatchResult(pkg,e) else BatchResult(pkg,e,e.error.ifBlank{"현재 상태 확인 필요"})
+                BatchResult.of(pkg,e)
             }catch(e:OwnershipChangedException){stopped=true;BatchResult(pkg,error=e.message?:"앱 묶음 상태 확인 필요")}
             catch(e:JournalPersistenceException){stopped=true;BatchResult(pkg,error=e.message?:"복원 기록 저장 확인 필요")}
             catch(e:SafetyException){BatchResult(pkg,error=e.message?:"현재 상태 확인 필요")}

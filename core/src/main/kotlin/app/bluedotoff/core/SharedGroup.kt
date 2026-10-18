@@ -56,7 +56,7 @@ class SharedGroupEngine(private val port:TargetPort,private val journal:Journal,
         var cursor=0;var stopped=false;var storageFailed=false;var callbackFailed=false
         fun publish(group:List<String>,result:Result<List<Entry>>){
             if(result.exceptionOrNull() is JournalPersistenceException)storageFailed=true
-            if(result.getOrNull()?.all{it.state in setOf(TargetState.APPLIED,TargetState.NOT_APPLIED)}!=true)stopped=true
+            if(result.getOrNull()?.all{it.state in BatchResult.DONE}!=true)stopped=true
             if(!callbackFailed)try{onResult(group,result)}catch(_:Exception){callbackFailed=true;stopped=true}
         }
         while(cursor<groups.size||waiting.isNotEmpty()){

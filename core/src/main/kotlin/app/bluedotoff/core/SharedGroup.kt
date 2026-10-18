@@ -35,12 +35,65 @@ object SharedGroupPolicy {
 class SharedGroupEngine(private val port:TargetPort,private val journal:Journal,private val now:()->Long,private val boot:()->String,
     private val wait:(Long)->Unit={Thread.sleep(it)},private val observe:(String,Snapshot,Boolean)->Unit={_,_,_->}) {
     private fun durable(entries:List<Entry>){val saved=try{journal.commitGroup(entries)}catch(_:Exception){false};if(!saved)throw JournalPersistenceException()}
+    private class Started(val names:List<String>,val before:List<Snapshot>,val pending:List<Entry>,val original:Int,val wanted:Int,val hide:Boolean){var attempted=false}
     fun execute(packages:List<String>,hide:Boolean,canStart:()->Boolean):List<Entry> = synchronized(SafetyEngine.writeLock) {
+        val op=start(packages,hide)
+        try {
+            write(op,canStart)
+            for((phase,ms) in listOf("immediate" to 0L,"settled_500ms" to 500L,"settled_1500ms" to 1000L)){if(ms>0)wait(ms);check(op,phase)}
+            finish(op)
+        }catch(e:Exception){fail(op,e)}
+    }
+    /** 1.1.4: consecutive groups with their waits overlapped (one after another they took ~1.65 s each). Each group
+     *  keeps its own durable PENDING record, preflight, single setter and 0/500/1500 ms checks; only the waits overlap.
+     *  A group that does not finish cleanly stops new starts; groups already written still get every check.
+     *  [onResult] gets each started group once: its entries, or the exception the sequential call would throw
+     *  (after [onResult] itself throws, the remaining results are not delivered and nothing new starts). */
+    fun executeWindow(groups:List<List<String>>,hide:Boolean,canStart:()->Boolean,elapsed:()->Long={System.nanoTime()/1_000_000},
+        onResult:(List<String>,Result<List<Entry>>)->Unit):Unit = synchronized(SafetyEngine.writeLock) {
+        class Waiting(val op:Started,var phase:Int,var due:Long)
+        val waiting=mutableListOf<Waiting>()
+        var cursor=0;var stopped=false;var storageFailed=false;var callbackFailed=false
+        fun publish(group:List<String>,result:Result<List<Entry>>){
+            if(result.exceptionOrNull() is JournalPersistenceException)storageFailed=true
+            if(result.getOrNull()?.all{it.state in setOf(TargetState.APPLIED,TargetState.NOT_APPLIED)}!=true)stopped=true
+            if(!callbackFailed)try{onResult(group,result)}catch(_:Exception){callbackFailed=true;stopped=true}
+        }
+        while(cursor<groups.size||waiting.isNotEmpty()){
+            if(!stopped&&!canStart())stopped=true
+            // Broken storage: no rollback or further write; the PENDING records are settled by recover() on app open.
+            if(storageFailed){waiting.forEach{publish(it.op.names,Result.failure(JournalPersistenceException()))};waiting.clear();break}
+            val due=waiting.minByOrNull{it.due}
+            if(due!=null&&due.due<=elapsed()){
+                try{
+                    check(due.op,if(due.phase==1)"settled_500ms" else "settled_1500ms")
+                    if(due.phase==1){due.phase=2;due.due=elapsed()+1000}
+                    else{waiting.remove(due);publish(due.op.names,runCatching{finish(due.op)})}
+                }catch(e:Exception){waiting.remove(due);publish(due.op.names,runCatching{fail(due.op,e)})}
+                continue
+            }
+            if(!stopped&&cursor<groups.size&&waiting.size<HideWindowOutcome.MAX_IN_FLIGHT){
+                val group=groups[cursor++]
+                val op=try{start(group,hide,waiting.map{it.op.before.first().identity.uid}.toSet())}catch(e:Exception){publish(group,Result.failure(e));continue}
+                try{write(op,canStart);check(op,"immediate");waiting+=Waiting(op,1,elapsed()+500)}
+                catch(e:Exception){publish(group,runCatching{fail(op,e)})}
+                continue
+            }
+            if(waiting.isEmpty())break
+            try{wait((waiting.minOf{it.due}-elapsed()).coerceAtLeast(1))}
+            catch(e:Exception){
+                // Re-check per group: once a save failed, later groups get no rollback setter (same as SafetyEngine.userWindow).
+                stopped=true;waiting.forEach{publish(it.op.names,if(storageFailed)Result.failure(JournalPersistenceException()) else runCatching{fail(it.op,e)})};waiting.clear()
+            }
+        }
+    }
+    private fun start(packages:List<String>,hide:Boolean,inFlightUids:Set<Int> = emptySet()):Started {
         require(packages.distinct().size==packages.size)
         val fw=port.compatibleFirmware()
         if(!fw.osSupported||fw.abiProfile.isBlank())throw SafetyException("기기 호환성을 확인하지 못했습니다.")
         val names=packages.sorted();val before=names.map(port::read);SharedGroupPolicy.validate(before)
         before.forEach{observe("before",it,false)}
+        if(before.first().identity.uid in inFlightUids)throw OwnershipChangedException()
         val identities=before.map{it.identity}
         val all=journal.entries();val old=names.map{p->all.lastOrNull{it.identity.packageName==p&&it.identity.userId==0}
             // B-10: same rule as single apps (SafetyEngine.prepare): a restored, unregistered record or an old install's record
@@ -59,39 +112,42 @@ class SharedGroupEngine(private val port:TargetPort,private val journal:Journal,
         val wanted=if(hide)0 else original
         val pending=before.mapIndexed{i,s->Entry(s.identity,s.label,original,true,if(hide)TargetState.PENDING_HIDE else TargetState.PENDING_RESTORE,now(),fw.key,boot(),old[i]?.changedByUs?:false,invariantDigest=s.invariantDigest(),sharedUserId=s.sharedUserId,groupIdentities=identities)}
         durable(pending)
-        var attempted=false
-        try {
-            val preflight=names.map(port::read)
-            preflight.forEach{observe("preflight",it,false)}
-            if(!SharedGroupPolicy.ownership(before,preflight))throw OwnershipChangedException()
-            if(!SharedGroupPolicy.same(before,preflight,before.first().bit))throw SafetyException("적용 직전 공유 앱 상태가 바뀌었습니다.")
-            if(!canStart())throw SafetyException("화면을 떠나 공유 앱 묶음은 변경하지 않았습니다.")
-            if(before.first().bit!=wanted){attempted=true;port.writeFineGroupChecked(preflight,wanted)}
-            for((phase,ms) in listOf("immediate" to 0L,"settled_500ms" to 500L,"settled_1500ms" to 1000L)){
-                if(ms>0)wait(ms)
-                val current=names.map(port::read)
-                current.forEach{observe(phase,it,attempted)}
-                if(!SharedGroupPolicy.ownership(before,current))throw OwnershipChangedException()
-                if(!SharedGroupPolicy.same(before,current,wanted))throw SafetyException("공유 앱 묶음의 지속성 확인에 실패했습니다.")
-            }
-            val finished=pending.map{it.copy(enabled=hide,state=if(hide)TargetState.APPLIED else TargetState.NOT_APPLIED,settlingVerified=true,changedByUs=hide&&(attempted||it.changedByUs),lastVerifiedTime=now())}
-            durable(finished);finished
-        }catch(e:Exception){
-            if(e is JournalPersistenceException)throw e
-            var changed=e is OwnershipChangedException
-            val restored=if(!attempted)true else try{
+        return Started(names,before,pending,original,wanted,hide)
+    }
+    private fun write(op:Started,canStart:()->Boolean) {
+        val preflight=op.names.map(port::read)
+        preflight.forEach{observe("preflight",it,false)}
+        if(!SharedGroupPolicy.ownership(op.before,preflight))throw OwnershipChangedException()
+        if(!SharedGroupPolicy.same(op.before,preflight,op.before.first().bit))throw SafetyException("적용 직전 공유 앱 상태가 바뀌었습니다.")
+        if(!canStart())throw SafetyException("화면을 떠나 공유 앱 묶음은 변경하지 않았습니다.")
+        if(op.before.first().bit!=op.wanted){op.attempted=true;port.writeFineGroupChecked(preflight,op.wanted)}
+    }
+    private fun check(op:Started,phase:String) {
+        val current=op.names.map(port::read)
+        current.forEach{observe(phase,it,op.attempted)}
+        if(!SharedGroupPolicy.ownership(op.before,current))throw OwnershipChangedException()
+        if(!SharedGroupPolicy.same(op.before,current,op.wanted))throw SafetyException("공유 앱 묶음의 지속성 확인에 실패했습니다.")
+    }
+    private fun finish(op:Started):List<Entry> {
+        val finished=op.pending.map{it.copy(enabled=op.hide,state=if(op.hide)TargetState.APPLIED else TargetState.NOT_APPLIED,settlingVerified=true,changedByUs=op.hide&&(op.attempted||it.changedByUs),lastVerifiedTime=now())}
+        durable(finished);return finished
+    }
+    private fun fail(op:Started,e:Exception):List<Entry> {
+        if(e is JournalPersistenceException)throw e
+        val names=op.names;val before=op.before;val original=op.original
+        var changed=e is OwnershipChangedException
+        val restored=if(!op.attempted)true else try{
                 val fresh=names.map(port::read)
-                changed=changed||!SharedGroupPolicy.ownership(before,fresh)
-                if(changed)false else {
-                    SharedGroupPolicy.validate(fresh)
-                    if(!SharedGroupPolicy.same(before,fresh,fresh.first().bit))false
-                    else {if(fresh.first().bit!=original)port.writeFineGroupChecked(fresh,original);SharedGroupPolicy.same(before,names.map(port::read),original)}
-                }
-            }catch(_:Exception){false}
-            val state=if(changed)TargetState.NEEDS_REVIEW else if(restored)TargetState.FAILED_SAFE else TargetState.FAILED_ROLLBACK
-            val failed=pending.map{it.copy(state=state,error=e.message?:"공유 앱 묶음을 확인해야 해요.")}
-            durable(failed);failed
-        }
+            changed=changed||!SharedGroupPolicy.ownership(before,fresh)
+            if(changed)false else {
+                SharedGroupPolicy.validate(fresh)
+                if(!SharedGroupPolicy.same(before,fresh,fresh.first().bit))false
+                else {if(fresh.first().bit!=original)port.writeFineGroupChecked(fresh,original);SharedGroupPolicy.same(before,names.map(port::read),original)}
+            }
+        }catch(_:Exception){false}
+        val state=if(changed)TargetState.NEEDS_REVIEW else if(restored)TargetState.FAILED_SAFE else TargetState.FAILED_ROLLBACK
+        val failed=op.pending.map{it.copy(state=state,error=e.message?:"공유 앱 묶음을 확인해야 해요.")}
+        durable(failed);return failed
     }
     /** B-1 (owner decision 2026-10-17): settle a group left PENDING by an interruption (app killed or the last journal
      *  save failed), only when the app is opened. Every member must still be the recorded install with the recorded

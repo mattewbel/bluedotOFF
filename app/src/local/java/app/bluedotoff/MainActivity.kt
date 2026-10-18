@@ -477,26 +477,22 @@ class MainActivity : ComponentActivity() {
                             active.recordVerification(phase,snapshot,wrote)
                             if(phase=="settled_1500ms")observed[snapshot.identity.packageName]=snapshot
                         })
-                        var shared=groupMap[targets[cursor]]
-                        if(shared!=null){
-                            // Consecutive shared groups reuse this helper (was one helper each: ~2 s start and close per group).
-                            var groupsInHelper=0
-                            while(shared!=null){
-                                val group:List<String> =shared
-                                val groupResults=try{
-                                    val members=SharedGroupEngine(active,journal,System::currentTimeMillis,{BootSession.current(app)},observe={phase,s,wrote->active.recordVerification(phase,s,wrote);if(phase=="settled_1500ms")observed[s.identity.packageName]=s}).execute(group,hide){ForegroundState.canStartTargets}
-                                    members.map{e->BatchResult(e.identity.packageName,e,if(e.state in setOf(TargetState.APPLIED,TargetState.NOT_APPLIED))"" else e.error.ifBlank{"현재 상태 확인 필요"})}
-                                }catch(e:Exception){
-                                    val saved=runCatching{journal.entries()}.getOrDefault(emptyList())
-                                    group.map{p->BatchResult(p,saved.lastOrNull{it.identity.packageName==p},e.message?:"공유 앱 묶음을 확인해야 해요.")}
+                        if(targets[cursor] in groupMap){
+                            // Up to 8 consecutive shared groups in this helper (was one helper each: ~2 s start and close per group),
+                            // their checks overlapped (1.1.4).
+                            val groups=mutableListOf<List<String>>();var at=cursor
+                            while(groups.size<8&&at<targets.size){val g=groupMap[targets[at]]?:break;groups+=g;at+=g.size}
+                            SharedGroupEngine(active,journal,System::currentTimeMillis,{BootSession.current(app)},observe={phase,s,wrote->active.recordVerification(phase,s,wrote);if(phase=="settled_1500ms")observed[s.identity.packageName]=s})
+                                .executeWindow(groups,hide,{ForegroundState.canStartTargets}){group,outcome->
+                                    val groupResults=outcome.fold({members->members.map{e->BatchResult(e.identity.packageName,e,if(e.state in setOf(TargetState.APPLIED,TargetState.NOT_APPLIED))"" else e.error.ifBlank{"현재 상태 확인 필요"})}},{e->
+                                        val saved=runCatching{journal.entries()}.getOrDefault(emptyList())
+                                        group.map{p->BatchResult(p,saved.lastOrNull{it.identity.packageName==p},e.message?:"공유 앱 묶음을 확인해야 해요.")}
+                                    })
+                                    groupResults.forEach(rememberResult)
+                                    results.addAll(groupResults);cursor+=group.size
+                                    if(groupResults.any{!it.success}){if(!pipelineStopped)failure=groupResults.first{!it.success}.error;pipelineStopped=true;group.forEach{observed.remove(it)}}
+                                    report(BatchProgress(cursor,targets.size,BatchPhase.CHECKING))
                                 }
-                                groupResults.forEach(rememberResult)
-                                results.addAll(groupResults);cursor+=group.size;pipelineStopped=groupResults.any{!it.success}
-                                if(pipelineStopped){failure=groupResults.first{!it.success}.error;group.forEach{observed.remove(it)}}
-                                report(BatchProgress(cursor,targets.size,BatchPhase.CHECKING))
-                                groupsInHelper++
-                                shared=if(!pipelineStopped&&!runner.stopped&&groupsInHelper<8&&ForegroundState.canStartTargets&&cursor<targets.size)groupMap[targets[cursor]] else null
-                            }
                         } else if(targets.size>1) {
                             val completedBefore=results.size
                             var completed=0

@@ -2,7 +2,7 @@
 
 [English](README.md) | **한국어**
 
-**[⬇ 최신 APK 다운로드](https://github.com/mattewbel/bluedotOFF/releases/latest)** — Assets에서 `bluedotOFF-1.1.2-release.apk`를 받으세요.
+**[⬇ 최신 APK 다운로드](https://github.com/mattewbel/bluedotOFF/releases/latest)** — Assets에서 `bluedotOFF-1.1.3-release.apk`를 받으세요.
 
 > 🔒 **오픈소스 · 광고·분석·외부 서버 없음 · 루팅 불필요**  
 > 무선 디버깅 연결은 휴대폰 안(127.0.0.1)에서만 이뤄지고, 위치 권한은 그대로 둔 채 위치 표시 설정 한 칸(`0x100`)만 바꿉니다.  
@@ -66,7 +66,7 @@ bluedotOFF의 목표는 이 하나입니다.
 
 ## 설치
 
-[Releases](../../releases)에서 최신 APK(`bluedotOFF-1.1.2-release.apk`)를 받아 설치합니다. 처음 설치할 때 "출처를 알 수 없는 앱 설치" 허용이 필요할 수 있습니다.
+[Releases](../../releases)에서 최신 APK(`bluedotOFF-1.1.3-release.apk`)를 받아 설치합니다. 처음 설치할 때 "출처를 알 수 없는 앱 설치" 허용이 필요할 수 있습니다.
 
 ## 필요한 것
 

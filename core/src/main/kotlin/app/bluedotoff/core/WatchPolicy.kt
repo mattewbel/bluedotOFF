@@ -38,7 +38,7 @@ object WatchPolicy {
 }
 
 /** D-2a: one event window of the watch helper (the 750 ms check or the 5 s follow-up). Each event restarts the [delay];
- *  a steady stream used to postpone the check forever. Once the window has been open for [cap], [add] hands back its
+ *  a steady stream used to postpone the check forever. The first event after the window is [cap] old hands back its
  *  names to send right away, and keeps them, so every app is still checked a full [delay] after its latest event. */
 class EventWindow(val delay:Long,private val cap:Long) {
     private val names=linkedSetOf<String>()

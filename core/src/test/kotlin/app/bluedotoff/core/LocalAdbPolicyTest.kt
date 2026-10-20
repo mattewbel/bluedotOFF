@@ -14,5 +14,5 @@ class LocalAdbPolicyTest {
     @Test fun malformedRemoteInputCannotAllocateOrForwardCode(){for(input in listOf("","12345","1234567","12345x","0 246810","65536 246810","1  246810","1\n246810","1 246810;id"," 246810"))assertNull(LocalAdbPolicy.reply(input))}
     @Test fun replyMaterialIsCleared(){val reply=LocalAdbPolicy.reply("246810")!!;reply.close();assertTrue(reply.code.all{it==0.toByte()})}
     @Test fun wrongShellUidAndContextFailClosed(){for(pair in listOf(1000 to "u:r:shell:s0",2000 to "u:r:untrusted_app:s0",0 to "u:r:su:s0")){try{LocalAdbPolicy.validateShell(pair.first,pair.second);fail()}catch(_:IllegalArgumentException){}};LocalAdbPolicy.validateShell(2000,"u:r:shell:s0")}
-    @Test fun unsupportedAbiAndChangedFirmwareFailClosed(){for(b in listOf(false to "fp",true to "other")){try{LocalAdbPolicy.validateProfile(b.first,true,true,b.second,"fp");fail()}catch(_:IllegalArgumentException){}};LocalAdbPolicy.validateProfile(true,true,true,"fp","fp")}
+    @Test fun unsupportedAbiAndChangedFirmwareFailClosed(){for(b in listOf(false to "fp",true to "other")){try{LocalAdbPolicy.validateProfile(b.first,b.second,"fp");fail()}catch(_:IllegalArgumentException){}};LocalAdbPolicy.validateProfile(true,"fp","fp")}
 }

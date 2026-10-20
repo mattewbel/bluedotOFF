@@ -61,7 +61,7 @@ object WatchClient {
         require(profile.getLong("appUpdatedAt")==c.packageManager.getPackageInfo(c.packageName,0).lastUpdateTime)
         require(profile.getInt("watchProtocol")==1&&profile.getString("watchId").isNotBlank()&&binder.interfaceDescriptor==WatchProtocol.DESCRIPTOR)
         LocalAdbPolicy.validateShell(profile.getInt("uid"),profile.getString("selinux"))
-        LocalAdbPolicy.validateProfile(profile.getBoolean("abiVerified"),profile.getBoolean("historyAbiVerified"),profile.getBoolean("indicatorAbiVerified"),profile.getString("fingerprint"),Build.FINGERPRINT)
+        LocalAdbPolicy.validateProfile(profile.getBoolean("abiVerified"),profile.getString("fingerprint"),Build.FINGERPRINT)
         synchronized(queueLock){
             val previous=current
             if(previous?.binder==binder)return true
@@ -123,7 +123,8 @@ object WatchClient {
         block(Session(c,connection))
     }
     /** Start only during a visible app visit, through the existing authenticated wireless path. Never turn USB ON. */
-    fun ensureStarted(c:Context,userAction:Boolean=false):Boolean {
+    /** [afterRestart]: [RestartRecoveryJob] may start the watch without a visible screen (R-1); everything else needs one. */
+    fun ensureStarted(c:Context,userAction:Boolean=false,afterRestart:Boolean=false):Boolean {
         if(!BackgroundWatch.enabled(c))return false
         initialize(c)
         if(available(c))return true
@@ -135,8 +136,8 @@ object WatchClient {
         }
         try{
             if(attaching.await(500,TimeUnit.MILLISECONDS)&&available(c))return true
-            if(!ForegroundState.active||!WifiConnection.connected(c)){WatchLog.event("state","watchStartBlocked foreground=${ForegroundState.active} wifiConnected=${WifiConnection.connected(c)}");lost(c);return false}
-            WirelessWork.run(c,true,hold=false,forceWireless=true){it.startWatch()}
+            if(!(ForegroundState.active||afterRestart)||!WifiConnection.connected(c)){WatchLog.event("state","watchStartBlocked foreground=${ForegroundState.active} wifiConnected=${WifiConnection.connected(c)}");lost(c);return false}
+            WirelessWork.run(c,true,hold=false,forceWireless=true,afterRestart=afterRestart){it.startWatch()}
             check(attaching.await(10,TimeUnit.SECONDS)&&available(c)){"Watch helper handshake failed"}
             return true
         }catch(e:Exception){WatchLog.event("state","watchStartFailed=${e.javaClass.simpleName}");lost(c);return false}

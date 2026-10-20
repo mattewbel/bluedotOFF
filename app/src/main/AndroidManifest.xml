@@ -24,6 +24,7 @@
         <service android:name="app.bluedotoff.adb.WirelessReleaseJob" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE" />
         <!-- Opt-in daily update check for background-watch users (off by default). Only the system binds it. -->
         <service android:name="app.bluedotoff.UpdateCheckJob" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE" />
+        <service android:name="app.bluedotoff.RestartRecoveryJob" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE" />
         <provider android:name="app.bluedotoff.adb.WatchBridgeProvider" android:authorities="app.bluedotoff.watch" android:exported="true" android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" tools:ignore="ExportedContentProvider" />
         <activity android:name="androidx.compose.ui.tooling.PreviewActivity" tools:node="remove" tools:ignore="MissingClass" />
         <!-- Intentional removal, not an instantiated app component. -->

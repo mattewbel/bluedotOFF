@@ -9,7 +9,7 @@ import java.util.Locale
 import java.util.UUID
 
 enum class ReapplySource(val label:String) {
-    BACKGROUND("백그라운드 감시"), APP_OPEN("앱을 열 때"), MANUAL("직접 재적용")
+    BACKGROUND("백그라운드 감시"), APP_OPEN("앱을 열 때"), MANUAL("직접 재적용"), RESTART("재시작 후")
 }
 data class ReapplyHistoryItem(val id:String,val packageName:String,val label:String,val at:Long,val success:Boolean,val source:ReapplySource)
 

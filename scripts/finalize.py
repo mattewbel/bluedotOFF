@@ -18,10 +18,10 @@ for variant,suffix,expected in [('localDebug','','3b3b208f92d3d437acf30c333d9a7b
     assert {e.attrib[android+'name'] for e in manifest.findall('uses-permission')}==permissions
     application=manifest.find('application');assert application.attrib[android+'allowBackup']=='false'
     services={s.attrib[android+'name']:s for s in application.findall('service')}
-    assert set(services)=={'app.bluedotoff.adb.PairingLifetimeService','app.bluedotoff.adb.WirelessReleaseJob','app.bluedotoff.UpdateCheckJob'}
+    assert set(services)=={'app.bluedotoff.adb.PairingLifetimeService','app.bluedotoff.adb.WirelessReleaseJob','app.bluedotoff.UpdateCheckJob','app.bluedotoff.RestartRecoveryJob'}
     pairing=services['app.bluedotoff.adb.PairingLifetimeService']
     assert pairing.attrib[android+'exported']=='false' and pairing.attrib[android+'foregroundServiceType']=='shortService' and pairing.attrib[android+'stopWithTask']=='true'
-    for name in ['app.bluedotoff.adb.WirelessReleaseJob','app.bluedotoff.UpdateCheckJob']:
+    for name in ['app.bluedotoff.adb.WirelessReleaseJob','app.bluedotoff.UpdateCheckJob','app.bluedotoff.RestartRecoveryJob']:
         assert services[name].attrib[android+'exported']=='false' and services[name].attrib[android+'permission']=='android.permission.BIND_JOB_SERVICE'
     assert all('shizuku' not in str(e.attrib).lower() for e in manifest.iter())
     assert next(e for e in application.findall('activity') if e.attrib[android+'name'].endswith('LocalAdbSetupActivity')).attrib[android+'exported']=='false'

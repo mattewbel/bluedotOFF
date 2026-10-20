@@ -12,7 +12,8 @@ object SingletonSupport {
         return evaluate(proof,firmware,info,signers,BuildConfig.DEBUG)
     }
     internal fun evaluate(proof:JSONObject,firmware:Firmware,info:PackageInfo,signers:List<String>?,debug:Boolean):Boolean {
-        if(proof.optString("fingerprint")!=firmware.fingerprint || proof.optString("abiProfile")!=firmware.abiProfile)return false
+        // A verified proof also holds after a firmware update (1.2.0, R-2); the fresh sole-peer check still runs per write.
+        if(proof.optString("state")!="VERIFIED"&&(proof.optString("fingerprint")!=firmware.fingerprint || proof.optString("abiProfile")!=firmware.abiProfile))return false
         return when(proof.optString("state")) {
             "VERIFIED" -> proof.optString("evidenceId").isNotBlank()
             "TRIAL_ONLY" -> debug && proof.optString("signerSha256").isNotBlank() && info.packageName==proof.optString("packageName") &&

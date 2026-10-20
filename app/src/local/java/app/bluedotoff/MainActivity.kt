@@ -159,7 +159,7 @@ class MainActivity : ComponentActivity() {
         else @Suppress("DEPRECATION") registerReceiver(packageChanges,packageFilter)
         wifiObserver=WifiConnection.observe(this){runOnUiThread{model=model.copy(automaticReady=automaticReady());if(ForegroundState.active&&!model.busy)refresh()}}
         navigateNotification(intent)
-        setContent { BlueDotApp(model, ::navigate, ::select, ::requestHide, ::requestRestore, ::batchHide, ::restoreAll, ::openBackend, ::openBackend, ::openBackend, ::refreshFromUser, ::allowNotifications, ::dismissNotificationOffer, ::begin, ::loadApps, ::clearNotice, ::togglePick, ::addSelected, ::changeQuery, ::changeFilter, { model=model.copy(homePicked=emptySet());navigate(Page.RESTORE) }, ::toggleHomePick, ::restoreSelected, ::contentShown, pickerRevision, ::historyViewChanged,pickerViewChanged={model=model.copy(pickerView=it,pickerRows=null);filterPicker()},wirelessExit={if(!model.busy)WirelessDebuggingExit.open(this)},toggleAll=::toggleAll,managementChanged=::managementChanged,removeManagementPermission=::removeManagementPermission,sharedInspect={pickGroups(listOf(it))},sharedAccept=::acceptShared,sharedDismiss={sharedGeneration++;model=model.copy(sharedOffer=null)},scopeChange=::chooseScope,reapplyNeeded={perform(it,true)},notificationChanged=::reapplyNotificationChanged,recheck=::recheck,bigGroupsAccept=::acceptBigGroups,bigGroupsDismiss={model=model.copy(bigGroups=emptyList())},rejectedDismiss={model=model.copy(rejectedGroupList=emptyList())},restorePickAll=::toggleAllRestore,showPick=::toggleShowPick,showPickAll=::toggleAllShow,showSelected=::showSelected,refreshHistory=::refreshHistory,autoReapplyChanged=::autoReapplyChanged,openShow={model=model.copy(showPicked=emptySet());navigate(Page.SHOW)},beforeUninstall=::beforeUninstall,uninstallDismiss={model=model.copy(uninstallCheck=null)},openAppInfo=::openAppInfo,copyDiagnostics=::copyDiagnostics,backgroundWatchChanged=::backgroundWatchChanged,openDeveloperOptions={SettingsEntrypoints.developerOptions(this)},openBattery={enable->if(!model.busy)BatteryOptimization.open(this,enable)},dismissUsNotice=::dismissUsNotice,updateOfferAnswer=::updateCheckChanged,updateCheckChanged=::updateCheckChanged,checkUpdateNow=::checkUpdateNow,openUpdate={UpdateCheck.open(this,UpdateCheck.Release(it));model=model.copy(updateCard=null)},skipUpdate={UpdateCheck.skip(this,it);model=model.copy(updateCard=null)}) }
+        setContent { BlueDotApp(model, ::navigate, ::select, ::requestHide, ::requestRestore, ::batchHide, ::restoreAll, ::openBackend, ::openBackend, ::openBackend, ::refreshFromUser, ::allowNotifications, ::dismissNotificationOffer, ::begin, ::loadApps, ::clearNotice, ::togglePick, ::addSelected, ::changeQuery, ::changeFilter, { model=model.copy(homePicked=emptySet());navigate(Page.RESTORE) }, ::toggleHomePick, ::restoreSelected, ::contentShown, pickerRevision, ::historyViewChanged,pickerViewChanged={model=model.copy(pickerView=it,pickerRows=null);filterPicker()},wirelessExit={if(!model.busy)WirelessDebuggingExit.open(this)},toggleAll=::toggleAll,managementChanged=::managementChanged,removeManagementPermission=::removeManagementPermission,sharedInspect={pickGroups(listOf(it))},sharedAccept=::acceptShared,sharedDismiss={sharedGeneration++;model=model.copy(sharedOffer=null)},scopeChange=::chooseScope,reapplyNeeded={perform(it,true)},notificationChanged=::reapplyNotificationChanged,recheck=::recheck,bigGroupsAccept=::acceptBigGroups,bigGroupsDismiss={model=model.copy(bigGroups=emptyList())},rejectedDismiss={model=model.copy(rejectedGroupList=emptyList())},restorePickAll=::toggleAllRestore,showPick=::toggleShowPick,showPickAll=::toggleAllShow,showSelected=::showSelected,refreshHistory=::refreshHistory,autoReapplyChanged=::autoReapplyChanged,openShow={model=model.copy(showPicked=emptySet());navigate(Page.SHOW)},beforeUninstall=::beforeUninstall,uninstallDismiss={model=model.copy(uninstallCheck=null)},openAppInfo=::openAppInfo,copyDiagnostics=::copyDiagnostics,backgroundWatchChanged=::backgroundWatchChanged,openDeveloperOptions={SettingsEntrypoints.developerOptions(this)},openBattery={enable->if(!model.busy)BatteryOptimization.open(this,enable)},dismissUsNotice=::dismissUsNotice,dismissFirmwareNotice=::dismissFirmwareNotice,updateOfferAnswer=::updateCheckChanged,updateCheckChanged=::updateCheckChanged,checkUpdateNow=::checkUpdateNow,openUpdate={UpdateCheck.open(this,UpdateCheck.Release(it));model=model.copy(updateCard=null)},skipUpdate={UpdateCheck.skip(this,it);model=model.copy(updateCard=null)}) }
     }
     // Leaving bluedotOFF turns a held wireless debugging off after a short grace (quick switches back keep it on).
     // The system job repeats it if the process is killed first (swiped away from recents, B-7).
@@ -208,6 +208,8 @@ class MainActivity : ComponentActivity() {
         return if(restored>0)"${restored}개 앱을 원래 표시 상태로 복원했어요." else null
     }
     private var recoveredNotice:String?=null
+    /** Read again after each check: this visit's helper may have just found a new system (Codex review 2026-10-19). */
+    private fun firmwareNotice()=prefs.getBoolean("firmwareUnverified",false)&&prefs.getString("firmwareNoticeDismissed","")!=prefs.getString("firmwareProfile","")
     private fun refresh(userAction:Boolean=false,mode:Check=Check.AUTO,only:Set<String> = emptySet()) {
         if((!userAction&&SetupSession.current()!=null)||model.busy||BatchRuntime.state.value.busy||refreshJob?.isActive==true)return
         val job=lifecycleScope.launch {
@@ -220,7 +222,7 @@ class MainActivity : ComponentActivity() {
                     model=model.copy(watchStarting=!WatchClient.available(this@MainActivity))
                     try{withContext(Dispatchers.IO){WatchClient.ensureStarted(applicationContext)}}finally{model=model.copy(watchStarting=false)}
                 }
-                model=model.copy(applicationScope=scopes.current,scopePending=scopes.pending!=null||scopes.requested!=null,scopeResolved=scopes.resolved,entries=entries,usModel=prefs.getBoolean("usModel",false)&&!prefs.getBoolean("usNoticeDismissed",false),reapplyNotify=prefs.getBoolean("reapplyNotify",true),autoReapply=prefs.getBoolean("autoReapply",true),backgroundWatch=BackgroundWatch.enabled(this@MainActivity),usbDebugging=WatchClient.usbEnabled(this@MainActivity),watchRunning=WatchClient.available(this@MainActivity),watchAcknowledged=BackgroundWatch.acknowledged(this@MainActivity),notifications=reapplyNotificationsEnabled(),automaticReady=automaticReady(),connected=controls.wireless||WatchClient.available(this@MainActivity),autoManagement=controls.consent,autoPermission=controls.granted,updateCheck=UpdateCheck.enabled(this@MainActivity),updateOffer=!UpdateCheck.asked(this@MainActivity),latestVersion=UpdateCheck.latest(this@MainActivity))
+                model=model.copy(applicationScope=scopes.current,scopePending=scopes.pending!=null||scopes.requested!=null,scopeResolved=scopes.resolved,entries=entries,usModel=prefs.getBoolean("usModel",false)&&!prefs.getBoolean("usNoticeDismissed",false),firmwareNotice=firmwareNotice(),reapplyNotify=prefs.getBoolean("reapplyNotify",true),autoReapply=prefs.getBoolean("autoReapply",true),backgroundWatch=BackgroundWatch.enabled(this@MainActivity),usbDebugging=WatchClient.usbEnabled(this@MainActivity),watchRunning=WatchClient.available(this@MainActivity),watchAcknowledged=BackgroundWatch.acknowledged(this@MainActivity),notifications=reapplyNotificationsEnabled(),automaticReady=automaticReady(),connected=controls.wireless||WatchClient.available(this@MainActivity),autoManagement=controls.consent,autoPermission=controls.granted,updateCheck=UpdateCheck.enabled(this@MainActivity),updateOffer=!UpdateCheck.asked(this@MainActivity),latestVersion=UpdateCheck.latest(this@MainActivity))
                 if(mode==Check.LOCAL)return@launch
                 if(!prefs.getBoolean("welcomed",false)){model=model.copy(gate=Gate.WELCOME);return@launch}
                 if(!DeviceSupport.basic()){model=model.copy(gate=Gate.UNSUPPORTED,compatibility="Samsung One UI 9 이상에서 지원 여부를 확인할 수 있어요.");return@launch}
@@ -240,7 +242,7 @@ class MainActivity : ComponentActivity() {
                     scanStamp=ScanStamp(Build.FINGERPRINT,packageEpoch,android.os.SystemClock.elapsedRealtime())
                     model=model.copy(gate=Gate.READY,entries=entries,candidates=prepared.snapshots,discovered=scan.apps,
                         historyAvailable=scan.historyAvailable,metrics=scan.metrics,loadingApps=false,
-                        connected=wireless||WatchClient.available(this@MainActivity),automaticReady=automaticReady(),freshPackages=emptySet(),compatibility="앱 확인 완료",rechecking=false,lastCheckedAt=System.currentTimeMillis(),
+                        connected=wireless||WatchClient.available(this@MainActivity),automaticReady=automaticReady(),freshPackages=emptySet(),compatibility="앱 확인 완료",rechecking=false,lastCheckedAt=System.currentTimeMillis(),firmwareNotice=firmwareNotice(),
                         notice=cleanupNotice,notificationOffer=!notificationsEnabled()&&!prefs.getBoolean("notificationExplained",false))
                     filterPicker()
                     if(model.page==Page.DETAIL&&model.selected!=null&&prepared.snapshots.none{it.identity.packageName==model.selected})select(model.selected!!)
@@ -311,7 +313,7 @@ class MainActivity : ComponentActivity() {
                 if(fullCheck)clock.fullChecked(checkedNow)
                 if(scan!=null){changedPackages.clear();scanStamp=ScanStamp(Build.FINGERPRINT,epoch,android.os.SystemClock.elapsedRealtime());model=model.copy(discovered=scan.apps,historyAvailable=scan.historyAvailable,metrics=scan.metrics)}
                 else refreshedHistory?.let{if(epoch==packageEpoch&&model.discovered===knownApps)model=model.copy(discovered=it,historyAvailable=true)}
-                model=model.copy(gate=Gate.READY,scanProgress=null,rechecking=false,checkingRegistered=false,lastCheckedAt=if(fullCheck)System.currentTimeMillis() else model.lastCheckedAt,entries=store.entries(),candidates=if(mode==Check.HISTORY||only.isNotEmpty())model.candidates.filterNot{c->snapshots.any{it.identity.packageName==c.identity.packageName}}+snapshots else snapshots,loadingApps=false,connected=controls.wireless||WatchClient.available(this@MainActivity),automaticReady=automaticReady(),freshPackages=if(!controls.wireless&&!WatchClient.available(this@MainActivity))emptySet() else if(mode==Check.HISTORY||only.isNotEmpty())model.freshPackages+snapshots.map{it.identity.packageName} else snapshots.map{it.identity.packageName}.toSet(),compatibility="앱 확인 완료",notice=cleanupNotice,notificationOffer=!notificationsEnabled()&&!prefs.getBoolean("notificationExplained",false))
+                model=model.copy(gate=Gate.READY,scanProgress=null,rechecking=false,checkingRegistered=false,lastCheckedAt=if(fullCheck)System.currentTimeMillis() else model.lastCheckedAt,entries=store.entries(),candidates=if(mode==Check.HISTORY||only.isNotEmpty())model.candidates.filterNot{c->snapshots.any{it.identity.packageName==c.identity.packageName}}+snapshots else snapshots,loadingApps=false,connected=controls.wireless||WatchClient.available(this@MainActivity),automaticReady=automaticReady(),freshPackages=if(!controls.wireless&&!WatchClient.available(this@MainActivity))emptySet() else if(mode==Check.HISTORY||only.isNotEmpty())model.freshPackages+snapshots.map{it.identity.packageName} else snapshots.map{it.identity.packageName}.toSet(),compatibility="앱 확인 완료",notice=cleanupNotice,notificationOffer=!notificationsEnabled()&&!prefs.getBoolean("notificationExplained",false),firmwareNotice=firmwareNotice())
                 filterPicker()
                 if(model.page==Page.DETAIL&&model.selected!=null&&snapshots.none{it.identity.packageName==model.selected})select(model.selected!!)
             }catch(_:CancellationException){model=model.copy(rechecking=false,checkingRegistered=false,scanProgress=null,loadingApps=false)}catch(error:Exception){android.util.Log.w("bluedotOFF","refresh failed: ${error.javaClass.simpleName}: ${error.message?.take(160)}")
@@ -453,90 +455,9 @@ class MainActivity : ComponentActivity() {
         val targets=units.flatten().distinct()
         val groupMap=groups.flatMap{g->g.map{it to g}}.toMap()
         val app=applicationContext
-        val journal=JournalStore(app)
         val reapplying=if(hide&&!show)model.entries.filter{it.enabled}.map{it.identity.packageName}.toSet() else emptySet()
-        val runtimePrefs=app.getSharedPreferences("ui-state",MODE_PRIVATE)
         val started=BatchRuntime.start(targets.size,hide,show,auto,beforeUninstall) { report ->
-            val results=mutableListOf<BatchResult>()
-            val observed=linkedMapOf<String,Snapshot>()
-            val runner=TargetBatch.Runner()
-            var pipelineStopped=false
-            var warning=""
-            var failure=""
-            var cursor=0
-            val rememberResult:(BatchResult)->Unit={result->
-                if(hide&&!show&&(auto||result.packageName in reapplying))ReapplyHistoryStore(app).record(result,if(auto)ReapplySource.APP_OPEN else ReapplySource.MANUAL)
-            }
-            try {
-                WirelessWork.runBatch(app,true,onCleanup={if(it.isNotBlank())warning=it},hold=true) { session ->
-                while(cursor<targets.size&&!runner.stopped&&!pipelineStopped) {
-                    if(!ForegroundState.canStartTargets){failure="화면을 떠나서 남은 앱은 바꾸지 않았어요. 이미 끝난 적용과 등록 기록은 그대로예요.";break}
-                    report(BatchProgress(cursor,targets.size,BatchPhase.CONNECTING))
-                    session.run { active ->
-                        val engine=SafetyEngine(active,journal,System::currentTimeMillis,{BootSession.current(app)},observe={phase,snapshot,wrote->
-                            active.recordVerification(phase,snapshot,wrote)
-                            if(phase=="settled_1500ms")observed[snapshot.identity.packageName]=snapshot
-                        })
-                        if(targets[cursor] in groupMap){
-                            // Up to 8 consecutive shared groups in this helper (was one helper each: ~2 s start and close per group),
-                            // their checks overlapped (1.1.4).
-                            val groups=mutableListOf<List<String>>();var at=cursor
-                            while(groups.size<8&&at<targets.size){val g=groupMap[targets[at]]?:break;groups+=g;at+=g.size}
-                            SharedGroupEngine(active,journal,System::currentTimeMillis,{BootSession.current(app)},observe={phase,s,wrote->active.recordVerification(phase,s,wrote);if(phase=="settled_1500ms")observed[s.identity.packageName]=s})
-                                .executeWindow(groups,hide,{ForegroundState.canStartTargets}){group,outcome->
-                                    val groupResults=outcome.fold({members->members.map{e->BatchResult.of(e.identity.packageName,e)}},{e->
-                                        val saved=runCatching{journal.entries()}.getOrDefault(emptyList())
-                                        group.map{p->BatchResult(p,saved.lastOrNull{it.identity.packageName==p},e.message?:"공유 앱 묶음을 확인해야 해요.")}
-                                    })
-                                    groupResults.forEach(rememberResult)
-                                    results.addAll(groupResults);cursor+=group.size
-                                    if(groupResults.any{!it.success}){if(!pipelineStopped)failure=groupResults.first{!it.success}.error;pipelineStopped=true;group.forEach{observed.remove(it)}}
-                                    report(BatchProgress(cursor,targets.size,BatchPhase.CHECKING))
-                                }
-                        } else if(targets.size>1) {
-                            val completedBefore=results.size
-                            var completed=0
-                            val chunk=targets.drop(cursor).takeWhile{it !in groupMap}.take(BatchWindow.MAX_TARGETS)
-                            val onResult:(BatchResult)->Unit={result->
-                                rememberResult(result)
-                                if(!result.success)observed.remove(result.packageName)
-                                completed++;report(BatchProgress(completedBefore+completed,targets.size,BatchPhase.CHECKING))
-                            }
-                            val window=when{
-                                hide->engine.userHideWindow(chunk,canStart={ForegroundState.canStartTargets},elapsed=android.os.SystemClock::elapsedRealtime,onResult=onResult)
-                                show->engine.userShowWindow(chunk,canStart={ForegroundState.canStartTargets},elapsed=android.os.SystemClock::elapsedRealtime,onResult=onResult)
-                                else->engine.userRestoreWindow(chunk,canStart={ForegroundState.canStartTargets},elapsed=android.os.SystemClock::elapsedRealtime,onResult=onResult)
-                            }
-                            results.addAll(window.results);cursor+=window.started;pipelineStopped=window.stopped
-                            android.util.Log.i("bluedotOFF","window: ${window.started} apps ${if(hide)"hide" else if(show)"show" else "restore"}")
-                            if(window.reason.isNotBlank())failure=window.reason
-                        } else {
-                            val start=android.os.SystemClock.elapsedRealtime()
-                            var count=0
-                            while(cursor<targets.size&&!runner.stopped&&BatchWindow.next(count,android.os.SystemClock.elapsedRealtime()-start)) {
-                                if(!ForegroundState.canStartTargets){failure="화면을 떠나서 남은 앱은 바꾸지 않았어요. 이미 끝난 적용과 등록 기록은 그대로예요.";break}
-                                report(BatchProgress(cursor,targets.size,BatchPhase.CHECKING))
-                                val pkg=targets[cursor]
-                                val result=runner.run(pkg){if(show)engine.userShow(it){ForegroundState.canStartTargets} else engine.userOne(it,hide){ForegroundState.canStartTargets}}
-                                rememberResult(result)
-                                results.add(result);cursor++;count++
-                                if(!result.success)observed.remove(pkg)
-                                report(BatchProgress(cursor,targets.size,BatchPhase.CHECKING))
-                            }
-                        }
-                        if(hide&&results.any{it.success})check(runtimePrefs.edit().putString("verifiedFirmware",active.compatibleFirmware().key).putInt("settlingSchema",2).commit())
-                        report(BatchProgress(cursor,targets.size,BatchPhase.CLOSING))
-                    }
-                    // Cleanup failures remain separate from target success. Do not open another lease.
-                    if(warning.isNotEmpty()||failure.isNotEmpty())break
-                }
-                }
-            }catch(e:Exception){failure=e.message?:"현재 상태를 확인하지 못했어요."}
-            val untouched=if(runner.stopped||pipelineStopped)"앞선 작업의 복원이나 연결을 먼저 확인해야 해서 바꾸지 않았어요." else "작업을 멈춰서 이 앱은 바꾸지 않았어요."
-            while(cursor<targets.size){results.add(BatchResult(targets[cursor++],error=untouched))}
-            val outcome=BatchOutcome(hide,results,journal.entries(),observed.values.toList(),warning,failure,show=show,auto=auto,beforeUninstall=beforeUninstall)
-            if(!hide&&!show&&ScopePreferences(app).pending!=null&&!ScopePreferences(app).finishRestore(outcome))return@start outcome.copy(error=outcome.error.ifBlank{"일부 앱의 복원을 확인하지 못해 이전 적용 범위를 유지했어요. 설정에서 다시 확인해주세요."})
-            outcome
+            BatchPipeline.run(app,targets,groupMap,hide,show,auto,beforeUninstall,reapplying,ReapplySource.APP_OPEN,{ForegroundState.canStartTargets},background=false,report=report)
         }
         if(started)skipNotice=if(needsCheck>0)"확인이 필요한 ${needsCheck}개 앱은 건너뛰었어요. 홈 목록에서 상태를 확인해주세요." else ""
         if(started)model=model.copy(busy=true,operationHide=hide,operationShow=show,autoReapplying=auto,progress=BatchProgress(0,targets.size),completion=null,restoreSkipped=needsCheck,loadingApps=false,notice="",wirelessWarning="",batchResults=emptyList())
@@ -620,6 +541,8 @@ class MainActivity : ComponentActivity() {
     }
     /** The US-model notice is informational: once confirmed it stays hidden (README keeps the details). */
     private fun dismissUsNotice() { prefs.edit().putBoolean("usNoticeDismissed",true).apply(); model=model.copy(usModel=false) }
+    /** Dismissed per firmware profile: a later patch that is not verified either shows the notice again. */
+    private fun dismissFirmwareNotice() { prefs.edit().putString("firmwareNoticeDismissed",prefs.getString("firmwareProfile","")).apply(); model=model.copy(firmwareNotice=false) }
     private fun dismissNotificationOffer() { prefs.edit().putBoolean("notificationExplained",true).apply(); model=model.copy(notificationOffer=false) }
     /** Picker: reads and validates each shared group in one connection, then selects every valid group as a unit.
      * Groups that do not pass are left out of the picker; the write path validates every group again before changing it. */

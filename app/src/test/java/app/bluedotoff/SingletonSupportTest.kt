@@ -20,6 +20,7 @@ class SingletonSupportTest {
     @Test fun pinnedDebugTrialAllowsExactInstallation(){assertTrue(SingletonSupport.evaluate(proof("TRIAL_ONLY"),fw,info(),listOf("cert"),true))}
     @Test fun releaseNeverAllowsTrial(){assertFalse(SingletonSupport.evaluate(proof("TRIAL_ONLY"),fw,info(),listOf("cert"),false))}
     @Test fun changedSignerOrInstallCannotUseTrial(){assertFalse(SingletonSupport.evaluate(proof("TRIAL_ONLY"),fw,info(),listOf("other"),true));assertFalse(SingletonSupport.evaluate(proof("TRIAL_ONLY"),fw,info().apply{firstInstallTime=5678000},listOf("cert"),true))}
-    @Test fun verifiedProofIsFirmwareAndAbiScoped(){assertTrue(SingletonSupport.evaluate(proof("VERIFIED"),fw,info(),listOf("cert"),false));assertFalse(SingletonSupport.evaluate(proof("VERIFIED"),fw.copy(fingerprint="other"),info(),listOf("cert"),false));assertFalse(SingletonSupport.evaluate(proof("VERIFIED"),fw.copy(abiProfile="other"),info(),listOf("cert"),true))}
+    @Test fun verifiedProofHoldsAfterAFirmwareUpdate(){assertTrue(SingletonSupport.evaluate(proof("VERIFIED"),fw,info(),listOf("cert"),false));assertTrue(SingletonSupport.evaluate(proof("VERIFIED"),fw.copy(fingerprint="other"),info(),listOf("cert"),false));assertTrue(SingletonSupport.evaluate(proof("VERIFIED"),fw.copy(abiProfile="other"),info(),listOf("cert"),true))}
+    @Test fun trialProofStaysFirmwareScoped(){assertFalse(SingletonSupport.evaluate(proof("TRIAL_ONLY"),fw.copy(fingerprint="other"),info(),listOf("cert"),true));assertFalse(SingletonSupport.evaluate(proof("TRIAL_ONLY"),fw.copy(abiProfile="other"),info(),listOf("cert"),true))}
     @Test fun missingEvidenceNeverAllowsVerified(){assertFalse(SingletonSupport.evaluate(proof("VERIFIED").put("evidenceId",""),fw,info(),listOf("cert"),true))}
 }

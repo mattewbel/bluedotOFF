@@ -63,9 +63,12 @@ object WatchNotification {
     fun stopped(c:Context,reason:Reason){
         c.getSharedPreferences("ui-state",Context.MODE_PRIVATE).edit().putBoolean("watchRunning",false).apply()
         if(!BackgroundWatch.enabled(c))return
+        // R-1: the after-restart job starts it again on Wi-Fi; the re-apply notice already says what to do if it cannot.
+        if(reason==Reason.BOOT&&RestartRecoveryJob.eligible(c))return
         val prefs=c.getSharedPreferences("ui-state",Context.MODE_PRIVATE)
         if(prefs.getString("watchStopNotified",null)!=null)return
         prefs.edit().putString("watchStopNotified",reason.name).apply()
+        WatchLog.event("state","watchStopNotice reason=${reason.name}")
         val usb=usbOn(c)
         post(c,"백그라운드 감시가 멈췄어요",UiText.text(c,reason.message)+" "+UiText.text(c,advice(usb,autoManaged(c))),usbAction=!usb)
     }

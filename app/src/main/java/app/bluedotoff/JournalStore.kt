@@ -74,6 +74,11 @@ class JournalStore(context: Context) : Journal {
         FileOutputStream(next).use { it.write(bytes);it.flush();it.fd.sync() }
         // No non-atomic fallback: unsupported filesystems stop before any permission write.
         Files.move(next.toPath(),base.toPath(),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING)
+        // B-8: the rename itself survives a power cut only once the directory entry is synced too. Extra durability on
+        // top of the checked file sync: where a directory cannot be opened (JVM test hosts) it stays as before.
+        try{val dir=android.system.Os.open(base.parentFile!!.path,android.system.OsConstants.O_RDONLY,0)
+            try{android.system.Os.fsync(dir)}finally{android.system.Os.close(dir)}
+        }catch(e:Exception){android.util.Log.w("bluedotOFF","journal directory sync skipped: ${e.javaClass.simpleName}")}
         // Exact reread: the stored bytes must be exactly the bytes serialized from [items] (the parser round-trip is
         // covered by JournalStoreTest), which is cheaper than parsing the whole journal again.
         check(base.readBytes().contentEquals(bytes)) { "복원 기록 저장 확인 실패" }

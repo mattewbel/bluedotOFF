@@ -13,6 +13,9 @@ class UiModelReapplyTest {
         assertEquals(listOf("policy","boot","update","applied","unknown","blocked"),model.registeredDisplayEntries.map{it.identity.packageName})
         assertEquals(entries,model.entries);assertEquals(3,model.reapplyCount)
     }
+    @Test fun aFirmwareUpdateIsReappliedLikeARestart(){
+        assertEquals(listOf("fw"),UiModel(entries=listOf(entry("fw",TargetState.NEEDS_RECHECK_FIRMWARE),entry("applied",TargetState.APPLIED))).reapplyEntries.map{it.identity.packageName})
+    }
     @Test fun focusedTargetsIncludeSharedUnitOnlyOnceAndExcludeOtherRegistrations(){
         val a=entry("a",TargetState.NEEDS_REAPPLY_POLICY);val b=entry("b",TargetState.NEEDS_REAPPLY_UPDATE)
         val group=listOf(a.identity,b.identity)

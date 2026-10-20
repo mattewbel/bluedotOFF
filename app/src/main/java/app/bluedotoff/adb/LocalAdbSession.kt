@@ -127,7 +127,8 @@ object LocalAdbSession {
     // Also kept for "진단 정보 복사" (One UI version and country only; nothing about the user's apps).
     /** True once a helper confirmed this device's compatibility in this app process (for "진단 정보 복사"). */
     @Volatile var compatibilityConfirmed=false;private set
-    internal fun rememberRegion(context:Context,profile:JSONObject){if(profile.optBoolean("abiVerified"))compatibilityConfirmed=true;context.getSharedPreferences("ui-state",0).edit().putBoolean("usModel",profile.optString("country")=="US").putString("deviceOneUi",profile.optString("oneUi")).putString("deviceCountry",profile.optString("country")).apply()}
+    internal fun rememberRegion(context:Context,profile:JSONObject){if(profile.optBoolean("abiVerified"))compatibilityConfirmed=true;context.getSharedPreferences("ui-state",0).edit().putBoolean("usModel",profile.optString("country")=="US").putString("deviceOneUi",profile.optString("oneUi")).putString("deviceCountry",profile.optString("country"))
+        .putBoolean("firmwareUnverified",!(profile.optBoolean("abiExact",true)&&profile.optBoolean("indicatorAbiVerified",true))).putString("firmwareProfile",profile.optString("profileId")).apply()}
     private fun appendEvent(context:Context,name:String,event:JSONObject){
         val f=File(context.noBackupFilesDir,name)
         // Diagnostics only: never let a storage error replace the result of the work it describes.

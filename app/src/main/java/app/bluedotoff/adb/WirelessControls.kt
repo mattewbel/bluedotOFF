@@ -20,8 +20,9 @@ class WirelessControls(private val context:Context) {
         Settings.Global.getInt(context.contentResolver,Settings.Global.DEVELOPMENT_SETTINGS_ENABLED,0)==1,
         WifiConnection.connected(context),consent,granted,
         context.getSharedPreferences("local-adb",0).getString("pairedGuid",null)!=null&&AdbHostIdentity(context).exists,wireless))
-    fun enableWirelessDebugging():Boolean {
-        check(mayStart(app.bluedotoff.ForegroundState.active))
+    /** [afterRestart]: the after-restart job (R-1) is the only caller allowed without a visible screen. */
+    fun enableWirelessDebugging(afterRestart:Boolean=false):Boolean {
+        check(mayStart(app.bluedotoff.ForegroundState.active||afterRestart))
         val before=wireless
         val written=runCatching{Settings.Global.putInt(context.contentResolver,"adb_wifi_enabled",1)}.getOrDefault(false)
         val result=written&&wireless
@@ -34,7 +35,8 @@ class WirelessControls(private val context:Context) {
         val result=runCatching{Settings.Global.putInt(context.contentResolver,"adb_wifi_enabled",0)&&!wireless}.getOrDefault(false)
         audit("wireless_off",before,wireless,result);return result
     }
-    private fun audit(operation:String,before:Boolean,after:Boolean,success:Boolean){
+    // Diagnostics only: a failed log write must not fail the switch, or wireless debugging stays on with no cleanup (Codex R2).
+    private fun audit(operation:String,before:Boolean,after:Boolean,success:Boolean)=runCatching{
         val file=File(context.noBackupFilesDir,"system-setting-events.jsonl")
         if(file.length()>100000)file.writeText("")
         file.appendText(JSONObject().put("category","SYSTEM_SETTING").put("operation",operation)

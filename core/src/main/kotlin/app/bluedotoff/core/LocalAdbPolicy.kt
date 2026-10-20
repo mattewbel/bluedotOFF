@@ -27,5 +27,6 @@ object LocalAdbPolicy {
         return PairReply(port,ByteArray(6){input[start+it].code.toByte()})
     }
     fun validateShell(uid:Int,selinux:String){require(uid==2000&&selinux=="u:r:shell:s0"){"SHELL_IDENTITY_INVALID"}}
-    fun validateProfile(abi:Boolean,history:Boolean,indicator:Boolean,fingerprint:String,expected:String){require(abi&&history&&indicator&&fingerprint==expected){"COMPATIBILITY_FAILED"}}
+    /** History and the SystemUI check may be unverified after a patch (1.2.0); only the calls the helper makes must fit. */
+    fun validateProfile(abi:Boolean,fingerprint:String,expected:String){require(abi&&fingerprint==expected){"COMPATIBILITY_FAILED"}}
 }

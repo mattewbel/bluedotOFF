@@ -104,7 +104,6 @@ class SharedGroupEngine(private val port:TargetPort,private val journal:Journal,
         old.filterNotNull().forEachIndexed{i,e->
             if(e.groupIdentities.map{it.packageName}!=names||e.groupIdentities.size!=identities.size||e.groupIdentities.zip(identities).any{(a,b)->!a.sameInstall(b)}||!e.identity.sameInstall(identities[i])||e.sharedUserId!=before[i].sharedUserId)throw OwnershipChangedException()
             if(e.state in setOf(TargetState.FAILED_ROLLBACK,TargetState.NEEDS_REVIEW,TargetState.SHARED_UID_CHANGED,TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE,TargetState.PENDING_SHOW))throw SafetyException("공유 앱 묶음의 복원 확인이 필요합니다.")
-            if(e.firmware.substringAfterLast('|')!=fw.abiProfile)throw SafetyException("기기 업데이트 후 호환성 재확인이 필요합니다.")
         }
         val originals=old.filterNotNull().map{it.originalBit}.distinct()
         if(originals.size>1)throw SafetyException("공유 앱의 원래 표시 기록이 서로 달라 변경하지 않았습니다.")
@@ -209,10 +208,11 @@ object SharedGroupReconcile {
         val members=e.groupIdentities.map{all[it.packageName]?:return e.copy(state=TargetState.NEEDS_REVIEW,error="공유 앱 묶음의 전체 설치 정보를 확인하지 못했습니다.")}
         if(e.groupIdentities.zip(members).any{(id,s)->!id.sameInstall(s.identity)})return e.copy(state=TargetState.NEEDS_REVIEW,error="공유 앱 묶음의 설치 정보가 바뀌었습니다.")
         if(members.any{it.peers.sorted()!=e.groupIdentities.map{p->p.packageName}||it.sharedUserId!=e.sharedUserId})return e.copy(state=TargetState.NEEDS_REVIEW,error=OwnershipChangedException().message!!)
-        if(e.firmware!=firmware)return e.copy(state=TargetState.NEEDS_RECHECK_FIRMWARE)
         // B-1: an interrupted group stays PENDING (not changeable by the watch or a batch) until SharedGroupEngine.recover
-        // settles it when the app is opened. Identity/ownership changes above still lock it.
+        // settles it when the app is opened. Identity/ownership changes above still lock it. Before the firmware check, as
+        // for single apps: NEEDS_RECHECK_FIRMWARE is re-applied automatically and could hide an interrupted restore (Codex R1).
         if(e.state in setOf(TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE,TargetState.PENDING_SHOW))return e
+        if(e.firmware!=firmware)return e.copy(state=TargetState.NEEDS_RECHECK_FIRMWARE)
         if(!e.enabled)return e
         if(e.groupIdentities.zip(members).any{(id,s)->id!=s.identity})return e.copy(state=TargetState.NEEDS_REAPPLY_UPDATE)
         try{SharedGroupPolicy.validate(members)}catch(_:Exception){return e.copy(state=TargetState.UNSUPPORTED_STATE)}

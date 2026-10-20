@@ -79,7 +79,8 @@ class SafetyEngine(private val port: TargetPort, private val journal: Journal, p
             durable(old.copy(state=TargetState.FAILED_ROLLBACK,error="중단된 작업의 안전성을 확인하지 못했습니다. 추가 변경을 차단했습니다."))
             throw SafetyException("중단된 작업의 복원 확인이 필요합니다.")
         }
-        if (old != null && old.firmware != firmware.key && old.firmware.substringAfterLast('|') != firmware.abiProfile) throw SafetyException("기기 업데이트 후 호환성 재확인이 필요합니다.")
+        // A record from older firmware is re-applied like after a restart (1.2.0, R-2): this session's helper has checked
+        // the current firmware, and the original bit is Android's fixed flag value.
         if (!hide && old != null && !old.enabled && old.state == TargetState.NOT_APPLIED && before.safe()) return Started.Finished(old)
         if ((hide || show) && !before.safe()) throw SafetyException(before.rejectionReason()+" 변경된 내용은 없습니다.")
         // Restore also refuses unsafe identities, UID peers or revoked/unusual permission states.
@@ -170,7 +171,7 @@ class SafetyEngine(private val port: TargetPort, private val journal: Journal, p
             catch(storage:JournalPersistenceException){storageFailed=true;publish(BatchResult(operation.before.identity.packageName,operation.pending,storage.message!!))}
         }
         while(cursor<packages.size || waiting.isNotEmpty()) {
-            if(!stopped && !canStart()){stopped=true;reason="화면을 떠나 남은 앱은 변경하지 않았습니다. 완료된 적용과 등록 기록은 유지됩니다."}
+            if(!stopped && cursor<packages.size && !canStart()){stopped=true;reason="화면을 떠나 남은 앱은 변경하지 않았습니다. 완료된 적용과 등록 기록은 유지됩니다."}
             if(storageFailed){
                 waiting.toList().forEach{publish(BatchResult(it.operation.before.identity.packageName,it.operation.pending,JournalPersistenceException().message!!))}
                 waiting.clear();break
@@ -225,8 +226,10 @@ class SafetyEngine(private val port: TargetPort, private val journal: Journal, p
 object Reconcile {
     private fun review(entry:Entry)=entry.state in listOf(TargetState.FAILED_ROLLBACK,TargetState.SHARED_UID_CHANGED,TargetState.NEEDS_REVIEW)
     private fun pending(entry: Entry) = entry.state in listOf(TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE,TargetState.PENDING_SHOW)
-    fun boot(entry: Entry) = if (entry.enabled && !review(entry) && !pending(entry)) entry.copy(state = TargetState.NEEDS_REAPPLY_BOOT) else entry
-    fun update(entry: Entry) = if (entry.enabled && !review(entry) && !pending(entry)) entry.copy(state = TargetState.NEEDS_REAPPLY_UPDATE) else entry
+    // An uninstalled app stays MISSING_TARGET: as a re-apply target it would stop the restart job's batch (audit H-1).
+    private fun marks(entry: Entry) = entry.enabled && !review(entry) && !pending(entry) && entry.state != TargetState.MISSING_TARGET
+    fun boot(entry: Entry) = if (marks(entry)) entry.copy(state = TargetState.NEEDS_REAPPLY_BOOT) else entry
+    fun update(entry: Entry) = if (marks(entry)) entry.copy(state = TargetState.NEEDS_REAPPLY_UPDATE) else entry
     /** A lock whose app is verifiably back at its original (same install, owner, firmware and other permission state):
      *  nothing is uncertain any more. It drops to "다시 확인 필요" without a write; from there the usual rules apply
      *  (an update since then makes it "재적용 필요", as after any failed check).
@@ -237,8 +240,9 @@ object Reconcile {
     fun read(entry: Entry, snapshot: Snapshot?, firmware: String, bootSession: String,all:Map<String,Snapshot?> = emptyMap()): Entry {
         if(entry.groupIdentities.isNotEmpty())return SharedGroupReconcile.read(entry,all,firmware,bootSession)
         if (review(entry)) return if(original(entry,snapshot,firmware))entry.copy(state=TargetState.FAILED_SAFE,changedByUs=false,error="변경 후 상태를 확인하지 못해 원래 표시 상태로 되돌렸어요. 다시 확인해 주세요.") else entry
-        if (entry.firmware != firmware) return if(pending(entry)) entry.copy(error="기기 업데이트 후 중단된 작업의 안전성을 다시 확인해야 합니다.") else entry.copy(state = TargetState.NEEDS_RECHECK_FIRMWARE)
+        // Absence holds on any firmware; checked first so an uninstalled app is not re-applied after an update (audit H-1).
         if (snapshot == null) return entry.copy(state = TargetState.MISSING_TARGET)
+        if (entry.firmware != firmware) return if(pending(entry)) entry.copy(error="기기 업데이트 후 중단된 작업의 안전성을 다시 확인해야 합니다.") else entry.copy(state = TargetState.NEEDS_RECHECK_FIRMWARE)
         if (!entry.identity.sameInstall(snapshot.identity)) return entry.copy(state = TargetState.INACTIVE_INSTALL, enabled = false)
         if(entry.sharedUserId!=null && (snapshot.peers!=listOf(snapshot.identity.packageName)||entry.sharedUserId!=snapshot.sharedUserId))return entry.copy(state=TargetState.SHARED_UID_CHANGED,error="이 앱과 묶인 앱 구성이 바뀌어 변경을 멈췄습니다.")
         if (pending(entry) && (entry.invariantDigest.isBlank() || entry.invariantDigest != snapshot.invariantDigest())) return entry.copy(state=TargetState.FAILED_ROLLBACK,error="중단된 작업의 안전성을 확인하지 못했습니다. 추가 변경을 차단했습니다.")

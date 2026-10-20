@@ -54,13 +54,14 @@ object MinimalPrivilegedHelper {
         check(methods.size==12&&transactions.size==6){"Helper ABI profile invalid"}
         val classes=setOf("Landroid/permission/IPermissionManager\$Stub;","Landroid/permission/IPermissionManager\$Stub\$Proxy;","Landroid/content/pm/IPackageManager\$Stub;","Landroid/content/pm/IPackageManager\$Stub\$Proxy;","Lcom/android/internal/app/IAppOpsService\$Stub;","Lcom/android/internal/app/IAppOpsService\$Stub\$Proxy;")
         val observed=DexAbi.inspect(File("/system/framework/framework.jar"),classes)
-        check(observed.methods.filterKeys{!it.contains("->getOpsForPackage(")}==methods){"Helper unverified firmware ABI"}
-        check(transactions.all{(k,v)->observed.transactions[k]==v}){"Helper transaction mismatch"}
+        val abi=app.bluedotoff.core.AbiCompatibility.framework(methods,transactions,observed.methods.filterKeys{!it.contains("->getOpsForPackage(")},observed.transactions)?:error("Helper unverified firmware ABI")
         val hm=sortedMapOf<String,String>();var history:Int?=null
         asset("reference-history.tsv").lineSequence().forEach{l->val p=l.removePrefix("\uFEFF").split('\t');if(p.size==3){if(p[0]=="M")hm[p[1]]=p[2];if(p[0]=="T")history=p[2].toInt()}}
-        val ho=DexAbi.inspect(File("/system/framework/framework.jar"),hm.keys.map{it.substringBefore("->")}.toSet()+"Lcom/android/internal/app/IAppOpsService\$Stub;")
-        check(hm.size==7&&hm.all{(k,v)->ho.methods[k]==v}&&ho.transactions["Lcom/android/internal/app/IAppOpsService\$Stub;->TRANSACTION_getOpsForPackage:I"]==history){"Helper history ABI mismatch"}
-        codes.clear();transactions.forEach{(k,v)->codes[k.substringAfter("TRANSACTION_").substringBefore(':')]=v};codes["getOpsForPackage"]=history!!
+        check(hm.size==7&&history!=null){"Helper history profile invalid"}
+        // Display-only History parses these Parcels by hand: exact bytecode or no History (never a stop for the rest).
+        val historyExact=runCatching{val ho=DexAbi.inspect(File("/system/framework/framework.jar"),hm.keys.map{it.substringBefore("->")}.toSet()+"Lcom/android/internal/app/IAppOpsService\$Stub;")
+            hm.all{(k,v)->ho.methods[k]==v}&&ho.transactions["Lcom/android/internal/app/IAppOpsService\$Stub;->TRANSACTION_getOpsForPackage:I"]==history}.getOrDefault(false)
+        codes.clear();codes.putAll(abi.codes);if(historyExact)codes["getOpsForPackage"]=history!!
         val self=packageInfo("app.bluedotoff")?:error("Helper installed identity unavailable")
         check(self.applicationInfo!!.sourceDir==apk.path&&self.applicationInfo!!.uid>=10000){"Helper installed identity mismatch"}
         for(permission in listOf("android.permission.GRANT_RUNTIME_PERMISSIONS","android.permission.REVOKE_RUNTIME_PERMISSIONS","android.permission.GET_APP_OPS_STATS")){
@@ -76,11 +77,17 @@ object MinimalPrivilegedHelper {
         val indicator=sortedMapOf<String,String>()
         asset("reference-indicator.tsv").lineSequence().forEach{l->val p=l.removePrefix("\uFEFF").split('\t');if(p.size==3&&p[0]=="M")indicator[p[1]]=p[2]}
         val systemUi=packageInfo("com.android.systemui")?.applicationInfo?.sourceDir?:error("Helper SystemUI identity unavailable")
-        check(indicator.size==5&&DexAbi.inspect(File(systemUi),setOf("Lcom/android/systemui/ScRune;","Lcom/android/systemui/privacy/AppOpsPrivacyItemMonitor;")).methods==indicator){"Helper indicator ABI mismatch"}
-        val profileId=java.security.MessageDigest.getInstance("SHA-256").digest((methods.entries+indicator.entries).joinToString("\n"){"${it.key}=${it.value}"}.toByteArray()).joinToString(""){"%02x".format(it.toInt() and 255)}
+        check(indicator.size==5){"Helper indicator profile invalid"}
+        // Whether the dot still follows the bit cannot be proven on changed SystemUI code: the app says so instead of stopping.
+        val observedIndicator=runCatching{DexAbi.inspect(File(systemUi),setOf("Lcom/android/systemui/ScRune;","Lcom/android/systemui/privacy/AppOpsPrivacyItemMonitor;")).methods}.getOrDefault(emptyMap())
+        val indicatorExact=observedIndicator==indicator
+        // Unchanged on the verified firmware; a patched firmware gets its own id from what was actually read.
+        val profileSource=if(abi.exact&&indicatorExact)(methods.entries+indicator.entries).joinToString("\n"){"${it.key}=${it.value}"}
+            else "compatible\n"+(methods.keys.map{"$it=${observed.methods[it]}"}+abi.codes.map{"${it.key}=${it.value}"}+observedIndicator.map{"${it.key}=${it.value}"}).joinToString("\n")
+        val profileId=java.security.MessageDigest.getInstance("SHA-256").digest(profileSource.toByteArray()).joinToString(""){"%02x".format(it.toInt() and 255)}
         verified=true
         deviceProfile=app.bluedotoff.core.Firmware(Build.MANUFACTURER,Build.VERSION.SDK_INT,property("ro.build.version.oneui"),Build.FINGERPRINT,Build.ID,Build.MODEL,profileId)
-        return h.put("abiVerified",true).put("historyAbiVerified",true).put("indicatorAbiVerified",true).put("country",country).put("profileId",profileId).put("installedUid",self.applicationInfo!!.uid).put("shellPermissionChecks",true).put("authoritativeSelfUid",true).put("stableGetter",true)
+        return h.put("abiVerified",true).put("abiExact",abi.exact).put("historyAbiVerified",historyExact).put("indicatorAbiVerified",indicatorExact).put("country",country).put("profileId",profileId).put("installedUid",self.applicationInfo!!.uid).put("shellPermissionChecks",true).put("authoritativeSelfUid",true).put("stableGetter",true)
     }
     private fun <T> parcelRead(service:String,method:String,input:(Parcel)->Unit,output:(Parcel)->T):T {
         val d=Parcel.obtain();val r=Parcel.obtain()

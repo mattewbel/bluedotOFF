@@ -32,7 +32,6 @@ abstract class BinderBackend(private val context: Context) : TargetPort {
     private val validationStart = SystemClock.elapsedRealtime()
     private val codes = java.util.concurrent.ConcurrentHashMap<String, Int>()
     var historyAvailable: Boolean = false; private set
-    protected open val indicatorMethodsVerified:Boolean=false
     protected open val applicationScope:ApplicationScope get()=ApplicationScope.GROUPS
     abstract fun liveShellServer():Boolean
     @Synchronized private fun record(event: JSONObject) {
@@ -98,7 +97,7 @@ abstract class BinderBackend(private val context: Context) : TargetPort {
         val historyMs=SystemClock.elapsedRealtime()-historyStart
         // Display-only read phase. Uses existing allowlisted PackageInfo/flags/raw-mode getters.
         // No Snapshot safety predicate or setter is changed by this classification.
-        val platform=IndicatorPlatform.read(context,indicatorMethodsVerified)
+        val platform=IndicatorPlatform.read(context)
         record(JSONObject().put("phase","indicator_platform").put("supported",platform.supported).put("exemptions",org.json.JSONArray(platform.exemptions.toList().sorted())))
         if(enriched.isNotEmpty())onProgress(0,enriched.size)
         val classified=enriched.mapIndexed{index,a->

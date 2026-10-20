@@ -43,7 +43,11 @@ class LifecycleReceiver : BroadcastReceiver() {
                 if (changed.isNotEmpty() && action !in listOf(Intent.ACTION_PACKAGE_REMOVED,Intent.ACTION_PACKAGE_FULLY_REMOVED)) ReapplyNotification.show(context, if (action == Intent.ACTION_BOOT_COMPLETED) null else changed.first())
             } catch (_: Exception) {
                 // Corrupt journal remains intact. Next foreground screen displays recovery failure.
-            } finally { pending.finish() }
+            } finally {
+                // R-1: only after the restart is recorded in the journal, so the job sees what the restart unhid.
+                if (action == Intent.ACTION_BOOT_COMPLETED && RestartRecoveryJob.eligible(context)) RestartRecoveryJob.schedule(context)
+                pending.finish()
+            }
         }
     }
 }
@@ -59,7 +63,8 @@ object ReapplyNotification {
     /** Opening bluedotOFF re-applies by itself (setting on and automatic management ready). */
     private fun autoReapply(context: Context) = context.getSharedPreferences("ui-state",Context.MODE_PRIVATE).getBoolean("autoReapply",true) &&
         app.bluedotoff.adb.WirelessControls(context).let { it.consent && it.granted }
-    fun show(context: Context, target: Entry?) {
+    /** [checkInApp]: the restart job ran and some apps still need the app (unconfirmed writes or failures). */
+    fun show(context: Context, target: Entry?, checkInApp: Boolean = false) {
         if(ForegroundState.active)return
         if(!context.getSharedPreferences("ui-state",Context.MODE_PRIVATE).getBoolean("reapplyNotify",true))return
         if (android.os.Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
@@ -69,7 +74,7 @@ object ReapplyNotification {
         val intent = Intent(context, MainActivity::class.java).setAction("app.bluedotoff.REAPPLY").putExtra("target", target?.identity?.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         val id = target?.identity?.packageName?.hashCode() ?: 4101
         val content = PendingIntent.getActivity(context, id, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val notification = Notification.Builder(context, CHANNEL).setSmallIcon(R.drawable.ic_dot).setContentTitle(app.bluedotoff.UiText.text(context,"파란 위치 표시 설정을 다시 확인해주세요")).setContentText(if (autoReapply(context)) app.bluedotoff.UiText.text(context,"bluedotOFF를 열면 숨김을 자동으로 다시 적용해요.") else if (target == null) app.bluedotoff.UiText.text(context,"재부팅 후에는 무선 디버깅을 잠시 켜고 등록 앱을 확인해주세요.") else app.bluedotoff.UiText.text(context,"${target.label} 업데이트 후 설정을 다시 확인해주세요.")).setContentIntent(content).setAutoCancel(true).addAction(Notification.Action.Builder(null,app.bluedotoff.UiText.text(context,"설정 확인"),content).build()).build()
+        val notification = Notification.Builder(context, CHANNEL).setSmallIcon(R.drawable.ic_dot).setContentTitle(app.bluedotoff.UiText.text(context,"파란 위치 표시 설정을 다시 확인해주세요")).setContentText(if (checkInApp) app.bluedotoff.UiText.text(context,"일부 앱은 확인이 필요해요. bluedotOFF를 열어 확인해주세요.") else if (target == null && RestartRecoveryJob.eligible(context)) app.bluedotoff.UiText.text(context,"Wi-Fi에 연결되면 숨김을 자동으로 다시 적용해요. 그래도 남아 있으면 bluedotOFF를 열어주세요.") else if (autoReapply(context)) app.bluedotoff.UiText.text(context,"bluedotOFF를 열면 숨김을 자동으로 다시 적용해요.") else if (target == null) app.bluedotoff.UiText.text(context,"재부팅 후에는 무선 디버깅을 잠시 켜고 등록 앱을 확인해주세요.") else app.bluedotoff.UiText.text(context,"${target.label} 업데이트 후 설정을 다시 확인해주세요.")).setContentIntent(content).setAutoCancel(true).setOnlyAlertOnce(true).addAction(Notification.Action.Builder(null,app.bluedotoff.UiText.text(context,"설정 확인"),content).build()).build()
         try { manager.notify(id, notification) } catch (_: SecurityException) { /* Notifications optional; journal already durable. */ }
     }
 }

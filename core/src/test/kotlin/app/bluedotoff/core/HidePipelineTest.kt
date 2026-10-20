@@ -105,6 +105,12 @@ class HidePipelineTest {
         rig.names.forEach{rig.engine().userRestore(it)}
         assertTrue(rig.writes.isEmpty());assertTrue(rig.records.values.none{it.enabled})
     }
+    @Test fun leavingAfterEveryAppStartedFinishesWithoutTheLeftScreenMessage() {
+        val rig=Rig(4);rig.onWait={rig.active=false}
+        val result=rig.window()
+        assertEquals(4,result.started);assertFalse(result.stopped);assertEquals("",result.reason)
+        assertTrue(result.results.all{it.success&&it.entry!!.settlingVerified})
+    }
     @Test fun existingOnOriginalsSurviveNoopReapplyAndSerialRestore() {
         val rig=Rig(4);val baseline=rig.snapshots.toMap()
         rig.window();val writes=rig.writes.size

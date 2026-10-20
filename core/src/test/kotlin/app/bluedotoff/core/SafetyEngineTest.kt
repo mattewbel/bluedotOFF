@@ -145,6 +145,14 @@ class SafetyEngineTest {
     @Test fun explicitNewInstallRegistrationUsesNewOriginal() {val(s,p,e)=rig();e.userHide(identity.packageName);p.current=baseline.copy(identity=identity.copy(uid=10795,firstInstallTime=700));expectFailure{e.userHide(identity.packageName)};e.userHide(identity.packageName);assertEquals(10795,s.data.last().identity.uid);assertEquals(256,s.data.last().originalBit)}
     @Test fun rebootMarkerNeverWritesOrPromisesStillApplied() {val(s,p,e)=rig();e.userHide(identity.packageName);val marked=Reconcile.boot(s.data.last());assertEquals(TargetState.NEEDS_REAPPLY_BOOT,Reconcile.read(marked,p.current,firmware.key,"boot:2").state);assertEquals(listOf(0),p.writes)}
     @Test fun updateMarkerNeverWrites() {val(s,p,e)=rig();e.userHide(identity.packageName);val marked=Reconcile.update(s.data.last());assertEquals(TargetState.NEEDS_REAPPLY_UPDATE,Reconcile.read(marked,p.current,firmware.key,"boot:1").state);assertEquals(listOf(0),p.writes)}
+    @Test fun aRecordFromOlderFirmwareIsReappliedAndRestoredOnTheCheckedNewFirmware() {
+        val(s,p,e)=rig();e.userHide(identity.packageName);val old=s.data.last()
+        // A security patch: new fingerprint and ABI profile, and the restart turned the bit back on.
+        p.fw=firmware.copy(fingerprint="patched",abiProfile="patched-abi");p.current=p.current.copy(fineFlags=baseline.fineFlags)
+        s.commit(Reconcile.read(old,p.current,p.fw.key,"boot:1"));assertEquals(TargetState.NEEDS_RECHECK_FIRMWARE,s.data.last().state)
+        assertEquals(TargetState.APPLIED,e.userHide(identity.packageName).state);assertEquals(p.fw.key,s.data.last().firmware);assertEquals(old.originalBit,s.data.last().originalBit)
+        e.userRestore(identity.packageName);assertEquals(listOf(0,0,256),p.writes)
+    }
     @Test fun firmwareChangeMarksRecheckWithoutWrite() {val(s,p,e)=rig();e.userHide(identity.packageName);assertEquals(TargetState.NEEDS_RECHECK_FIRMWARE,Reconcile.read(s.data.last(),p.current,"new-fw","boot:1").state);assertEquals(listOf(0),p.writes)}
     @Test fun missingTargetLeavesOriginalRecordIntact() {val(s,p,e)=rig();e.userHide(identity.packageName);assertEquals(TargetState.MISSING_TARGET,Reconcile.read(s.data.last(),null,firmware.key,"boot:1").state);assertEquals(256,s.data.last().originalBit);assertEquals(listOf(0),p.writes)}
     @Test fun pendingHideRecoveryIsReadOnly() {val(s,p,e)=rig();e.userHide(identity.packageName);val pending=s.data.last().copy(state=TargetState.PENDING_HIDE);assertEquals(TargetState.FAILED_SAFE,Reconcile.read(pending,p.current,firmware.key,"boot:1").state);assertEquals(listOf(0),p.writes)}
@@ -156,6 +164,15 @@ class SafetyEngineTest {
     @Test fun historyIsNotPermissionInvariant(){assertTrue(baseline.invariantEquals(baseline.copy(lastLocationAccess=123),256));assertEquals(baseline.invariantDigest(),baseline.copy(lastLocationAccess=123).invariantDigest())}
     @Test fun pendingRestoreAlreadyOriginalIsClosedWithoutWrite() {val(s,p,e)=rig();e.userHide(identity.packageName);val pending=s.data.last().copy(state=TargetState.PENDING_RESTORE);val recovered=Reconcile.read(pending,baseline,firmware.key,"boot:1");assertEquals(TargetState.NOT_APPLIED,recovered.state);assertFalse(recovered.enabled);assertEquals(listOf(0),p.writes)}
     @Test fun interruptedWriteWithExtraFlagCannotBeReconciledAsSuccess(){val(s,p,e)=rig();e.userHide(identity.packageName);val pending=s.data.last().copy(state=TargetState.PENDING_HIDE);p.current=p.current.copy(fineFlags=p.current.fineFlags or 0x10);assertEquals(TargetState.FAILED_ROLLBACK,Reconcile.read(pending,p.current,firmware.key,"boot:1").state);s.commit(pending);expectFailure{e.userRestore(identity.packageName)};assertEquals(listOf(0),p.writes)}
+    /** Audit H-1: a registered app uninstalled without restoring stays MISSING_TARGET through a restart, an update and a
+     *  firmware change, so it never becomes a re-apply target (the restart job's batch stops at its first failure). */
+    @Test fun anUninstalledAppIsNeverMarkedForReapply(){
+        val(s,_,e)=rig();e.userHide(identity.packageName);val gone=Reconcile.read(s.data.last(),null,firmware.key,"boot:1")
+        assertEquals(TargetState.MISSING_TARGET,gone.state);assertTrue(gone.enabled)
+        assertEquals(gone,Reconcile.boot(gone));assertEquals(gone,Reconcile.update(gone));assertEquals(gone,BootEvents.fromBroadcast(gone,"count:9"))
+        assertEquals(TargetState.MISSING_TARGET,Reconcile.read(gone,null,"patched-firmware","boot:2").state)
+        assertEquals(TargetState.MISSING_TARGET,Reconcile.read(s.data.last(),null,"patched-firmware","boot:2").state)
+    }
     @Test fun eventMarkersNeverEraseInterruptedTransaction(){val(s,_,e)=rig();e.userHide(identity.packageName);val pending=s.data.last().copy(state=TargetState.PENDING_RESTORE);assertEquals(pending,Reconcile.boot(pending));assertEquals(pending,Reconcile.update(pending))}
     @Test fun permissionChangeRequiresManualReviewWithoutWrites(){val(s,p,e)=rig();e.userHide(identity.packageName);p.current=p.current.copy(backgroundGranted=true);assertEquals(TargetState.UNSUPPORTED_STATE,Reconcile.read(s.data.last(),p.current,firmware.key,"boot:1").state);assertEquals(listOf(0),p.writes)}
     @Test fun verificationDigestExcludesOnlySensitivityBit(){assertEquals(baseline.invariantDigest(),baseline.copy(fineFlags=baseline.fineFlags and 256.inv()).invariantDigest());assertNotEquals(baseline.invariantDigest(),baseline.copy(coarseFlags=baseline.coarseFlags xor 0x100).invariantDigest())}

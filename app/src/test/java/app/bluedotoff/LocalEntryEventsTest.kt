@@ -57,7 +57,7 @@ class LocalEntryEventsTest {
         assertEquals(TargetState.NEEDS_REAPPLY_UPDATE,LocalEntryEvents.read(entry,"fp","boot"){id.copy(lastUpdateTime=4)}.state)
     }
     @Test fun pendingAndReviewStatesCannotBeClearedByLocalLookup(){
-        listOf(TargetState.FAILED_ROLLBACK,TargetState.SHARED_UID_CHANGED,TargetState.NEEDS_REVIEW,TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE).forEach{state->
+        listOf(TargetState.FAILED_ROLLBACK,TargetState.SHARED_UID_CHANGED,TargetState.NEEDS_REVIEW,TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE,TargetState.MISSING_TARGET).forEach{state->
             val e=entry.copy(state=state)
             assertEquals(e,LocalEntryEvents.read(e,"new-fp","new-boot"){error("must not query")})
         }

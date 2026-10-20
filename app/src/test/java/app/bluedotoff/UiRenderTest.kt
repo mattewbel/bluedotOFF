@@ -352,6 +352,9 @@ class UiRenderTest {
     }
     @Test @Config(qualifiers="es-rES-w360dp-h780dp-xxhdpi",fontScale=1.3f) fun spanishLargeNarrowScreens()=longLanguageScreens("es")
     @Test @Config(qualifiers="hi-rIN-w360dp-h780dp-xxhdpi",fontScale=1.3f) fun hindiLargeNarrowScreens()=longLanguageScreens("hi")
+    // 1.1.5: Android's largest font scale (2.0) on a narrow screen, Korean and English.
+    @Test @Config(qualifiers="ko-rKR-w360dp-h780dp-xxhdpi",fontScale=2.0f) fun koreanLargestTextNarrowScreens()=longLanguageScreens("ko-x2")
+    @Test @Config(qualifiers="en-rUS-w360dp-h780dp-night-xxhdpi",fontScale=2.0f) fun englishLargestTextNarrowScreens()=longLanguageScreens("en-x2")
     /** The US-model notice can be confirmed once; the callback stores that and the notice is gone. */
     @Test fun usNoticeCanBeConfirmed(){
         var dismissed=false
@@ -532,6 +535,19 @@ class UiRenderTest {
         compose.onNodeWithText("Applied · Last checked").assertExists()
         compose.onNodeWithText("Registered apps · 1").assertExists()
     }
+    /** 1.1.5: after leaving the screen mid-batch the unfinished apps stay selected; the card says how to continue. */
+    @Test fun interruptedBatchSaysRemainingAppsStaySelected(){
+        val base=model(applied=true)
+        val left="화면을 떠나서 남은 앱은 바꾸지 않았어요. 이미 끝난 적용과 등록 기록은 그대로예요."
+        val outcome=BatchOutcome(true,listOf(BatchResult("demo.weather",base.entries.single())),base.entries,emptyList(),error=left)
+        render("74-interrupted-pick",base.copy(page=Page.PICK,completion=outcome,picked=setOf("demo.a","demo.b","demo.c")))
+        compose.onNodeWithText("남은 3개 앱은 선택된 그대로예요. 아래 버튼을 다시 누르면 이어서 진행해요.").assertExists()
+        // Other pages and automatic re-apply have no button to press again.
+        render("74-interrupted-home",base.copy(completion=outcome,picked=setOf("demo.a")))
+        compose.onNodeWithText("이어서 진행해요",substring=true).assertDoesNotExist()
+        render("74-interrupted-auto",base.copy(page=Page.PICK,completion=outcome.copy(auto=true),picked=setOf("demo.a")))
+        compose.onNodeWithText("이어서 진행해요",substring=true).assertDoesNotExist()
+    }
     @Test @Config(fontScale=1.5f) fun progressIsReadableWithLargeText(){render("74-progress-large",model().copy(busy=true,progress=BatchProgress(35,70,BatchPhase.CHECKING)))}
     @Test fun homeUsesCuratedHistoryEvenWhenAllViewWasSelected(){
         val user=DiscoveredApp("test.user","최근 사용자 앱",10001,launcher=true,access=LocationAccess(fine=100),indicatorHint=FineIndicatorHint.SENSITIVE)
@@ -609,6 +625,9 @@ class UiRenderTest {
     @Test fun failedGroupValidationHasNoSelectionAction(){render("80-shared-blocked",model().copy(sharedOffer=SharedOffer(sharedMembers(),error="공유 앱 묶음을 확인해야 해요.")));compose.onNodeWithText("묶음 전체 선택").assertDoesNotExist();compose.onNodeWithText("demo.provider").assertExists()}
     @Test @Config(qualifiers="en-rUS-w412dp-h915dp-xxhdpi") fun sharedEnglishExplainsWholeGroup(){render("80-shared-en",model().copy(sharedOffer=SharedOffer(sharedMembers())));compose.onNodeWithText("Select the whole group").assertExists();compose.onNodeWithText("Apps sharing a location setting").assertExists()}
     @Test fun usModelShowsWarningOnlyWhenFlagged(){render("84-home-us-model",model(applied=true).copy(usModel=true));compose.onNodeWithText("미국 판매 모델 안내").assertExists()}
+    @Test fun unverifiedFirmwareShowsTheUpdateNoticeOnlyWhenFlagged(){render("85-home-firmware-notice",model(applied=true).copy(firmwareNotice=true));compose.onNodeWithText("확인되지 않은 시스템 안내").assertExists()}
+    @Test fun verifiedFirmwareHasNoUpdateNotice(){render("85-home-firmware-default",model(applied=true));compose.onNodeWithText("확인되지 않은 시스템 안내").assertDoesNotExist()}
+    @Test @Config(qualifiers="en-rUS-w412dp-h915dp-xxhdpi") fun firmwareNoticeIsEnglishOutsideKorean(){render("85-home-firmware-notice-en",model(applied=true).copy(firmwareNotice=true));compose.onNodeWithText("Unverified system notice").assertExists()}
     @Test fun nonUsModelHasNoRegionWarning(){render("84-home-default",model(applied=true));compose.onNodeWithText("미국 판매 모델 안내").assertDoesNotExist()}
     @Test @Config(qualifiers="en-rUS-w412dp-h915dp-xxhdpi") fun usModelWarningIsEnglishOutsideKorean(){render("84-home-us-model-en",model(applied=true).copy(usModel=true));compose.onNodeWithText("US model notice").assertExists()}
     @Test fun welcomeWarnsSomeAppsMayLoseHiding(){render("01-welcome-notice",model(gate=Gate.WELCOME));compose.onNodeWithText("미리 알아두세요").assertExists();compose.onNodeWithText("위치 권한을 ‘정확한 위치’로 허용한 앱만 숨길 수 있어요.").assertExists();compose.onNodeWithText("풀린 앱은 bluedotOFF를 열 때 다시 숨겨요. USB 디버깅을 켜 두면 앱을 열지 않아도 감지하는 대로 다시 숨겨요.").assertExists()}
@@ -644,7 +663,8 @@ class UiRenderTest {
         File(dir,"$name.png").outputStream().use { check(image.compress(Bitmap.CompressFormat.PNG,100,it)) }
     }
     @Test fun welcome(){render("01-welcome",model(gate=Gate.WELCOME));compose.onNodeWithText("시작하기").assertExists()}
-    @Test fun stoppedBackend(){render("03-backend-not-running",model(gate=Gate.NOT_RUNNING));compose.onNodeWithText("연결 설정 열기").assertExists()}
+    @Test fun stoppedBackend(){render("03-backend-not-running",model(gate=Gate.NOT_RUNNING));compose.onNodeWithText("연결 설정 열기").assertExists();compose.onNodeWithText("진단 정보 복사 및 보내기").assertExists()}
+    @Test fun welcomeAndCheckingHaveNoDiagnosticsButton(){for(gate in listOf(Gate.WELCOME,Gate.CHECKING)){render("diag-${gate.name.lowercase()}",model(gate=gate));compose.onNodeWithText("진단 정보 복사 및 보내기").assertDoesNotExist()}}
     @Test fun registeredOnlyReadDoesNotClaimToScanAllInstalledApps(){
         render("85-registered-only",model(gate=Gate.CHECKING).copy(checkingRegistered=true,scanProgress=ScanProgress(10,52)))
         compose.onNodeWithText("등록한 앱의 상태를 확인하고 있어요").assertExists()
@@ -727,7 +747,7 @@ class UiRenderTest {
         File(checkNotNull(System.getProperty("screenshotDir")).also{File(it).mkdirs()},"87-auto-blocker-dialog.png").outputStream().use{check(image.compress(Bitmap.CompressFormat.PNG,100,it))}
     }
     @Test fun notificationDenied(){render("11-notifications-denied",model(page=Page.SETTINGS).copy(notifications=false));compose.onNode(androidx.compose.ui.test.isToggleable()and androidx.compose.ui.test.hasText("재적용 알림")).assertIsOff()}
-    @Test fun unsupported(){render("12-unsupported",model(gate=Gate.UNSUPPORTED));compose.onNodeWithText("이 기기는 지원하지 않아요").assertExists();compose.onNodeWithText("bluedotOFF 적용").assertDoesNotExist()}
+    @Test fun unsupported(){render("12-unsupported",model(gate=Gate.UNSUPPORTED));compose.onNodeWithText("이 기기는 지원하지 않아요").assertExists();compose.onNodeWithText("bluedotOFF 적용").assertDoesNotExist();compose.onNodeWithText("진단 정보 복사 및 보내기").assertExists()}
     @Test fun compatibilityPass(){render("13-ready",model().copy(entries=emptyList()));compose.onNodeWithText("준비 완료").assertExists()}
     @Test fun pickerAndSharedUid(){val e=model().entries.single();val s=Snapshot(e.identity,"날씨",listOf(e.identity.packageName,"shared.peer"),true,true,true,false,0x80301,0x301,0,4,4,false);render("14-picker-shared",model(page=Page.PICK).copy(candidates=listOf(s)));compose.onNodeWithText("다른 앱과 묶여 있어요 · 함께 선택돼요").assertExists();compose.onNodeWithText("현재 적용할 수 없는 앱",substring=true).assertDoesNotExist();compose.onNodeWithText("0개 추가").assertIsNotEnabled()}
     @Test fun cachedAppliedIsNotDisplayedAsVerified(){render("17-cached-stale",model(applied=true).copy(connected=false,freshPackages=emptySet()));compose.onNodeWithText("Blue Dot\nbluedotOFF 적용 중").assertDoesNotExist();compose.onNodeWithText("적용 중 · 마지막 확인 기준").assertExists()}
@@ -814,6 +834,21 @@ class UiRenderTest {
         compose.onNodeWithText("Android 시스템").assertExists()
         compose.onNodeWithText("앱 기록").performClick()
         compose.onNodeWithText("Android 시스템").assertDoesNotExist()
+    }
+    @Test fun reapplyHistoryFiltersFailuresAndOneApp(){
+        val now=System.currentTimeMillis()
+        val m=history().copy(historyView=HistoryView.REAPPLY,reapplyHistory=listOf(
+            ReapplyHistoryItem("ok","demo.weather","날씨",now,true,ReapplySource.APP_OPEN),
+            ReapplyHistoryItem("bad","demo.maps","지도",now-60_000,false,ReapplySource.MANUAL),
+            ReapplyHistoryItem("bad2","demo.bus","버스",now-120_000,false,ReapplySource.BACKGROUND)
+        ))
+        render("93-reapply-history-filter",m)
+        compose.onNodeWithText("실패만").performClick();compose.waitForIdle()
+        compose.onNodeWithText("날씨").assertDoesNotExist();compose.onNodeWithText("지도").assertExists();compose.onNodeWithText("버스").assertExists()
+        compose.onNode(hasSetTextAction()).performTextInput("버스");compose.waitForIdle()
+        compose.onNodeWithText("지도").assertDoesNotExist();compose.onAllNodesWithText("버스").assertCountEquals(2)
+        compose.onNodeWithText("실패만").performClick();compose.onNode(hasSetTextAction()).performTextReplacement("없는앱");compose.waitForIdle()
+        compose.onNodeWithText("조건에 맞는 기록이 없어요.").assertExists()
     }
     @Test fun reapplyHistoryHasItsOwnRowsAndNoLocationOrAdbCopy(){
         val now=System.currentTimeMillis()

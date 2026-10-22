@@ -18,7 +18,7 @@ Location permissions and location history stay as they are. bluedotOFF changes a
 
 ## What it does
 
-<p align="center"><img src="docs/screenshots/promo-en.gif" width="640" alt="bluedotOFF overview: the blue location dot, hiding it only for apps you choose, background watch"></p>
+<p align="center"><img src="docs/screenshots/promo-en.gif" width="100%" alt="bluedotOFF overview: the blue location dot, hiding it only for apps you choose, background watch"></p>
 
 <p align="center"><img src="docs/screenshots/before-after-en.png" width="640" alt="Before: a blue location dot appears in the status bar. After: it does not."></p>
 

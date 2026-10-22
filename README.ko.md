@@ -18,7 +18,7 @@ Samsung One UI 9 (Android 17) 휴대폰에서 **내가 고른 앱의 파란 위�
 
 ## 이런 앱이에요
 
-<p align="center"><img src="docs/screenshots/promo-ko.gif" width="640" alt="bluedotOFF 소개: 파란 위치 표시 문제, 믿는 앱만 골라 숨기기, 백그라운드 감시"></p>
+<p align="center"><img src="docs/screenshots/promo-ko.gif" width="100%" alt="bluedotOFF 소개: 파란 위치 표시 문제, 믿는 앱만 골라 숨기기, 백그라운드 감시"></p>
 
 <p align="center"><img src="docs/screenshots/before-after.png" width="640" alt="적용 전에는 상태 표시줄에 파란 위치 표시가 뜨고, 적용 후에는 뜨지 않는 모습"></p>
 

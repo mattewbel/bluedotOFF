@@ -5,7 +5,7 @@ body:
     id: diagnostics
     attributes:
       label: 진단 정보 / Diagnostic info
-      description: 앱의 설정 → 정보 및 지원 → 진단 정보 복사 를 누른 뒤 붙여넣어 주세요. 설치된 앱 목록이나 위치 기록은 들어 있지 않아요. / In the app, tap Settings → About & support → Copy diagnostic info and paste it here. It does not include your apps or location history.
+      description: 앱의 설정 → 정보 및 지원 → 진단 정보 복사 및 보내기 를 누른 뒤 붙여넣어 주세요. 설치된 앱 목록이나 위치 기록은 들어 있지 않아요. / In the app, tap Settings → About & support → Copy and send diagnostic info and paste it here. It does not include your apps or location history.
       render: text
     validations:
       required: true

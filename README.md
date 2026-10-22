@@ -6,7 +6,7 @@
 
 > 🔒 **Open source · No ads, analytics or tracking · No root**  
 > The wireless debugging connection stays inside the phone (127.0.0.1). Location permissions are untouched; only one indicator flag (`0x100`) changes.  
-> To confirm a download is the official file, see `checksums.txt` on the release. Signing certificate SHA-256: `61:9F:E1:EC:BD:F5:9D:5D:0B:83:8D:DC:64:20:E5:8B:E9:0F:82:8B:E1:1C:B6:1F:E6:C8:E6:AA:4C:EA:AD:62`
+> To confirm a download is the official file, see `bluedotOFF-1.2.1-checksums.txt` on the release. Signing certificate SHA-256: `61:9F:E1:EC:BD:F5:9D:5D:0B:83:8D:DC:64:20:E5:8B:E9:0F:82:8B:E1:1C:B6:1F:E6:C8:E6:AA:4C:EA:AD:62`
 
 An app for Samsung One UI 9 (Android 17) phones that **hides the blue location indicator (Blue Dot) only for the apps you choose**.
 Location permissions and location history stay as they are. bluedotOFF changes a single setting that controls the status bar indicator, and it records the previous state so you can undo it in the app.
@@ -107,8 +107,8 @@ Pairing is needed only once.
 ## Using the app
 
 - **Refresh history:** Pull the list down or tap ↻. **Reapply history** shows the latest results and times, including background watch, reapplying on app open, and manual reapplying. It keeps the latest 200 records. This tab works without Wi-Fi or a debugging connection.
-- **Hide:** Home → **Add apps** → find apps with search and filters → **Add N**. For an app whose hidden state has been verified, the **Applied** action on its detail screen is disabled. You can also hide apps that recently used location from **History**. Tap an app in History to see its details, and tap ↻ to reload the history.
-- **Restore:** Home → **Restore apps** → **Restore all**, or **Choose apps** (also Home → **Edit**) to pick apps with search and Select all like Add apps, then **Restore N**. You can also restore one app from its detail screen with **Unhide · restore original setting**.
+- **Hide:** Home → **Add apps** → find apps with search and filters → **Add N**. For an app whose hidden state has been verified, its detail screen shows no apply button. You can also hide apps that recently used location from **History**. Tap an app in History to see its details, and tap ↻ to reload the history.
+- **Restore:** Home → **Restore apps** → **Restore all**, or **Choose apps** (also Home → **Edit**) to pick apps with search and Select all like Add apps, then **Restore N**. You can also restore one app from its detail screen with **Restore original display setting**.
 - **Reapply:** After a restart or an app update, Android may turn the indicator back on. When an app update or similar undoes it, a running [background watch](#background-watch) re-applies it as soon as a change is detected, without opening the app. A phone restart stops the watch; with automatic management and **Re-apply automatically when opened** on, it starts again and re-applies them once Wi-Fi connects (otherwise open the app once). With automatic management, opening bluedotOFF re-applies those apps and shows "Re-applied automatically to N apps" (turn it off in Settings → **Re-apply automatically when opened**). After a phone update the apps are re-applied the same way. For apps that need checking or were reinstalled it does not run automatically; tap **reapply needed** on Home.
 - **Check again:** Tap ↻ next to **Last checked N min ago** on Home to recheck your registered apps right away.
 - **Before uninstalling:** Settings → **Restore before uninstalling**. It returns every hidden app to its original state and then tells you whether you can uninstall bluedotOFF.

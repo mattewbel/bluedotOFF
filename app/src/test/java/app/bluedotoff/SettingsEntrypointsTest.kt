@@ -40,7 +40,8 @@ class SettingsEntrypointsTest {
             assertFalse(opened.hasExtra(":settings:show_fragment"))
             assertEquals("software_info",opened.getStringExtra(":settings:fragment_args_key"))
             assertEquals("software_info",opened.getBundleExtra(":settings:show_fragment_args")!!.getString(":settings:fragment_args_key"))
-            assertEquals(UiText.text(a,"소프트웨어 정보 → 빌드번호 7번 누르기"),org.robolectric.shadows.ShadowToast.getTextOfLatestToast())
+            // Nothing covers the highlighted row (owner 2026-10-22).
+            assertEquals(0,org.robolectric.shadows.ShadowToast.shownToastCount())
         }finally{c.pause().stop().destroy()}
     }
     @Test fun inaccessibleDirectScreenFallsBackWithoutForcingAFragment(){

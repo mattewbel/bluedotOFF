@@ -6,7 +6,7 @@ android='{http://schemas.android.com/apk/res/android}'
 env=dict(os.environ,JAVA_HOME='C:/Program Files/Eclipse Adoptium/jdk-17.0.20.101-hotspot')
 sdk=Path(os.environ.get('ANDROID_HOME') or os.environ.get('ANDROID_SDK_ROOT') or Path.home()/'AppData/Local/Android/Sdk')
 tools=sdk/'build-tools/36.0.0'
-permissions={'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS','android.permission.FOREGROUND_SERVICE','android.permission.WRITE_SECURE_SETTINGS','android.permission.ACCESS_NETWORK_STATE','android.permission.INTERNET','android.permission.ACCESS_LOCAL_NETWORK','android.permission.POST_NOTIFICATIONS','android.permission.RECEIVE_BOOT_COMPLETED','app.bluedotoff.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'}
+permissions={'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS','android.permission.FOREGROUND_SERVICE','android.permission.WRITE_SECURE_SETTINGS','android.permission.ACCESS_NETWORK_STATE','android.permission.INTERNET','android.permission.ACCESS_LOCAL_NETWORK','android.permission.POST_NOTIFICATIONS','android.permission.RECEIVE_BOOT_COMPLETED','android.permission.USE_FULL_SCREEN_INTENT','app.bluedotoff.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'}
 gradle=(root/'app/build.gradle.kts').read_text(encoding='utf-8-sig')
 result={'version':re.search(r'versionName = "([^"]+)"',gradle)[1],'versionCode':int(re.search(r'versionCode = (\d+)',gradle)[1]),'compileSdk':37,'targetSdk':37,'apks':{},'testCounts':{},'lint':{}}
 for variant,suffix,expected in [('localDebug','','3b3b208f92d3d437acf30c333d9a7b5b0bc8f535056e18edd82df2701db2be0c'),('localRelease','-release','619fe1ecbdf59d5d0b838ddc6420e58be90f828be11cb61fe6c8e6aa4ceaad62')]:

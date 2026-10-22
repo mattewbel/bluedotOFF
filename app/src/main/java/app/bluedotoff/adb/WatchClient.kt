@@ -86,7 +86,7 @@ object WatchClient {
         LifecycleEvents.changed()
     }
     internal fun config(c:Context)=JSONArray(JournalStore(c).entries().filter(WatchPolicy::eligible).map{e->JSONObject().put("package",e.identity.packageName).put("uid",e.identity.uid)})
-    const val UNRESPONSIVE="감시 도우미가 응답하지 않아요. 휴대폰을 다시 시작한 뒤 Wi-Fi에 연결된 상태에서 bluedotOFF를 열어주세요."
+    const val UNRESPONSIVE="백그라운드 감시가 응답하지 않아요. 휴대폰을 다시 시작한 뒤 Wi-Fi에 연결된 상태에서 bluedotOFF를 열거나, PC에서 시작 명령을 다시 실행해주세요."
     private val rpcThreads=java.util.concurrent.Executors.newCachedThreadPool()
     /** B-3: a helper that is alive but silent must not hold the app's session forever. Reads and control calls get a
      *  deadline; a permission write never does (it is never retried elsewhere, so a late answer cannot write twice).

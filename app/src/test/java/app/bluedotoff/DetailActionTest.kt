@@ -42,8 +42,9 @@ class DetailActionTest {
 
     @Test fun verifiedAppliedDisablesHideButKeepsRestoreAvailable(){
         showDetail(entry(TargetState.APPLIED,enabled=true,settlingVerified=true))
-        compose.onNode(hasText("적용 중") and hasClickAction()).assertIsNotEnabled()
-        compose.onNodeWithText("숨김 해제 · 원래 상태로 복원").assertIsEnabled()
+        // No grey "적용 중" button: the state is shown above it (owner 2026-10-22).
+        compose.onNode(hasText("적용 중") and hasClickAction()).assertDoesNotExist()
+        compose.onNodeWithText("원래 표시 상태로 복원").assertIsEnabled()
     }
 
     @Test fun unverifiedAppliedRemainsRetryable(){
@@ -53,7 +54,7 @@ class DetailActionTest {
     @Test fun recoverableFailureRemainsRetryable(){
         showDetail(entry(TargetState.FAILED_SAFE,enabled=true,settlingVerified=false,error="작업을 중단했고 원래 상태를 확인했어요."))
         compose.onNodeWithText("bluedotOFF 재적용").assertIsEnabled()
-        compose.onNodeWithText("숨김 해제 · 원래 상태로 복원").assertIsEnabled()
+        compose.onNodeWithText("원래 표시 상태로 복원").assertIsEnabled()
     }
 
     @Test fun latestReadShowingResetAllowsReapplyDespiteOlderAppliedRecord(){

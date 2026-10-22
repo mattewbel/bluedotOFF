@@ -37,12 +37,14 @@ class SetupSession internal constructor(private val context:Context,private val 
     private var error:SetupStage?=null
     private var attempts=0
     private var lastWireless=false
+    private var lastHelper:Boolean?=null
     @Volatile private var closed=false
     private var operationEpoch=0L
     private var manual=false
     private var notices=PairNotice.NONE
     private var notifiedToken=-1L
     private var invalidCode=false
+    private var held:LocalAdbPolicy.PairReply?=null
     private var notificationRequestPending=false
     var diagnosticResult="";private set
     var scanProgress:ScanProgress?=null;private set
@@ -59,13 +61,16 @@ class SetupSession internal constructor(private val context:Context,private val 
     val manualInput get()=manual||!notifications
     val needsPort get()=discovery?.candidates(LocalAdbDiscovery.PAIR)?.size!=1
     val inputError get()=invalidCode
-    private val tick=object:Runnable {override fun run(){if(closed)return;if(SystemClock.elapsedRealtime()>=deadline){expire();return};refresh();main.postDelayed(this,500)}}
+    // PC start waits for a command on the PC without a deadline; the tick is what notices the helper arriving.
+    private val tick=object:Runnable {override fun run(){if(closed)return;if(SystemClock.elapsedRealtime()>=deadline){if(runtime.pcStart)deadline=SystemClock.elapsedRealtime()+300000 else{expire();return}};refresh();main.postDelayed(this,500)}}
     fun attach(callback:()->Unit){listener=callback;if(discovery==null&&error!=SetupStage.SESSION_EXPIRED&&!closed)observe();refresh()}
     fun detach(callback:()->Unit){if(listener===callback)listener=null}
     fun resume(){if(closed||managing||finalizing)return;runtime.foregroundUse();if(verified)attempts=0;verified=false;verifiedPort=null;if(discovery==null&&error!=SetupStage.SESSION_EXPIRED)observe();refresh()}
     private fun observe(){
         app.bluedotoff.StartupScanHandoff.cache.invalidate()
         operationEpoch++
+        // Work of the old epoch can no longer report back: clear its in-flight marks so a new check can start (Codex R1).
+        connecting=false;verifying=false;finalizing=false;scanProgress=null
         PairingNotifications.prepare(context)
         if(wifiObserver==null)wifiObserver=runtime.observeWifi{main.post{if(!closed)refresh()}}
         deadline=SystemClock.elapsedRealtime()+300000
@@ -118,6 +123,8 @@ class SetupSession internal constructor(private val context:Context,private val 
         error=null;forcePairing=true;verified=false;attempts=0;invalidCode=false;cancelInput();observe();refresh()
     }
     fun openManual(){manual=true;refresh()}
+    /** "Wi-Fi가 없나요?" -> "PC로 시작" (and back). The wireless pairing state is left as it is. */
+    fun choosePcStart(on:Boolean){if(closed)return;runtime.choosePcStart(on);error=null;verified=false;verifiedPort=null;attempts=0;cancelInput();refresh()}
     fun chooseConnection(){error=null;verified=false;attempts=0;discovery?.choose(LocalAdbDiscovery.CONNECT);refresh()}
     fun retryConnection(){error=null;verified=false;attempts=0;if(discovery==null)observe();refresh()}
     fun debugReadOnly(interrupt:Boolean){
@@ -136,33 +143,46 @@ class SetupSession internal constructor(private val context:Context,private val 
         val epoch=operationEpoch
         worker.execute{try{runtime.debugBatchReadOnly();main.post{if(!closed&&epoch==operationEpoch){verifying=false;diagnosticResult="BATCH_READ_ONLY_PASS · 7개 구간 확인 · 대상 write 0회";refresh()}}}catch(_:Exception){main.post{if(!closed&&epoch==operationEpoch){verifying=false;diagnosticResult="진단 실패 · 연결 준비에서 다시 확인해주세요.";error=SetupStage.CONNECTION_RECOVERY;refresh()}}}}
     }
-    private fun cancelInput(){lease.cancel();token=-1;endpoint=null;invalidCode=false;PairingNotifications.cancel(context);notices=PairNotice.NONE;notifiedToken=-1}
+    private fun cancelInput(){held?.close();held=null;lease.cancel();token=-1;endpoint=null;invalidCode=false;PairingNotifications.cancel(context);notices=PairNotice.NONE;notifiedToken=-1}
     internal fun pairingLifetimeExpired(){if(!closed)expire()}
     private fun expire(){app.bluedotoff.StartupScanHandoff.cache.invalidate();runtime.keepPairingAlive(false);wifiObserver?.close();wifiObserver=null;operationEpoch++;cancelInput();runtime.cancelPairing();discovery?.close();discovery=null;pairing=false;connecting=false;verifying=false;verified=false;error=SetupStage.SESSION_EXPIRED;refresh()}
     fun close(keepScan:Boolean=false){if(closed)return;if(!keepScan)app.bluedotoff.StartupScanHandoff.cache.invalidate();runtime.keepPairingAlive(false);wifiObserver?.close();wifiObserver=null;closed=true;operationEpoch++;cancelInput();runtime.cancelPairing();main.removeCallbacksAndMessages(null);discovery?.close();discovery=null;listener=null;worker.shutdown();if(active===this)active=null}
     fun refresh(){
         if(closed)return
         val wifi=runtime.wifiConnected
-        if(lastWifi!=wifi){val prior=lastWifi;lastWifi=wifi;if(prior==false&&wifi&&discovery!=null)observe()}
+        val pc=runtime.pcStart
+        val helper=pc&&runtime.pcHelper
+        // PC start does not use Wi-Fi: a Wi-Fi change must not restart discovery and drop the running helper check (Codex R1).
+        if(lastWifi!=wifi){val prior=lastWifi;lastWifi=wifi;if(!pc&&prior==false&&wifi&&discovery!=null)observe()}
+        // A newly started helper (the command run again) gets fresh attempts, without an old failure (Codex R4).
+        if(lastHelper!=helper){val prior=lastHelper;lastHelper=helper;if(helper&&prior==false){error=null;attempts=0}}
         val dev=runtime.developer
         val wireless=runtime.wireless
         val paired=runtime.paired
-        if(lastWireless!=wireless){lastWireless=wireless;if(!finalizing&&(!runtime.intentionalExit||wireless)){verified=false;verifiedPort=null;attempts=0;error=null;if(!wireless){app.bluedotoff.StartupScanHandoff.cache.invalidate();settingsHandoff=false;operationEpoch++;cancelInput();runtime.cancelPairing();pairing=false;connecting=false;verifying=false}}}
-        if(!dev||!wifi||(!wireless&&!runtime.intentionalExit)){app.bluedotoff.StartupScanHandoff.cache.invalidate();verified=false;verifiedPort=null;managing=false;cancelInput()}
+        if(lastWireless!=wireless){lastWireless=wireless;if(!pc&&!finalizing&&(!runtime.intentionalExit||wireless)){verified=false;verifiedPort=null;attempts=0;error=null;if(!wireless){app.bluedotoff.StartupScanHandoff.cache.invalidate();settingsHandoff=false;operationEpoch++;cancelInput();runtime.cancelPairing();pairing=false;connecting=false;verifying=false}}}
+        // PC start depends on the helper only; Wi-Fi and wireless debugging do not matter there.
+        if(if(pc)!dev||!helper else !dev||!wifi||(!wireless&&!runtime.intentionalExit)){app.bluedotoff.StartupScanHandoff.cache.invalidate();verified=false;verifiedPort=null;managing=false;cancelInput()}
         // A late, resolved own-device endpoint resolves discovery failure only.
         // Authentication failure still requires the user's bounded retry action.
         if(error==SetupStage.DISCOVERY_RECOVERY&&paired&&!forcePairing&&attempts<2&&
             discovery?.candidates(LocalAdbDiscovery.CONNECT,prefs.getString("pairedGuid",null))?.size==1)error=null
         val eligible=dev&&runtime.wifiConnected&&wireless&&(!paired||forcePairing)&&!pairing&&!connecting&&!verifying&&error==null
         val found=if(eligible)discovery?.candidates(LocalAdbDiscovery.PAIR)?.singleOrNull() else null
-        if(!pairing&&found!=endpoint){cancelInput();endpoint=found;if(found!=null)token=lease.begin()}
+        // The code prompt (and its lease) starts with wireless debugging, before the pairing port is announced (owner
+        // 2026-10-21); finding the port keeps it, losing the port (code dialog closed) replaces it.
+        if(!pairing){
+            if(if(eligible)endpoint!=null&&found!=endpoint else endpoint!=null||lease.current(token))cancelInput()
+            endpoint=found
+            if(eligible&&!lease.current(token))token=lease.begin()
+        }
         facts=SetupFacts(
             welcomed=ui.getBoolean("welcomed",false),notificationResolved=!notificationRequestPending&&(notifications||prefs.getBoolean("notificationAsked",false)||ui.getBoolean("notificationExplained",false)),
             developer=dev,wireless=wireless,supported=runtime.supported,wifiConnected=runtime.wifiConnected,
             paired=paired,nearbyResolved=broad||prefs.getBoolean("nearbyAsked",false),sessionStarted=discovery!=null,
             pairAdvertisement=found!=null,pairing=pairing,connecting=connecting,verifying=verifying,verified=verified,forcePairing=forcePairing,error=error,completedOffline=runtime.intentionalExit&&!wireless,
             managementChoiceResolved=runtime.managementChoiceResolved,managing=managing,applicationScopeResolved=app.bluedotoff.ScopePreferences(context).resolved,finalCheckResolved=runtime.finalCheckResolved,
-            autoBlocked=runtime.autoBlocked,batteryChoiceRequired=runtime.batteryChoiceRequired,batteryChoiceResolved=runtime.batteryChoiceResolved
+            autoBlocked=runtime.autoBlocked,batteryChoiceRequired=runtime.batteryChoiceRequired,batteryChoiceResolved=runtime.batteryChoiceResolved,
+            pcStart=pc,pcHelper=helper
         )
         val stage=SetupFlow.stage(facts)
         if(!dev||!wifi||!pairingNeeded||error!=null)settingsHandoff=false
@@ -170,11 +190,14 @@ class SetupSession internal constructor(private val context:Context,private val 
         if(!runtime.keepPairingAlive(pairingLifetime)&&pairingLifetime)manual=true
         val desired=PairNoticePolicy.desired(stage,notifications)
         if(desired!=notices||(desired==PairNotice.CODE&&notifiedToken!=token)){
-            when(desired){PairNotice.NONE->PairingNotifications.cancel(context);PairNotice.GUIDE->PairingNotifications.guide(context);PairNotice.CODE->PairingNotifications.code(context,token,sessionId,invalidCode)}
+            when(desired){PairNotice.NONE->PairingNotifications.cancel(context);PairNotice.CODE->PairingNotifications.code(context,token,sessionId,invalidCode)}
             notices=desired;notifiedToken=token
         }
         listener?.invoke()
+        if(stage==SetupStage.PAIRING_NOTIFICATION_READY&&held!=null){val reply=held!!;held=null;pair(reply,token,null)}
         if(stage==SetupStage.FINAL_CHECK&&!finalizing&&!runtime.busy)finishSetup()
+        // PC start: the same checks as the wireless path, through the attached helper (WirelessWork uses it; no port).
+        if(pc&&helper&&stage==SetupStage.VERIFYING&&!connecting&&!verifying&&!verified&&!runtime.busy&&attempts<2)connect(0)
         if(stage==SetupStage.CONNECTING&&!connecting&&!verifying&&!runtime.busy){
             val candidates=discovery?.candidates(LocalAdbDiscovery.CONNECT,prefs.getString("pairedGuid",null)).orEmpty()
             if(candidates.size==1&&attempts<2)connect(candidates.single().port)
@@ -187,6 +210,11 @@ class SetupSession internal constructor(private val context:Context,private val 
         val trimmed=input.trim()
         val reply=LocalAdbPolicy.reply(trimmed)
         if(reply==null){invalidCode=true;listener?.invoke();if(notices==PairNotice.CODE)PairingNotifications.code(context,token,sessionId,true);return}
+        // Sent from the notification before the phone announced its pairing port: kept until refresh finds it.
+        if(generation!=null&&endpoint==null&&reply.port==null){held?.close();held=reply;return}
+        pair(reply,generation,manualPort)
+    }
+    private fun pair(reply:LocalAdbPolicy.PairReply,generation:Long?,manualPort:Int?){
         val selected=endpoint?.port?:manualPort?:reply.port
         if(closed||pairing||connecting||verifying||!facts.developer||!facts.wireless||SystemClock.elapsedRealtime()>=deadline||generation!=null&&generation!=token){reply.close();return}
         if(selected==null||selected !in 1..65535){reply.close();manual=true;invalidCode=true;listener?.invoke();return}
@@ -236,8 +264,8 @@ class SetupSession internal constructor(private val context:Context,private val 
                         main.post{if(!closed&&operationEpoch==epoch&&verifying){scanProgress=progress;listener?.invoke()}}
                     }
                 }
-                main.post{if(!closed&&operationEpoch==epoch){connecting=false;verifying=false;verified=true;verifiedPort=port;error=null;settingsHandoff=false;runtime.keepPairingAlive(false);main.removeCallbacks(tick);PairingNotifications.cancel(context);notices=PairNotice.NONE;facts=facts.copy(connecting=false,verifying=false,verified=true,wireless=runtime.wireless,completedOffline=runtime.intentionalExit&&!runtime.wireless,managementChoiceResolved=runtime.managementChoiceResolved);discovery?.close();discovery=null;refresh()}}
-            }catch(e:Exception){main.post{if(!closed&&operationEpoch==epoch){connecting=false;verifying=false;verified=false;error=if(e is HelperOperationRejectedException&&e.reason in setOf("COMPATIBILITY_FAILED","SHELL_IDENTITY_INVALID"))SetupStage.UNSUPPORTED else if(attempts>=2)SetupStage.CONNECTION_RECOVERY else null
+                main.post{if(!closed&&operationEpoch==epoch){connecting=false;verifying=false;verified=true;verifiedPort=port;error=null;settingsHandoff=false;runtime.keepPairingAlive(false);if(!runtime.pcStart)main.removeCallbacks(tick);PairingNotifications.cancel(context);notices=PairNotice.NONE;facts=facts.copy(connecting=false,verifying=false,verified=true,wireless=runtime.wireless,completedOffline=runtime.intentionalExit&&!runtime.wireless,managementChoiceResolved=runtime.managementChoiceResolved);discovery?.close();discovery=null;refresh()}}
+            }catch(e:Exception){android.util.Log.w("bluedotOFF","setup check failed: ${e.javaClass.simpleName} ${e.message}");main.post{if(!closed&&operationEpoch==epoch){connecting=false;verifying=false;verified=false;error=if(e is HelperOperationRejectedException&&e.reason in setOf("COMPATIBILITY_FAILED","SHELL_IDENTITY_INVALID"))SetupStage.UNSUPPORTED else if(attempts>=2)SetupStage.CONNECTION_RECOVERY else null
                 if(error==null)main.postDelayed({if(!closed)refresh()},1000)else refresh()}}}
         }
     }

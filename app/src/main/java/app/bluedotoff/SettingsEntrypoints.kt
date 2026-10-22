@@ -4,7 +4,6 @@ import android.content.*
 import android.content.pm.PackageManager
 import android.provider.Settings
 import android.os.Bundle
-import android.widget.Toast
 
 /** Only publicly exported, permission-accessible activities; no fragment injection. */
 object SettingsEntrypoints {
@@ -25,10 +24,8 @@ object SettingsEntrypoints {
             val info=context.packageManager.resolveActivity(intent,PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?:continue
             if(!info.exported||!info.enabled||!info.applicationInfo.enabled)continue
             if(info.permission!=null&&context.checkSelfPermission(info.permission)!=PackageManager.PERMISSION_GRANTED)continue
-            if(runCatching{context.startActivity(intent)}.isSuccess){
-                Toast.makeText(context,UiText.text(context,if(direct)"빌드번호를 7번 연속 누르세요." else "소프트웨어 정보 → 빌드번호 7번 누르기"),Toast.LENGTH_LONG).show()
-                return
-            }
+            // No toast: it sat over the highlighted row it pointed to (owner 2026-10-22); the setup step says what to tap.
+            if(runCatching{context.startActivity(intent)}.isSuccess)return
         }
     }
     /** Auto Blocker screen when Samsung exports it to apps; otherwise the general security screen. */
@@ -42,9 +39,9 @@ object SettingsEntrypoints {
     /** Developer options, where USB debugging is switched on (background watch). */
     fun developerOptions(context:Context) {
         for(action in listOf(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS,Settings.ACTION_SETTINGS))
-            if(runCatching{context.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))}.isSuccess){
-                if(action==Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)Toast.makeText(context,UiText.text(context,"‘USB 디버깅’을 켜고 돌아오세요."),Toast.LENGTH_LONG).show()
-                return}
+            // The key scrolls to and highlights the USB debugging switch (Fold7, One UI 9); other screens ignore it.
+            if(runCatching{context.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra(":settings:fragment_args_key","enable_adb")
+                    .putExtra(":settings:show_fragment_args",Bundle().apply{putString(":settings:fragment_args_key","enable_adb")}))}.isSuccess)return
     }
     fun wifi(context:Context) {
         for(action in listOf(Settings.Panel.ACTION_WIFI,Settings.ACTION_WIFI_SETTINGS,Settings.ACTION_SETTINGS))

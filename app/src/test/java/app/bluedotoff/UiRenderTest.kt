@@ -41,6 +41,9 @@ class UiRenderTest {
         controller.get().setContent{BlueDotApp(current.value,{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},openBattery={requested=it})}
         val row=compose.onNode(isToggleable() and hasText(BatteryOptimization.TITLE)).performScrollTo()
         if(watching)row.assertIsOn()else row.assertIsOff()
+        // How to turn it off only while it is on (DeepSeek review 2026-10-22).
+        val hint=compose.onNodeWithText("끄려면 앱 정보 → 배터리에서 ‘최적화’를 선택해주세요.")
+        if(watching)hint.assertExists()else hint.assertDoesNotExist()
         row.performClick();org.junit.Assert.assertEquals(!watching,requested)
         // Opening a system screen is not consent; keep the previous real state until it is read back.
         if(watching)row.assertIsOn()else row.assertIsOff()
@@ -93,13 +96,13 @@ class UiRenderTest {
         row.assertIsOff();compose.onNodeWithContentDescription("지금 확인").assertDoesNotExist()
         row.performClick();org.junit.Assert.assertEquals(true,changed)
         compose.runOnIdle{current.value=current.value.copy(updateCheck=true)}
-        compose.onNodeWithText("현재 버전 ${BuildConfig.VERSION_NAME} · 최신 버전은 아직 확인 전").assertExists()
+        compose.onNodeWithText("설치된 버전 ${BuildConfig.VERSION_NAME} · GitHub 공개 버전은 아직 확인 전").assertExists()
         // The refresh icon next to the title checks now; it does not flip the switch around it.
         changed=null;compose.onNodeWithContentDescription("지금 확인").performScrollTo().performClick();assertTrue(checked);org.junit.Assert.assertNull(changed)
         compose.onNodeWithText("지금 확인").assertDoesNotExist()
         compose.onNodeWithText("출시 페이지 열기").assertDoesNotExist()
         compose.runOnIdle{current.value=current.value.copy(latestVersion="9.9.9",updateStatus="새 버전 9.9.9이 있어요.")}
-        compose.onNodeWithText("현재 버전 ${BuildConfig.VERSION_NAME} · 최신 버전 9.9.9").assertExists()
+        compose.onNodeWithText("설치된 버전 ${BuildConfig.VERSION_NAME} · GitHub 공개 버전 9.9.9").assertExists()
         compose.onNodeWithText("새 버전 9.9.9이 있어요.").assertExists()
         compose.onNodeWithText("출시 페이지 열기").performScrollTo().performClick();org.junit.Assert.assertEquals("9.9.9",opened)
         compose.runOnIdle{current.value=current.value.copy(updateChecking=true)}
@@ -111,7 +114,158 @@ class UiRenderTest {
         compose.onNodeWithText("마지막 확인 3분 전").assertExists();compose.onNodeWithContentDescription("다시 확인").assertExists()
         // A recheck for a set-up user keeps Home and shows a small progress line instead of the setup-style screen.
         render("90-home-rechecking",base.copy(rechecking=true,scanProgress=ScanProgress(12,40)))
-        compose.onNodeWithText("앱 상태 확인 중 · 12 / 40").assertExists();compose.onNodeWithText("앱 추가").assertExists()
+        compose.onNodeWithText("앱 상태 확인 중").assertExists();compose.onNodeWithText(" · 12 / 40").assertExists();compose.onNodeWithText("앱 추가").assertExists()
+    }
+    /** Owner 2026-10-22: a check must not push Home down. The line keeps its place and height, the count keeps its
+     *  width (9 -> 10 of 100), a check that ends within 0.3 s shows nothing, and settings pages get a bar that takes no space. */
+    @Test fun checkingKeepsEveryRowInPlace(){
+        val base=model(applied=true).copy(lastCheckedAt=System.currentTimeMillis()-3*60_000L)
+        val current=androidx.compose.runtime.mutableStateOf(base)
+        controller.get().setContent{BlueDotApp(current.value,{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})}
+        fun top(text:String)=compose.onNodeWithText(text).fetchSemanticsNode().boundsInRoot.top
+        val before=top("앱 추가")
+        compose.mainClock.autoAdvance=false
+        // The effect resumes through the paused Robolectric main looper: let it run after each frame.
+        fun step(ms:Long){repeat((ms/16).toInt()){compose.mainClock.advanceTimeByFrame();org.robolectric.shadows.ShadowLooper.idleMainLooper()}}
+        compose.runOnIdle{current.value=base.copy(rechecking=true,scanProgress=ScanProgress(9,100))}
+        step(200);compose.onNodeWithText("앱 상태 확인 중").assertDoesNotExist()
+        step(200);compose.onNodeWithText("앱 상태 확인 중").assertExists()
+        org.junit.Assert.assertEquals(before,top("앱 추가"),0.5f)
+        val nine=compose.onNodeWithText(" · \u2007\u20079 / 100").fetchSemanticsNode().boundsInRoot.width
+        compose.runOnIdle{current.value=current.value.copy(scanProgress=ScanProgress(10,100))};compose.mainClock.advanceTimeBy(50)
+        org.junit.Assert.assertEquals(nine,compose.onNodeWithText(" · \u200710 / 100").fetchSemanticsNode().boundsInRoot.width,0.5f)
+        compose.runOnIdle{current.value=base.copy(rechecking=false,lastCheckedAt=System.currentTimeMillis())};compose.mainClock.advanceTimeBy(50)
+        compose.onNodeWithText("마지막 확인 방금 전").assertExists();org.junit.Assert.assertEquals(before,top("앱 추가"),0.5f)
+        compose.mainClock.autoAdvance=true
+        val settings=model(page=Page.SETTINGS)
+        current.value=settings;val title=top("현재 적용 범위")
+        current.value=settings.copy(rechecking=true);compose.mainClock.advanceTimeBy(400)
+        org.junit.Assert.assertEquals(title,top("현재 적용 범위"),0.5f);compose.onNodeWithText("앱 상태 확인 중…").assertDoesNotExist()
+    }
+    /** Largest text on a narrow screen, Korean and English: the count stays whole and on screen, and the page does not move. */
+    @Test @Config(qualifiers="ko-rKR-w320dp-h780dp-xxhdpi",fontScale=2.0f) fun checkingCountFitsLargestTextKorean()=checkingCountFits("ko")
+    @Test @Config(qualifiers="en-rUS-w320dp-h780dp-night-xxhdpi",fontScale=2.0f) fun checkingCountFitsLargestTextEnglish()=checkingCountFits("en")
+    private fun checkingCountFits(name:String){
+        val base=model(applied=true).copy(lastCheckedAt=System.currentTimeMillis()-3*60_000L)
+        val current=androidx.compose.runtime.mutableStateOf(base)
+        controller.get().setContent{BlueDotApp(current.value,{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})}
+        val add=if(name=="en")"Add apps" else "앱 추가"
+        fun top()=compose.onNodeWithText(add).fetchSemanticsNode().boundsInRoot.top
+        val before=top()
+        current.value=base.copy(rechecking=true,scanProgress=ScanProgress(291,780));compose.waitForIdle()
+        val count=compose.onNodeWithText("291 / 780",substring=true).assertIsDisplayed().fetchSemanticsNode()
+        val width=compose.onRoot().fetchSemanticsNode().boundsInRoot.width
+        assertTrue("$name count cut off",count.boundsInRoot.right<=width+0.5f)
+        // No cut label such as "앱 상태…": a short word, or none beside the count (DeepSeek review 2026-10-22).
+        compose.onAllNodes(hasText(if(name=="en")"Checking" else "확인 중",substring=true) and !hasText("291",substring=true)).fetchSemanticsNodes().forEach{label->
+            val layout=mutableListOf<androidx.compose.ui.text.TextLayoutResult>();label.config[androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult].action?.invoke(layout)
+            assertFalse("$name label cut off",layout.single().hasVisualOverflow)
+        }
+        org.junit.Assert.assertEquals(before,top(),0.5f)
+        render("98-checking-$name-x2",current.value)
+    }
+    /** Owner 2026-10-22: with USB debugging off the watch switch explains first and stays off; only "켜러 가기" leaves. */
+    @Test fun watchSwitchWithUsbOffExplainsFirstAndStaysOff(){
+        val changes=mutableListOf<Boolean>();var went=0
+        controller.get().setContent{BlueDotApp(model(page=Page.SETTINGS).copy(usbDebugging=false,watchAcknowledged=true),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},backgroundWatchChanged={changes+=it},watchAfterUsb={went++})}
+        val row=compose.onNode(isToggleable() and hasText("백그라운드 감시")).performScrollTo()
+        row.performClick();compose.onNodeWithText("USB 디버깅이 필요해요").assertIsDisplayed();row.assertIsOff()
+        compose.onNodeWithText("취소").performClick();org.junit.Assert.assertEquals(0,went)
+        row.performClick();compose.onNodeWithText("USB 디버깅 켜러 가기").performClick()
+        org.junit.Assert.assertEquals(1,went);assertTrue(changes.isEmpty());row.assertIsOff()
+    }
+    /** Owner 2026-10-22: a check without the watch says it is connecting first, and a failed check says so afterwards. */
+    @Test fun wirelessCheckSaysConnectingAndAFailedCheckIsShown(){
+        val base=model(applied=true).copy(lastCheckedAt=System.currentTimeMillis()-3*60_000L)
+        val current=androidx.compose.runtime.mutableStateOf(base)
+        controller.get().setContent{BlueDotApp(current.value,{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})}
+        current.value=base.copy(rechecking=true,wirelessConnecting=true);compose.waitForIdle()
+        compose.onNodeWithText("무선 디버깅에 연결하는 중…").assertIsDisplayed()
+        current.value=base.copy(rechecking=true,wirelessConnecting=false,scanProgress=ScanProgress(12,260));compose.waitForIdle()
+        compose.onNodeWithText("무선 디버깅에 연결하는 중…").assertDoesNotExist();compose.onNodeWithText("앱 상태 확인 중").assertIsDisplayed()
+        current.value=base.copy(lastCheckFailed=true);compose.waitForIdle()
+        compose.onNodeWithText("마지막 확인 3분 전 · 최근 확인 실패").assertIsDisplayed()
+        current.value=base.copy(lastCheckedAt=0L,lastCheckFailed=true);compose.waitForIdle()
+        compose.onNodeWithText("최근 확인 실패").assertIsDisplayed()
+    }
+    /** App review 2026-10-22: picking apps is the main restore choice, restoring all still asks, and "취소" only closes. */
+    @Test fun restoreMenuPicksFirstAndCanBeCancelled(){
+        var editing=0
+        controller.get().setContent{BlueDotApp(model(applied=true).copy(connected=true),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},editHome={editing++})}
+        compose.onNodeWithText("앱 복원").performScrollTo().performClick()
+        compose.onNodeWithText("취소").performClick();compose.onNodeWithText("골라서 복원").assertDoesNotExist();org.junit.Assert.assertEquals(0,editing)
+        compose.onNodeWithText("앱 복원").performClick();compose.onNodeWithText("골라서 복원").performClick();org.junit.Assert.assertEquals(1,editing)
+        compose.onNodeWithText("앱 복원").performClick();compose.onNodeWithText("모두 복원").performClick()
+        compose.onNodeWithText("모두 복원",substring=true).assertExists()
+    }
+    /** Detail and Help have a visible way back (app review 2026-10-22). */
+    @Test fun detailAndHelpHaveABackLink(){
+        val pages=mutableListOf<Page>()
+        val m=model(applied=true,page=Page.DETAIL).let{it.copy(selected=it.entries.single().identity.packageName,detailBack=Page.HOME)}
+        controller.get().setContent{BlueDotApp(m,{pages+=it},{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})}
+        compose.onNodeWithText("뒤로").performClick();org.junit.Assert.assertEquals(listOf(Page.HOME),pages)
+        controller.get().setContent{BlueDotApp(model(applied=true,page=Page.HELP).copy(pageBack=Page.SETTINGS),{pages+=it},{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})}
+        compose.onNodeWithText("뒤로").performClick();org.junit.Assert.assertEquals(Page.SETTINGS,pages.last())
+    }
+    /** Help puts common problems first for a set-up user and the connection steps first while setting up. */
+    @Test fun helpOrderFollowsSetupState(){
+        // Unclipped position: the lower group is below the screen.
+        fun top(t:String)=compose.onNodeWithText(t).fetchSemanticsNode().positionInRoot.y
+        controller.get().setContent{BlueDotApp(model(applied=true,page=Page.HELP),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})}
+        assertTrue(top("자주 겪는 문제")<top("처음 연결하는 순서"))
+        controller.get().setContent{BlueDotApp(model(gate=Gate.NOT_RUNNING,page=Page.HELP),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})}
+        assertTrue(top("처음 연결하는 순서")<top("자주 겪는 문제"))
+    }
+    /** Registered list scroll bar: a tap near its bottom moves the list to the end (owner 2026-10-22). */
+    @Test fun registeredListScrollbarMovesTheList(){
+        val base=model(applied=true);val e=base.entries.single()
+        val many=(0 until 40).map{i->e.copy(identity=e.identity.copy(packageName="demo.app$i"),label="데모 $i")}
+        controller.get().setContent{BlueDotApp(base.copy(entries=many),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})}
+        compose.onNodeWithText("총 40개 앱 등록").performScrollTo()
+        compose.onNodeWithText("데모 39").assertDoesNotExist()
+        val total=compose.onNodeWithText("총 40개 앱 등록").fetchSemanticsNode().boundsInRoot
+        val dp=controller.get().resources.displayMetrics.density
+        // The bar runs along the list box's right edge (page gutter 24 dp); its bottom end is just above the "총 …개" line.
+        compose.onRoot().performTouchInput{click(androidx.compose.ui.geometry.Offset(width-(24+10)*dp,total.top-24*dp))}
+        // The scroll runs in a coroutine on the paused Robolectric main looper.
+        org.robolectric.shadows.ShadowLooper.idleMainLooper();compose.waitForIdle()
+        compose.onNodeWithText("데모 39").assertExists()
+        // Codex review 2026-10-22: the bar's end is the list's real end, not a partly shown last row.
+        val list=compose.onNode(SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsActions.ScrollToIndex)).fetchSemanticsNode()
+        val range=list.config[androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange]
+        assertTrue("scrollable after the bar's end: ${range.value()} / ${range.maxValue()}",range.value()>=range.maxValue())
+    }
+    /** Largest text, narrow screen: the Add-apps choices wrap instead of being cut off. */
+    @Test @Config(qualifiers="ko-rKR-w320dp-h780dp-xxhdpi",fontScale=2.0f) fun addAppsFilterChipsWrapInsteadOfBeingCut(){
+        val width=controller.get().resources.displayMetrics.widthPixels.toFloat()
+        // History keeps one sliding row (owner 2026-10-22).
+        for((page,labels) in listOf(Page.PICK to AppFilter.entries.map{it.label})){
+            controller.get().setContent{BlueDotApp(history(applied=true).copy(page=page),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})}
+            for(l in labels){val b=compose.onNode(hasText(l) and hasClickAction()).fetchSemanticsNode().boundsInRoot;assertTrue("$l cut",b.left>=0f&&b.right<=width+0.5f)}
+        }
+    }
+    /** The saved recent-location card shows until this run reads the history; a read with no recent app hides it. */
+    @Test fun savedRecentCardIsDisplayOnlyAndClearedByAnEmptyRead(){
+        val saved=SavedRecent("com.example.map","Map",System.currentTimeMillis()-5*60_000L)
+        render("97-saved-recent",model(applied=true).copy(savedRecent=saved))
+        compose.onNodeWithText("Map").assertExists();compose.onNodeWithText("5분 전 · 마지막 확인 기준").assertExists()
+        compose.onNodeWithText("숨기기").assertDoesNotExist()
+        render("97-saved-recent-read",model(applied=true).copy(savedRecent=saved,historyAvailable=true,discovered=listOf(app.bluedotoff.core.DiscoveredApp("com.example.other","Other",10500))))
+        compose.onNodeWithText("Map").assertDoesNotExist()
+    }
+    /** The card opens History; its "숨기기" only hides and does not also open History (owner + Codex 2026-10-22). */
+    @Test fun recentCardOpensHistoryAndHideOnlyHides(){
+        val time=System.currentTimeMillis()-3*60_000L
+        val app=app.bluedotoff.core.DiscoveredApp("com.example.map","Map",10500,launcher=true,access=LocationAccess(fine=time))
+        val m=model(applied=true).copy(historyAvailable=true,discovered=listOf(app),connected=true)
+        val pages=mutableListOf<Page>();val hidden=mutableListOf<String>()
+        controller.get().setContent{BlueDotApp(m,{pages+=it},{},{hidden+=it},{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})}
+        compose.onNodeWithText("3분 전").assertExists()
+        compose.onNodeWithText("숨기기").performClick()
+        org.junit.Assert.assertEquals(listOf("com.example.map"),hidden);org.junit.Assert.assertTrue(pages.isEmpty())
+        compose.onNodeWithText("Map").performClick()
+        org.junit.Assert.assertEquals(listOf(Page.HISTORY),pages);org.junit.Assert.assertEquals(1,hidden.size)
+        render("97-recent-hide",m)
     }
     @Test fun failedBatchShowsTheSameErrorOnCardAndSnackbar(){
         // Screenshot for the owner: a partly failed apply shows its error on the result card and as a snackbar.
@@ -302,6 +456,11 @@ class UiRenderTest {
         compose.onNode(hasText("지도") and hasAnyAncestor(isDialog())).assertExists()
     }
     /** Home does not say "멈춰 있어요" while a stopped watch is being started. */
+    /** After an update the wait for the watch is labelled as such, not as a first app check (owner 2026-10-22). */
+    @Test fun watchStartBeforeTheFirstCheckSaysSo(){
+        render("96-watch-starting",model(gate=Gate.CHECKING).copy(backgroundWatch=true,watchStarting=true))
+        compose.onNodeWithText("백그라운드 감시를 다시 켜고 있어요").assertExists();compose.onNodeWithText("기기를 확인하고 있어요").assertDoesNotExist()
+    }
     @Test fun watchStartingIsNotShownAsStopped(){
         controller.get().setContent{BlueDotApp(model(page=Page.HOME).copy(backgroundWatch=true,usbDebugging=true,watchRunning=false,watchStarting=true),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})}
         compose.onNodeWithText("백그라운드 감시가 멈춰 있어요").assertDoesNotExist()
@@ -399,7 +558,7 @@ class UiRenderTest {
     /** Automatic re-apply keeps Home visible with one progress line (no full-screen overlay). */
     @Test fun autoReapplyShowsALineAndKeepsHome(){
         render("94-auto-reapply",model(applied=true).copy(busy=true,autoReapplying=true,progress=BatchProgress(3,8,BatchPhase.CHECKING)))
-        compose.onNodeWithText("자동 재적용 중 · 3 / 8").assertExists()
+        compose.onNodeWithText("자동 재적용 중").assertExists();compose.onNodeWithText(" · 3 / 8").assertExists()
         compose.onNodeWithText("앱 추가").assertExists()
         compose.onNodeWithText("적용하고 안전하게 확인하고 있어요").assertDoesNotExist()
     }
@@ -410,7 +569,7 @@ class UiRenderTest {
     /** Background watch (1.1.0): off by default; the first switch-on asks, and its confirm unlocks after 5 seconds. */
     @Test fun backgroundWatchAsksFirstWithAFiveSecondWait(){
         var turnedOn:Boolean?=null
-        controller.get().setContent { BlueDotApp(model(page=Page.SETTINGS),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},backgroundWatchChanged={turnedOn=it}) }
+        controller.get().setContent { BlueDotApp(model(page=Page.SETTINGS).copy(usbDebugging=true),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},backgroundWatchChanged={turnedOn=it}) }
         val row=compose.onNode(androidx.compose.ui.test.isToggleable()and androidx.compose.ui.test.hasText("백그라운드 감시")).performScrollTo().assertIsOff()
         // Freeze the clock only after scrolling, so the countdown can be checked step by step.
         compose.mainClock.autoAdvance=false
@@ -423,25 +582,41 @@ class UiRenderTest {
         compose.onNodeWithText("켜기").assertIsEnabled().performClick()
         org.junit.Assert.assertEquals(true,turnedOn)
     }
-    /** Background watch is the third Settings section: after the scope and wireless debugging, before the reapply notice. */
-    @Test fun backgroundWatchIsTheThirdSettingsSection(){
+    /** Settings groups (app review 2026-10-22): hiding (scope, reapply on open, notice), then connection (automatic
+     *  management, background watch, battery). */
+    @Test fun settingsGroupsKeepTheirOrder(){
         render("89-settings-background-watch",model(page=Page.SETTINGS))
         // Traversal follows the vertical Column even when later rows are below the viewport.
         // Clipped bounds collapse off-screen rows to zero and cannot establish their order.
         val labels=compose.onAllNodes(isToggleable()).fetchSemanticsNodes().map{it.config[androidx.compose.ui.semantics.SemanticsProperties.Text].joinToString{t->t.text}}
-        val expected=listOf("무선 디버깅 자동 관리","백그라운드 감시",BatteryOptimization.TITLE,"재적용 알림")
+        val expected=listOf("앱을 열 때 자동 재적용","재적용 알림","무선 디버깅 자동 관리","백그라운드 감시",BatteryOptimization.TITLE)
         assertTrue(labels.containsAll(expected));assertTrue(expected.zipWithNext().all{(a,b)->labels.indexOf(a)<labels.indexOf(b)})
     }
-    /** While watching, automatic management is only the restart path: its switch is locked and explains why. */
-    @Test fun automaticManagementIsLockedWhileWatching(){
+    /** While watching, automatic management is only the restart path: turning it off says what is lost and asks first
+     *  (owner 2026-10-21; it was locked before). */
+    @Test fun automaticManagementOffWhileWatchingAsksFirst(){
         var changed:Boolean?=null
         controller.get().setContent { BlueDotApp(model(page=Page.SETTINGS).copy(backgroundWatch=true,autoManagement=true,usbDebugging=false),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},managementChanged={changed=it}) }
         compose.onNode(androidx.compose.ui.test.isToggleable()and androidx.compose.ui.test.hasText("무선 디버깅 자동 관리")).performScrollTo().performClick()
-        compose.onNodeWithText("백그라운드 감시를 쓰는 중이에요").assertExists()
-        org.junit.Assert.assertNull(changed)
-        compose.onNodeWithText("확인").performClick()
+        compose.onNodeWithText("끄면 재부팅이나 업데이트 뒤 백그라운드 감시가 자동으로 다시 켜지지 않아요. 그때는 Wi-Fi에서 무선 디버깅을 켜고 bluedotOFF를 열어야 해요.").assertExists()
+        compose.onNodeWithText("취소").performClick();org.junit.Assert.assertNull(changed)
+        compose.onNode(androidx.compose.ui.test.isToggleable()and androidx.compose.ui.test.hasText("무선 디버깅 자동 관리")).performScrollTo().performClick()
+        compose.onNodeWithText("끄기").performClick();org.junit.Assert.assertEquals(false,changed)
         compose.onNodeWithText("백그라운드 감시를 쓰는 동안에는 평소에 무선 디버깅을 켜지 않아요. 재부팅이나 업데이트 뒤 감시를 다시 켤 때만 잠깐 켜요.").assertExists()
         compose.onNodeWithText("USB 디버깅 켜러 가기").performScrollTo().assertExists()
+    }
+    /** Owner 2026-10-21: while watching, automatic management can be turned on; without a wireless pairing it says so. */
+    @Test fun automaticManagementCanBeTurnedOnWhileWatching(){
+        var changed:Boolean?=null
+        val m=model(page=Page.SETTINGS).copy(backgroundWatch=true,autoManagement=false,usbDebugging=true)
+        fun tap()=compose.onNode(androidx.compose.ui.test.isToggleable()and androidx.compose.ui.test.hasText("무선 디버깅 자동 관리")).performScrollTo().performClick()
+        var wifi=0
+        controller.get().setContent { BlueDotApp(m,{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},managementChanged={changed=it},wifiSetup={wifi++}) }
+        tap();compose.onNodeWithText("자동 관리를 쓰려면 Wi-Fi에서 무선 디버깅으로 한 번 연결(페어링)해야 해요. Wi-Fi가 있을 때 연결 준비를 마치면 켤 수 있어요.").assertExists()
+        compose.onNodeWithText("닫기").performClick();org.junit.Assert.assertEquals(0,wifi)
+        tap();compose.onNodeWithText("Wi-Fi로 연결하기").performClick();org.junit.Assert.assertEquals(1,wifi);org.junit.Assert.assertNull(changed)
+        controller.get().setContent { BlueDotApp(m.copy(paired=true),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},managementChanged={changed=it}) }
+        tap();compose.onNodeWithText("켜기").performClick();org.junit.Assert.assertEquals(true,changed)
     }
     /** Watch chosen but stopped because USB debugging is off: Home says so and offers Developer options. */
     @Test fun homeSaysWhenBackgroundWatchIsStopped(){
@@ -466,7 +641,7 @@ class UiRenderTest {
     /** Once acknowledged, switching on again does not ask. */
     @Test fun backgroundWatchDoesNotAskAgainOnceAcknowledged(){
         var turnedOn:Boolean?=null
-        controller.get().setContent { BlueDotApp(model(page=Page.SETTINGS).copy(watchAcknowledged=true),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},backgroundWatchChanged={turnedOn=it}) }
+        controller.get().setContent { BlueDotApp(model(page=Page.SETTINGS).copy(watchAcknowledged=true,usbDebugging=true),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},backgroundWatchChanged={turnedOn=it}) }
         compose.onNode(androidx.compose.ui.test.isToggleable()and androidx.compose.ui.test.hasText("백그라운드 감시")).performScrollTo().performClick()
         org.junit.Assert.assertEquals(true,turnedOn)
         compose.onNodeWithText("켜기 전에 꼭 읽어주세요.").assertDoesNotExist()
@@ -746,6 +921,42 @@ class UiRenderTest {
         val image=Bitmap.createBitmap(view.width,view.height,Bitmap.Config.ARGB_8888);compose.runOnIdle{view.draw(Canvas(image))}
         File(checkNotNull(System.getProperty("screenshotDir")).also{File(it).mkdirs()},"87-auto-blocker-dialog.png").outputStream().use{check(image.compress(Bitmap.CompressFormat.PNG,100,it))}
     }
+    /** 1.2.1: a user who started from a PC without wireless pairing is told to run the PC command again (Home card,
+     *  Settings) and can open the steps with the command. */
+    @Test fun pcOnlyUserGetsThePcWayBackOnHomeAndInSettings(){
+        val m=model(applied=true).copy(backgroundWatch=true,watchAcknowledged=true,watchRunning=false,usbDebugging=true,pcOnly=true)
+        var opened=0
+        render("93-pc-home-stopped",m)
+        compose.onNodeWithText("다시 켜려면 PC에서 bluedotOFF 시작 명령을 다시 실행해주세요.").assertExists()
+        compose.onNodeWithText("아직 확인 전").assertExists()
+        // History asks for the PC command, not wireless debugging (DeepSeek review 2026-10-22).
+        controller.get().setContent{BlueDotApp(m.copy(page=Page.HISTORY,connected=false,automaticReady=false),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})}
+        compose.onNodeWithText("PC에서 bluedotOFF를 다시 시작해주세요.").assertExists()
+        compose.onNodeWithText("현재 기록을 확인하려면 무선 디버깅으로 연결해 주세요.").assertDoesNotExist()
+        controller.get().setContent{BlueDotApp(m.copy(page=Page.SETTINGS),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},pcStart={opened++})}
+        compose.onNodeWithText("PC에서 시작했어요. 재부팅이나 업데이트 뒤에는 PC에서 시작 명령을 다시 실행해주세요.").performScrollTo().assertExists()
+        compose.waitForIdle()
+        val view=controller.get().window.decorView
+        val image=Bitmap.createBitmap(view.width,view.height,Bitmap.Config.ARGB_8888);compose.runOnIdle{view.draw(Canvas(image))}
+        File(checkNotNull(System.getProperty("screenshotDir")).also{File(it).mkdirs()},"93-pc-settings.png").outputStream().use{check(image.compress(Bitmap.CompressFormat.PNG,100,it))}
+        // Settings no longer has the link (owner 2026-10-21); the stopped-watch card on Home offers it.
+        compose.onNodeWithText("PC로 시작하는 방법").assertDoesNotExist()
+        controller.get().setContent{BlueDotApp(m,{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},pcStart={opened++})}
+        compose.onNodeWithText("PC로 시작하는 방법").performScrollTo().performClick();org.junit.Assert.assertEquals(1,opened)
+        ScopeDialogs.pcStart(controller.get())
+        compose.onNodeWithText(app.bluedotoff.adb.PcStart.WINDOWS).assertExists();compose.onNodeWithText(app.bluedotoff.adb.PcStart.MAC).assertDoesNotExist()
+        compose.onNodeWithText("명령 복사").assertExists();compose.onNodeWithText("명령이 안 될 때").assertExists();compose.onNodeWithText("PC로 안내 보내기").assertExists()
+        captureDialog("93-pc-dialog")
+        compose.onNodeWithText("Mac").performScrollTo().performClick()
+        compose.onNodeWithText(app.bluedotoff.adb.PcStart.MAC).assertExists();compose.onNodeWithText(app.bluedotoff.adb.PcStart.WINDOWS).assertDoesNotExist()
+        org.junit.Assert.assertTrue(app.bluedotoff.adb.PcStart.mac(controller.get()))
+    }
+    /** A Wi-Fi user whose watch stopped may have no Wi-Fi right now: the Home card offers the PC way too. */
+    @Test fun wifiUserWithStoppedWatchIsOfferedThePc(){
+        render("94-wifi-home-stopped",model(applied=true).copy(backgroundWatch=true,watchAcknowledged=true,watchRunning=false,usbDebugging=true))
+        compose.onNodeWithText("다시 켜려면 Wi-Fi에 연결",substring=true).assertExists()
+        compose.onNodeWithText("Wi-Fi가 없나요? PC로 시작하기").assertExists()
+    }
     @Test fun notificationDenied(){render("11-notifications-denied",model(page=Page.SETTINGS).copy(notifications=false));compose.onNode(androidx.compose.ui.test.isToggleable()and androidx.compose.ui.test.hasText("재적용 알림")).assertIsOff()}
     @Test fun unsupported(){render("12-unsupported",model(gate=Gate.UNSUPPORTED));compose.onNodeWithText("이 기기는 지원하지 않아요").assertExists();compose.onNodeWithText("bluedotOFF 적용").assertDoesNotExist();compose.onNodeWithText("진단 정보 복사 및 보내기").assertExists()}
     @Test fun compatibilityPass(){render("13-ready",model().copy(entries=emptyList()));compose.onNodeWithText("준비 완료").assertExists()}
@@ -793,7 +1004,6 @@ class UiRenderTest {
         controller.get().setContent{BlueDotApp(model(page=Page.SETTINGS),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},scopeChange={called=true})}
         // The scope name opens the scope choice; there is no separate button any more.
         compose.onNodeWithText("적용 범위 변경").assertDoesNotExist()
-        compose.onNodeWithText("전체 적용을 누르면 적용 범위를 변경할 수 있어요.").assertExists()
         compose.onNode(hasText("전체 적용") and hasClickAction()).performScrollTo().performClick();org.junit.Assert.assertTrue(called)
     }
     @Test fun settingsShowsScopeAndCurrentLevelOnTheSameLine(){
@@ -802,11 +1012,20 @@ class UiRenderTest {
         val level=compose.onNodeWithText("전체 적용").fetchSemanticsNode().boundsInRoot
         org.junit.Assert.assertTrue(kotlin.math.abs(heading.center.y-level.center.y)<2f)
         org.junit.Assert.assertTrue(heading.right<=level.left)
-        // The hint names the scope shown, so the user knows the blue name is what to tap.
-        compose.onNodeWithText("전체 적용을 누르면 적용 범위를 변경할 수 있어요.").assertExists()
-        render("82-scope-settings-normal",model(page=Page.SETTINGS).copy(applicationScope=ApplicationScope.NORMAL))
-        compose.onNodeWithText("일반 적용을 누르면 적용 범위를 변경할 수 있어요.").assertExists()
+        // "›" after the blue name says it opens something (owner 2026-10-22: no "…을 누르면" sentence any more).
+        compose.onNode(hasText("전체 적용") and hasText(" ›") and hasClickAction()).assertExists()
         compose.onNodeWithText("전체 적용을 누르면 적용 범위를 변경할 수 있어요.").assertDoesNotExist()
+    }
+    /** The 'turn off wireless debugging' hint after a success is for wireless connections only, not the watch (USB). */
+    @Test fun successHintToTurnOffWirelessIsNotShownWithBackgroundWatch(){
+        val m=model(applied=true).copy(successToken=1)
+        render("94-success-wireless",m);compose.onNodeWithText("무선 디버깅 끄기").assertExists()
+        render("94-success-watch",m.copy(backgroundWatch=true,watchRunning=true,usbDebugging=true));compose.onNodeWithText("무선 디버깅 끄기").assertDoesNotExist()
+    }
+    /** Settings: no 'turn off' while wireless debugging is off, and no second way into setup (Home has it). Owner 2026-10-21. */
+    @Test fun settingsShowsNoTurnOffOrSetupButtonWhileDisconnected(){
+        render("95-settings-disconnected",model(page=Page.SETTINGS).copy(connected=false))
+        compose.onNodeWithText("무선 디버깅 끄기").assertDoesNotExist();compose.onNodeWithText("연결 설정 열기").assertDoesNotExist()
     }
     @Test fun settingsExitShortcutInvokesCallbackWithoutLosingResult(){var opened=false;val m=model(applied=true,page=Page.SETTINGS);controller.get().setContent{BlueDotApp(m,{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},wirelessExit={opened=true})};compose.onNodeWithText("무선 디버깅 끄기").performScrollTo().performClick();org.junit.Assert.assertTrue(opened);org.junit.Assert.assertTrue(m.entries.single().settlingVerified)}
     @Test fun automaticManagementRequiresConfirmationAndCancelDoesNotGrant(){

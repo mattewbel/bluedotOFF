@@ -36,6 +36,25 @@ class SetupFlowTest {
         assertEquals(SetupStage.AUTOMATIC_MANAGEMENT,SetupFlow.stage(f.copy(verified=true,wireless=false,completedOffline=true)))
     }
     private fun stage(f:SetupFacts)=SetupFlow.stage(f)
+    /** 1.2.1 PC start: no Wi-Fi, wireless debugging, pairing or management steps; its own 7 numbered steps. */
+    @Test fun pcStartSkipsTheWirelessStepsAndCountsItsOwn(){
+        val f=SetupFacts(wifiConnected=false,wireless=false,nearbyResolved=false,managementChoiceResolved=false,applicationScopeResolved=false,pcStart=true)
+        assertEquals(SetupStage.PC_START,stage(f));SetupFlow.presentation(f).let{assertEquals(4,it.progress);assertEquals(7,it.total);assertEquals(SetupAction.NONE,it.action)}
+        assertEquals(SetupStage.DEVELOPER_OPTIONS_OFF,stage(f.copy(developer=false,pcHelper=true)))
+        assertEquals(SetupStage.VERIFYING,stage(f.copy(pcHelper=true)))
+        assertEquals(SetupStage.CONNECTION_RECOVERY,stage(f.copy(pcHelper=true,error=SetupStage.CONNECTION_RECOVERY)))
+        // Codex R5: the PC user is not told to re-pair; the way out is the PC command after a restart.
+        SetupFlow.presentation(f.copy(pcHelper=true,error=SetupStage.CONNECTION_RECOVERY)).body.let{assertFalse(it.contains("페어링"));assertTrue(it.contains("PC에서 시작 명령을 다시 실행"))}
+        val verified=f.copy(pcHelper=true,verified=true)
+        assertEquals(SetupStage.APPLICATION_SCOPE,stage(verified));assertEquals(6,SetupFlow.presentation(verified).progress)
+        assertEquals(SetupStage.READY,stage(verified.copy(applicationScopeResolved=true)))
+        val steps=SetupProgress.steps(verified)
+        assertEquals(SetupProgress.pcLabels,steps.map{it.label});assertEquals(listOf(6),steps.filter{it.current}.map{it.number})
+        assertTrue(steps.take(5).all{it.complete})
+        val battery=verified.copy(batteryChoiceRequired=true,batteryChoiceResolved=false)
+        assertEquals(SetupStage.BATTERY_OPTIMIZATION,stage(battery));SetupFlow.presentation(battery).let{assertEquals(6,it.progress);assertEquals(8,it.total)}
+        assertEquals("배터리 사용 제한 해제",SetupProgress.steps(battery)[5].label)
+    }
     @Test fun autoBlockerExplainsTheGreyedOutWirelessSwitch(){
         val blocked=SetupFlow.presentation(SetupFacts(paired=true,wireless=false,autoBlocked=true))
         assertEquals(SetupStage.WIRELESS_DEBUGGING_OFF,blocked.stage);assertEquals(SetupAction.SECURITY_SETTINGS,blocked.action);assertTrue(blocked.title.contains("자동 차단"))
@@ -50,9 +69,9 @@ class SetupFlowTest {
     @Test fun pairedWirelessOffNeverRequestsNewCode(){val p=SetupFlow.presentation(SetupFacts(paired=true,wireless=false));assertEquals(SetupAction.WIRELESS_SETTINGS,p.action);assertTrue(p.body.contains("다시 입력할 필요가 없어요"))}
     @Test fun pairedUserSkipsUnansweredNotificationOffer(){assertEquals(SetupStage.CONNECTING,stage(SetupFacts(paired=true,notificationResolved=false)))}
     @Test fun nearbyIsOnlyRequestedForNewPairing(){assertEquals(SetupStage.NEARBY_PERMISSION,stage(SetupFacts(nearbyResolved=false)));assertEquals(SetupStage.CONNECTING,stage(SetupFacts(paired=true,nearbyResolved=false)))}
-    @Test fun noAdvertisementCannotOfferCodeReply(){val f=SetupFacts(sessionStarted=true);assertEquals(SetupStage.WAIT_FOR_PAIRING_ADVERTISEMENT,stage(f));assertEquals(PairNotice.GUIDE,PairNoticePolicy.desired(stage(f),true))}
+    @Test fun noAdvertisementCannotOfferCodeReply(){val f=SetupFacts(sessionStarted=true);assertEquals(SetupStage.WAIT_FOR_PAIRING_ADVERTISEMENT,stage(f));assertEquals(PairNotice.CODE,PairNoticePolicy.desired(stage(f),true))}
     @Test fun advertisementReplacesGuideWithCode(){val f=SetupFacts(sessionStarted=true,pairAdvertisement=true);assertEquals(SetupStage.PAIRING_NOTIFICATION_READY,stage(f));assertEquals(PairNotice.CODE,PairNoticePolicy.desired(stage(f),true))}
-    @Test fun disappearanceRemovesCodeAndOnlyKeepsGuide(){assertEquals(PairNotice.GUIDE,PairNoticePolicy.desired(stage(SetupFacts(sessionStarted=true,pairAdvertisement=false)),true))}
+    @Test fun disappearanceKeepsTheCodePrompt(){assertEquals(PairNotice.CODE,PairNoticePolicy.desired(stage(SetupFacts(sessionStarted=true,pairAdvertisement=false)),true))}
     @Test fun deniedNotificationNeverBlocksFacts(){val f=SetupFacts(sessionStarted=true,pairAdvertisement=true);assertEquals(SetupStage.PAIRING_NOTIFICATION_READY,stage(f));assertEquals(PairNotice.NONE,PairNoticePolicy.desired(stage(f),false))}
     @Test fun inFlightPairingDoesNotDependOnAdvertisement(){assertEquals(SetupStage.PAIRING,stage(SetupFacts(pairing=true,pairAdvertisement=false)))}
     @Test fun pairingAndSuccessLeaveNoNotification(){for(s in listOf(SetupStage.PAIRING,SetupStage.CONNECTING,SetupStage.VERIFYING,SetupStage.READY,SetupStage.SESSION_EXPIRED))assertEquals(PairNotice.NONE,PairNoticePolicy.desired(s,true))}

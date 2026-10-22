@@ -5,7 +5,7 @@ enum class SetupStage {
     WELCOME, NOTIFICATION_PERMISSION, DEVELOPER_OPTIONS_OFF, WIFI_NOT_CONNECTED, WIRELESS_DEBUGGING_OFF,
     NEARBY_PERMISSION, GUIDE_PAIRING_CODE_PAGE, WAIT_FOR_PAIRING_ADVERTISEMENT,
     PAIRING_NOTIFICATION_READY, PAIRING, CONNECTING, VERIFYING, AUTOMATIC_MANAGEMENT, ENABLING_MANAGEMENT, APPLICATION_SCOPE, FINAL_CHECK, READY,
-    PAIRING_RETRY, CONNECTION_RECOVERY, DISCOVERY_RECOVERY, SESSION_EXPIRED, UNSUPPORTED, BATTERY_OPTIMIZATION
+    PAIRING_RETRY, CONNECTION_RECOVERY, DISCOVERY_RECOVERY, SESSION_EXPIRED, UNSUPPORTED, BATTERY_OPTIMIZATION, PC_START
 }
 enum class SetupAction { START, NOTIFICATIONS, DEVICE_INFO, WIFI_SETTINGS, WIRELESS_SETTINGS, NEARBY, AUTOMATIC_MANAGEMENT, APPLICATION_SCOPE, RETRY_PAIRING, RETRY_CONNECTION, CHOOSE_CONNECTION, RESUME, NONE, SECURITY_SETTINGS, BATTERY_OPTIMIZATION }
 data class SetupFacts(
@@ -16,7 +16,9 @@ data class SetupFacts(
     val verifying:Boolean=false, val verified:Boolean=false, val forcePairing:Boolean=false,
     val error:SetupStage?=null, val wifiConnected:Boolean=true, val completedOffline:Boolean=false,
     val managementChoiceResolved:Boolean=true, val managing:Boolean=false, val applicationScopeResolved:Boolean=true, val finalCheckResolved:Boolean=true,
-    val autoBlocked:Boolean=false, val batteryChoiceRequired:Boolean=false, val batteryChoiceResolved:Boolean=true
+    val autoBlocked:Boolean=false, val batteryChoiceRequired:Boolean=false, val batteryChoiceResolved:Boolean=true,
+    /** 1.2.1: the user chose "PC로 시작" (no Wi-Fi), and a verified watch helper started from the PC is attached. */
+    val pcStart:Boolean=false, val pcHelper:Boolean=false
 )
 data class SetupPresentation(val stage:SetupStage,val progress:Int,val title:String,val body:String,val action:SetupAction,val button:String="",val total:Int=11)
 object SetupFlow {
@@ -34,6 +36,14 @@ object SetupFlow {
         !f.welcomed&&!f.paired->SetupStage.WELCOME
         !f.notificationResolved&&!f.paired->SetupStage.NOTIFICATION_PERMISSION
         !f.developer->SetupStage.DEVELOPER_OPTIONS_OFF
+        // PC start: the helper comes from the PC, so Wi-Fi, wireless debugging, pairing and automatic management are skipped.
+        f.pcStart->when {
+            !f.pcHelper->SetupStage.PC_START
+            f.verifying||f.connecting->SetupStage.VERIFYING
+            f.error!=null->f.error
+            f.verified->completed(f.copy(managementChoiceResolved=true,managing=false))
+            else->SetupStage.VERIFYING
+        }
         !f.wifiConnected->SetupStage.WIFI_NOT_CONNECTED
         f.verified&&f.completedOffline&&f.paired->completed(f)
         !f.nearbyResolved&&(!f.paired||f.forcePairing)->SetupStage.NEARBY_PERMISSION
@@ -54,9 +64,9 @@ object SetupFlow {
         val p=when(s){
             SetupStage.WELCOME->SetupPresentation(s,1,"연결 준비","몇 가지 설정을 켜면 이 앱에서 바로 연결할 수 있어요.",SetupAction.START,"시작하기")
             SetupStage.NOTIFICATION_PERMISSION->SetupPresentation(s,2,"알림을 켜면 연결이 쉬워요","알림에서 페어링 코드를 입력하고, 재부팅·업데이트 후 확인 안내를 받을 수 있어요. 알림 없이 연결하려면 분할 화면이 필요해요.",SetupAction.NOTIFICATIONS,"알림 허용")
-            SetupStage.DEVELOPER_OPTIONS_OFF->SetupPresentation(s,3,"먼저 개발자 옵션을 켜주세요","휴대전화 정보에서 ‘소프트웨어 정보’를 열고 ‘빌드번호’를 7번 연속 누르세요. 돌아오면 다음 단계로 넘어가요.",SetupAction.DEVICE_INFO,"휴대전화 정보 열기")
-            SetupStage.WIFI_NOT_CONNECTED->SetupPresentation(s,4,"먼저 Wi-Fi에 연결해주세요","Wi-Fi를 켜고 네트워크에 연결하세요. 연결되면 자동으로 다음 단계로 넘어가요.",SetupAction.WIFI_SETTINGS,"Wi-Fi 열기")
-            SetupStage.WIRELESS_DEBUGGING_OFF->if(f.autoBlocked)SetupPresentation(s,6,"보안 위험 자동 차단을 꺼주세요","보안 위험 자동 차단이 켜져 있으면 무선 디버깅을 켤 수 없어요. 설정 → 보안 및 개인정보 보호 → 보안 위험 자동 차단을 끈 뒤 돌아오세요. ‘자동으로 켜기’가 켜져 있으면 30분 뒤 다시 켜지니, 그때는 다시 꺼주세요.",SetupAction.SECURITY_SETTINGS,"보안 설정 열기") else SetupPresentation(s,6,"무선 디버깅을 켜주세요",if(f.paired)"이미 페어링된 기기예요. 무선 디버깅만 켜면 코드를 다시 입력할 필요가 없어요. 버튼이 회색으로 잠겨 있으면 먼저 보안 위험 자동 차단을 꺼주세요." else "개발자 옵션에서 ‘무선 디버깅’을 켜주세요. 이어서 바로 페어링 코드 화면을 열어도 돼요. 버튼이 회색으로 잠겨 있으면 먼저 보안 위험 자동 차단을 꺼주세요.",SetupAction.WIRELESS_SETTINGS,"무선 디버깅 열기")
+            SetupStage.DEVELOPER_OPTIONS_OFF->SetupPresentation(s,3,"개발자 옵션을 켜주세요","휴대전화 정보에서 ‘소프트웨어 정보’를 열고 ‘빌드번호’를 7번 연속 누르세요. 돌아오면 다음 단계로 넘어가요.",SetupAction.DEVICE_INFO,"휴대전화 정보 열기")
+            SetupStage.WIFI_NOT_CONNECTED->SetupPresentation(s,4,"Wi-Fi에 연결해주세요","Wi-Fi를 켜고 네트워크에 연결하세요. 연결되면 자동으로 다음 단계로 넘어가요.",SetupAction.WIFI_SETTINGS,"Wi-Fi 열기")
+            SetupStage.WIRELESS_DEBUGGING_OFF->if(f.autoBlocked)SetupPresentation(s,6,"보안 위험 자동 차단을 꺼주세요","보안 위험 자동 차단이 켜져 있으면 무선 디버깅을 켤 수 없어요. 설정 → 보안 및 개인정보 보호 → 보안 위험 자동 차단을 끈 뒤 돌아오세요. ‘자동으로 켜기’가 켜져 있으면 30분 뒤 다시 켜지니, 그때는 다시 꺼주세요.",SetupAction.SECURITY_SETTINGS,"보안 설정 열기") else SetupPresentation(s,6,"무선 디버깅을 켜주세요",if(f.paired)"이미 페어링된 기기예요. 무선 디버깅만 켜면 코드를 다시 입력할 필요가 없어요. 버튼이 회색으로 잠겨 있으면 보안 위험 자동 차단을 꺼주세요." else "개발자 옵션에서 ‘무선 디버깅’을 켜주세요. 이어서 바로 페어링 코드 화면을 열어도 돼요. 버튼이 회색으로 잠겨 있으면 보안 위험 자동 차단을 꺼주세요.",SetupAction.WIRELESS_SETTINGS,"무선 디버깅 열기")
             SetupStage.NEARBY_PERMISSION->SetupPresentation(s,5,"근처 기기 권한을 허용해주세요","아래 버튼을 누르면 ‘근처에 있는 기기를 찾아 연결하고 기기 간 상대적 위치를 파악’하는 권한 창이 떠요. 그 창에서 ‘허용’을 눌러주세요. 이 휴대폰의 무선 연결을 찾는 데 사용해요.",SetupAction.NEARBY,"근처 기기 허용")
             SetupStage.GUIDE_PAIRING_CODE_PAGE,SetupStage.WAIT_FOR_PAIRING_ADVERTISEMENT->SetupPresentation(s,7,"‘페어링 코드로 기기 페어링’을 누르세요","코드 화면을 열어두세요. 준비되면 알림의 ‘코드 입력’에서 6자리 숫자를 입력하고 전송하세요.",SetupAction.WIRELESS_SETTINGS,"무선 디버깅 화면 열기")
             SetupStage.PAIRING_NOTIFICATION_READY->SetupPresentation(s,7,"페어링 코드를 입력하세요","설정의 코드 화면을 유지한 채 알림의 ‘코드 입력’을 누르세요. 입력 후 전송하면 자동으로 연결돼요.",SetupAction.NONE)
@@ -70,24 +80,32 @@ object SetupFlow {
             SetupStage.FINAL_CHECK->SetupPresentation(s,11+extra,"마지막으로 기기와 앱을 확인해요","선택한 적용 범위로 앱의 위치 표시 상태를 확인해요. 설정은 변경하지 않아요.",SetupAction.NONE)
             SetupStage.READY->SetupPresentation(s,11+extra,"준비 완료","연결을 확인했어요.",SetupAction.NONE)
             SetupStage.PAIRING_RETRY->SetupPresentation(s,7,"새 페어링 코드를 열어주세요","코드가 맞지 않거나 시간이 만료됐어요. 새 코드 화면을 열고 다시 입력해주세요.",SetupAction.RETRY_PAIRING,"새 코드로 다시 연결")
-            SetupStage.CONNECTION_RECOVERY->SetupPresentation(s,8,"기기 연결을 다시 확인해주세요","연결 승인이 해제됐거나 연결이 끊겼을 수 있어요. 다시 확인해도 연결되지 않으면 한 번만 다시 페어링해주세요.",SetupAction.RETRY_CONNECTION,"연결 다시 확인")
+            // PC start: re-pairing is not the way out (Codex R5); a second helper is refused while the first lives, hence the restart.
+            SetupStage.CONNECTION_RECOVERY->SetupPresentation(s,8,"기기 연결을 다시 확인해주세요",if(f.pcStart)"PC에서 시작한 백그라운드 감시를 확인하지 못했어요. ‘연결 다시 확인’을 눌러주세요. 계속 안 되면 휴대폰을 다시 시작한 뒤 PC에서 시작 명령을 다시 실행해주세요." else "연결 승인이 해제됐거나 연결이 끊겼을 수 있어요. 다시 확인해도 연결되지 않으면 한 번만 다시 페어링해주세요.",SetupAction.RETRY_CONNECTION,"연결 다시 확인")
             SetupStage.DISCOVERY_RECOVERY->SetupPresentation(s,8,"이 기기의 연결을 선택해주세요","무선 디버깅이 켜져 있는지 확인한 뒤, 목록에서 이 휴대폰을 선택해주세요.",SetupAction.CHOOSE_CONNECTION,"연결할 기기 선택")
             SetupStage.SESSION_EXPIRED->SetupPresentation(s,7,"연결 준비가 잠시 중단됐어요","코드 화면을 다시 열어 이어서 연결할 수 있어요.",SetupAction.RESUME,"이어서 연결")
             // A phone that worked before (paired) and now fails the structure check was most likely updated: re-pairing
             // will not help, and the restore record must be kept.
+            SetupStage.PC_START->SetupPresentation(s,4,"PC에서 bluedotOFF를 시작해주세요","Wi-Fi 없이 쓰려면 PC에서 명령을 한 번 실행해야 해요. 실행하면 이 화면이 자동으로 다음 단계로 넘어가요.",SetupAction.NONE)
             SetupStage.UNSUPPORTED->if(f.supported&&f.paired)SetupPresentation(s,3,"휴대폰 업데이트로 내부 구조가 바뀌었어요",OS_CHANGED,SetupAction.NONE)
                 else SetupPresentation(s,3,"이 기기의 지원 여부를 확인할 수 없어요","Samsung One UI 9 이상에서 지원 여부를 확인할 수 있어요. 대상 앱의 설정은 변경하지 않았어요.",SetupAction.NONE)
         }
+        if(f.pcStart)return p.copy(progress=pcProgress(s,extra),total=7+extra)
         return p.copy(total=11+extra)
+    }
+    /** PC start's own step numbers (no Wi-Fi, wireless debugging, pairing or connection-method steps); [SetupProgress.pcLabels]. */
+    private fun pcProgress(s:SetupStage,extra:Int)=when(s){
+        SetupStage.WELCOME->1;SetupStage.NOTIFICATION_PERMISSION->2;SetupStage.DEVELOPER_OPTIONS_OFF->3;SetupStage.PC_START->4
+        SetupStage.BATTERY_OPTIMIZATION->6;SetupStage.APPLICATION_SCOPE->6+extra;SetupStage.FINAL_CHECK,SetupStage.READY->7+extra
+        else->5
     }
 }
 
 /** Notification replacement and removal are independent of whether permission was granted. */
-enum class PairNotice { NONE, GUIDE, CODE }
+enum class PairNotice { NONE, CODE }
 object PairNoticePolicy {
     fun desired(stage:SetupStage,notifications:Boolean)=if(!notifications)PairNotice.NONE else when(stage){
-        SetupStage.WAIT_FOR_PAIRING_ADVERTISEMENT->PairNotice.GUIDE
-        SetupStage.PAIRING_NOTIFICATION_READY->PairNotice.CODE
+        SetupStage.WAIT_FOR_PAIRING_ADVERTISEMENT,SetupStage.PAIRING_NOTIFICATION_READY->PairNotice.CODE
         else->PairNotice.NONE
     }
 }
@@ -96,9 +114,16 @@ object PairNoticePolicy {
 data class SetupStepStatus(val number:Int,val label:String,val complete:Boolean,val current:Boolean)
 object SetupProgress {
     val labels=listOf("시작하기","알림 선택","개발자 옵션","Wi-Fi 연결","근처 기기 권한","무선 디버깅","페어링 코드 입력","기기와 앱 확인","연결 유지 방법","적용 범위","최종 기기 확인")
-    fun labels(f:SetupFacts)=if(f.batteryChoiceRequired)labels.take(9)+"배터리 사용 제한 해제"+labels.drop(9) else labels
+    val pcLabels=listOf("시작하기","알림 선택","개발자 옵션","PC로 시작","기기와 앱 확인","적용 범위","최종 기기 확인")
+    fun labels(f:SetupFacts)=if(f.pcStart){if(f.batteryChoiceRequired)pcLabels.take(5)+"배터리 사용 제한 해제"+pcLabels.drop(5) else pcLabels}
+        else if(f.batteryChoiceRequired)labels.take(9)+"배터리 사용 제한 해제"+labels.drop(9) else labels
     fun steps(f:SetupFacts):List<SetupStepStatus> {
         val current=SetupFlow.presentation(f).progress
+        if(f.pcStart){
+            val done=listOf(f.welcomed||f.paired,f.notificationResolved||f.paired,f.developer,f.pcHelper,f.verified,f.applicationScopeResolved,f.finalCheckResolved&&f.verified)
+            val complete=if(f.batteryChoiceRequired)done.take(5)+f.batteryChoiceResolved+done.drop(5) else done
+            return labels(f).mapIndexed{i,label->SetupStepStatus(i+1,label,complete[i],i+1==current&&SetupFlow.stage(f)!=SetupStage.READY)}
+        }
         val done=listOf(f.welcomed||f.paired,f.notificationResolved||f.paired,f.developer,f.wifiConnected,
             f.nearbyResolved,f.wireless||(f.verified&&f.completedOffline),f.paired&&!f.forcePairing,
             f.verified,f.managementChoiceResolved,f.applicationScopeResolved,f.finalCheckResolved&&f.verified)

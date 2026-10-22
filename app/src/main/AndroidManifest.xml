@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Optional, user-approved system dialog; never grants an exemption automatically. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- 1.2.1: keeps the pairing-code prompt on screen (pinned heads-up) while the phone is in use; see PairingNotifications.code. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <queries>
         <package android:name="com.android.settings" />
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>

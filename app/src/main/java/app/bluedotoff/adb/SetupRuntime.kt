@@ -48,6 +48,10 @@ internal interface SetupRuntime {
     fun cancelPairing()
     fun debugReadOnly(port:Int,interrupt:Boolean):Unit=throw UnsupportedOperationException()
     fun debugBatchReadOnly():Unit=throw UnsupportedOperationException()
+    /** 1.2.1 PC start: the user's choice, and whether a verified helper started from the PC is attached. */
+    val pcStart:Boolean get()=false
+    val pcHelper:Boolean get()=false
+    fun choosePcStart(on:Boolean) {}
 }
 internal class AndroidSetupRuntime(private val context:Context):SetupRuntime {
     override fun keepPairingAlive(required:Boolean):Boolean {
@@ -93,7 +97,8 @@ internal class AndroidSetupRuntime(private val context:Context):SetupRuntime {
     override val intentionalExit get()=ending
     override fun observeWifi(changed:()->Unit)=app.bluedotoff.WifiConnection.observe(context,changed)
     override val wifiConnected get()=app.bluedotoff.WifiConnection.connected(context)
-    override fun foregroundUse(){ending=false;if(busy)return;val controls=WirelessControls(context);if(controls.mayStart(app.bluedotoff.ForegroundState.active))controls.enableWirelessDebugging()}
+    // PC start never uses wireless debugging, so setup does not turn it on there (Codex R2).
+    override fun foregroundUse(){ending=false;if(busy||PcStart.chosen(context))return;val controls=WirelessControls(context);if(controls.mayStart(app.bluedotoff.ForegroundState.active))controls.enableWirelessDebugging()}
     override val developer get()=Settings.Global.getInt(context.contentResolver,Settings.Global.DEVELOPMENT_SETTINGS_ENABLED,0)==1
     override val wireless get()=Settings.Global.getInt(context.contentResolver,"adb_wifi_enabled",0)==1
     override val autoBlocked get()=AutoBlocker.suspected&&!wireless
@@ -127,7 +132,8 @@ internal class AndroidSetupRuntime(private val context:Context):SetupRuntime {
             val store=JournalStore(context);val boot=BootSession.current(context)
             app.bluedotoff.core.StartupScan.read(backend::verify,store::entries,
                 {capture->backend.discover(checkCancelled={if(!valid())throw java.util.concurrent.CancellationException()},onSnapshot=capture,onProgress={done,total->progress(app.bluedotoff.core.ScanProgress(done,total))})},
-                backend::read,{snapshots,firmware->
+                // An uninstalled registered app reads as absent (MISSING_TARGET), as on Home; it must not fail setup (Fold7 2026-10-20).
+                {pkg->try{backend.read(pkg)}catch(_:android.content.pm.PackageManager.NameNotFoundException){null}},{snapshots,firmware->
                     check(store.transform{e->if(!valid())throw java.util.concurrent.CancellationException();Reconcile.read(e,snapshots[e.identity.packageName],firmware.key,boot,snapshots)})
                     store.entries()
                 },boot,valid)
@@ -136,6 +142,9 @@ internal class AndroidSetupRuntime(private val context:Context):SetupRuntime {
         check(cache.publish(revision,prepared)){"앱 설치 상태가 바뀌었어요. 다시 확인해주세요."}
     }
     override fun cancelPairing()=LocalAdbSession.cancelPairing()
+    override val pcStart get()=PcStart.chosen(context)
+    override val pcHelper get()=WatchClient.available(context)
+    override fun choosePcStart(on:Boolean)=PcStart.choose(context,on)
     override fun debugReadOnly(port:Int,interrupt:Boolean) {
         check(app.bluedotoff.BuildConfig.DEBUG)
         if(interrupt)LocalAdbSession.interruptionProof(context,port)

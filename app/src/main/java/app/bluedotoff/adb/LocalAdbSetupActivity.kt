@@ -86,7 +86,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
     }
     override fun onStart(){super.onStart();app.bluedotoff.ForegroundState.started()}
     override fun onStop(){app.bluedotoff.ForegroundState.stopped();super.onStop()}
-    override fun onResume(){super.onResume();foreground=true;if(notificationSettingsOpened){notificationSettingsOpened=false;session.notificationsResult()};if(!permissionDialog){if(batterySettingsOpened){batterySettingsOpened=false;session.batterySettingsReturned()}else session.resume()};render()}
+    override fun onResume(){super.onResume();foreground=true;PairingNotifications.cancelHint(this);if(notificationSettingsOpened){notificationSettingsOpened=false;session.notificationsResult()};if(!permissionDialog){if(batterySettingsOpened){batterySettingsOpened=false;session.batterySettingsReturned()}else session.resume()};render()}
     override fun onPause(){foreground=false;super.onPause()}
     override fun onSaveInstanceState(state:Bundle){state.putBoolean("permissionDialog",permissionDialog);state.putBoolean("usbChoicePending",usbChoicePending);state.putBoolean("notificationSettingsOpened",notificationSettingsOpened);state.putBoolean("batterySettingsOpened",batterySettingsOpened);super.onSaveInstanceState(state)}
     override fun onDestroy(){notificationReminder?.close();code?.text?.clear();session.detach(changed);if(isFinishing&&!isChangingConfigurations)session.close();super.onDestroy()}
@@ -162,6 +162,18 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         background=RippleDrawable(ColorStateList.valueOf(colors.primary.copy(alpha=0.12f).toArgb()),null,rounded(android.graphics.Color.WHITE))
         isClickable=true;setOnClickListener{action()}
     })}
+    /** PC start: Windows or Mac, side by side; the picked one is filled. */
+    private fun pcChoice(mac:Boolean){add(LinearLayout(this).apply{
+        orientation=LinearLayout.HORIZONTAL
+        for((label,isMac) in listOf("Windows" to false,"Mac" to true))addView(TextView(this@LocalAdbSetupActivity).apply{
+            val on=isMac==mac
+            text=label;textSize=14f;gravity=Gravity.CENTER;minHeight=dp(48);isSelected=on;isClickable=true;isFocusable=true
+            typeface=Typeface.create("sans-serif-medium",Typeface.NORMAL)
+            setTextColor(if(on)colors.onPrimary.toArgb() else colors.onSurface.toArgb())
+            background=rounded(if(on)colors.primary.toArgb() else colors.surfaceContainerHigh.toArgb())
+            setOnClickListener{PcStart.setMac(this@LocalAdbSetupActivity,isMac);render()}
+        },LinearLayout.LayoutParams(0,-2,1f).apply{if(isMac)marginStart=dp(8)})
+    })}
     private fun progress(step:Int,total:Int){
         add(LinearLayout(this).apply{
             orientation=LinearLayout.VERTICAL
@@ -194,9 +206,9 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
     private fun render(){
         if(isDestroyed||!::box.isInitialized||permissionDialog)return
         val f=session.facts;val p=SetupFlow.presentation(f)
-        if(p.stage==SetupStage.READY&&foreground&&!navigating&&!advanced){navigating=true;session.close(keepScan=true);startActivity(Intent(this,app.bluedotoff.MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP));finish();return}
+        if(p.stage==SetupStage.READY&&foreground&&!navigating&&!advanced){navigating=true;getSharedPreferences("ui-state",0).let{if(f.pcStart&&!it.contains("setupNotice"))it.edit().putString("setupNotice",PcStart.DONE).apply()};session.close(keepScan=true);startActivity(Intent(this,app.bluedotoff.MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP));finish();return}
         // The pending USB choice must re-render: with USB debugging already on, that render is where step 9 finishes.
-        val key="${p.stage}|${p.total}|${f.autoBlocked}|${session.notifications}|${session.manualInput}|${session.needsPort}|${session.inputError}|$advanced|${session.diagnosticResult}|${session.managementError}|${session.scanProgress}|$usbChoicePending"
+        val key="${p.stage}|${p.total}|${f.autoBlocked}|${session.notifications}|${session.manualInput}|${session.needsPort}|${session.inputError}|$advanced|${session.diagnosticResult}|${session.managementError}|${session.scanProgress}|$usbChoicePending|${f.pcStart&&WatchClient.usbEnabled(this)}|${f.pcStart&&app.bluedotoff.BackgroundWatch.enabled(this)}|${f.pcStart&&PcStart.mac(this)}"
         if(lastKey==key)return;lastKey=key;code?.text?.clear();code=null;box.removeAllViews()
         progress(p.progress,p.total)
         text(p.title,28f)
@@ -237,6 +249,34 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
             if(usbChoicePending)text("개발자 옵션에서 ‘USB 디버깅’을 켠 뒤 이 화면으로 돌아오세요. 켜져 있으면 자동으로 다음 단계로 넘어가요.",14f)
             link("지금은 사용하지 않기"){usbChoicePending=false;if(app.bluedotoff.BackgroundWatch.enabled(this@LocalAdbSetupActivity))app.bluedotoff.BackgroundWatch.set(this@LocalAdbSetupActivity,false);session.skipManagement()}
         }
+        // 1.2.1: Wi-Fi stays the way to start; the PC is only for users who have no Wi-Fi at all (owner 2026-10-20).
+        if(p.stage==SetupStage.WIFI_NOT_CONNECTED)link("Wi-Fi가 없나요? PC로 시작하기"){noWifi()}
+        if(p.stage==SetupStage.PC_START){
+            // What blocks the command right now comes first (Codex U3): the helper is refused without the watch or USB debugging.
+            if(!app.bluedotoff.BackgroundWatch.enabled(this)){text("백그라운드 감시가 꺼져 있어서 PC 명령이 동작하지 않아요.",14f);button("백그라운드 감시 켜기"){startPc()}}
+            val ready=PcStart.prepare(this)
+            if(!ready)text("시작 명령 파일을 만들지 못했어요. 휴대폰 저장공간을 확인한 뒤 이 화면을 다시 열어주세요.",14f)
+            // Only the picked PC's steps and command (owner 2026-10-21): half the text, nothing to skip over.
+            val mac=PcStart.mac(this)
+            text("사용할 PC를 고르세요",14f)
+            pcChoice(mac)
+            PcStart.steps(mac).forEachIndexed{i,step->
+                text("${i+1}. "+app.bluedotoff.UiText.text(this,step))
+                // Step 2 leads to the switch itself (owner 2026-10-21); developer options are on here (setup step 3 comes first).
+                if(i==1){if(WatchClient.usbEnabled(this))text("✓ "+app.bluedotoff.UiText.text(this,"USB 디버깅이 켜졌어요"),14f) else link("USB 디버깅 켜러 가기"){app.bluedotoff.SettingsEntrypoints.developerOptions(this)}}
+            }
+            if(ready){
+                add(TextView(this).apply{
+                    text=PcStart.command(mac);textSize=14f;typeface=Typeface.MONOSPACE;setTextIsSelectable(true);setTextColor(colors.onSurface.toArgb())
+                    background=rounded(colors.surfaceContainerHigh.toArgb());setPadding(dp(16),dp(16),dp(16),dp(16))
+                })
+                button("PC로 안내 보내기"){PcStart.share(this,mac)}
+                link("명령 복사"){PcStart.copy(this,mac)}
+            }
+            link("명령이 안 될 때"){app.bluedotoff.ScopeDialogs.pcHelp(this)}
+            text(PcStart.AGAIN,14f)
+            link("Wi-Fi로 연결할게요"){stopPc()}
+        }
         if(p.stage==SetupStage.BATTERY_OPTIMIZATION)link("나중에"){session.skipBatteryChoice()}
         if(p.stage==SetupStage.NOTIFICATION_PERMISSION)link("알림 없이 계속"){recommendNotifications()}
         if(p.stage==SetupStage.NEARBY_PERMISSION)link("직접 입력으로 연결"){session.skipNearby()}
@@ -252,7 +292,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
             }else link("알림이 보이지 않나요? 앱에서 코드 입력"){session.openManual()}
             link("연결 준비 취소"){session.close();finish()}
         }
-        if(p.stage==SetupStage.CONNECTION_RECOVERY)link("한 번만 다시 페어링"){session.beginPairing()}
+        if(p.stage==SetupStage.CONNECTION_RECOVERY&&!f.pcStart)link("한 번만 다시 페어링"){session.beginPairing()}
         link(if(advanced)"고급 옵션 닫기" else "문제가 있나요? 고급 옵션"){advanced=!advanced;render()}
         if(advanced){
             if(p.stage==SetupStage.READY)button("홈으로 돌아가기"){session.close(keepScan=true);startActivity(Intent(this,app.bluedotoff.MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP));finish()}
@@ -274,6 +314,21 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         }
     }
     private fun autoBlockerHelp(){app.bluedotoff.ScopeDialogs.autoBlocker(this)}
+    /** "PC로 시작" runs the background watch (the helper is that watch): one notice says so with the watch risks. */
+    private fun noWifi(){
+        app.bluedotoff.ScopeDialogs.watch(this,"Wi-Fi 없이 PC로 시작할까요?","보통은 Wi-Fi로 시작해요. 다른 휴대폰의 핫스팟에 연결해도 될 수 있어요. Wi-Fi가 전혀 없다면 PC와 USB 케이블로 시작할 수 있어요. PC로 시작하면 백그라운드 감시 방법으로만 동작하고, 휴대폰을 다시 시작하거나 bluedotOFF를 업데이트할 때마다 PC에서 명령을 다시 실행해야 해요.","PC로 시작"){startPc()}
+    }
+    private fun startPc(){
+        val ui=getSharedPreferences("ui-state",0)
+        if(!app.bluedotoff.BackgroundWatch.enabled(this)){app.bluedotoff.BackgroundWatch.set(this,true);ui.edit().putBoolean("pcStartWatchOn",true).apply()}
+        session.choosePcStart(true)
+    }
+    /** Back to Wi-Fi: the watch is turned off again only if "PC로 시작" turned it on. */
+    private fun stopPc(){
+        val ui=getSharedPreferences("ui-state",0)
+        if(ui.getBoolean("pcStartWatchOn",false)){app.bluedotoff.BackgroundWatch.set(this,false);ui.edit().remove("pcStartWatchOn").apply()}
+        session.choosePcStart(false)
+    }
     private fun chooseScope(){
         // Owner choice (2026-10-17): one explicit "이 범위로 시작". Choosing a scope here changes no app, so the
         // repeated confirmation was dropped; lowering an applied scope still asks first (MainActivity).
@@ -282,7 +337,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
     private fun act(action:SetupAction){when(action){
         SetupAction.START->session.welcome()
         SetupAction.NOTIFICATIONS->requestNotifications()
-        SetupAction.DEVICE_INFO->app.bluedotoff.SettingsEntrypoints.softwareInformation(this)
+        SetupAction.DEVICE_INFO->{PairingNotifications.developerHint(this);app.bluedotoff.SettingsEntrypoints.softwareInformation(this)}
         SetupAction.WIFI_SETTINGS->app.bluedotoff.SettingsEntrypoints.wifi(this)
         SetupAction.WIRELESS_SETTINGS->wirelessSettings()
         SetupAction.NEARBY->{if(session.requiresNearbyPermission){permissionDialog=true;requestPermissions(arrayOf("android.permission.ACCESS_LOCAL_NETWORK"),71)}else session.skipNearby()}

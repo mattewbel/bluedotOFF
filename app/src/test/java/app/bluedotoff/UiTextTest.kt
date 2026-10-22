@@ -46,6 +46,9 @@ class UiTextTest {
         assertTrue(WatchNotification.advice(usbOn=false,autoManaged=false).contains("무선 디버깅을 켠 뒤"))
         assertFalse(WatchNotification.advice(usbOn=true,autoManaged=true).contains("USB"))
         for(usb in listOf(true,false))for(auto in listOf(true,false)){val k=WatchNotification.advice(usb,auto);assertNotEquals(k,k,UiText.text(language("en"),k))}
+        // 1.2.1: started from a PC without wireless pairing, the PC command is the way back.
+        for(usb in listOf(true,false))for(auto in listOf(true,false)){val k=WatchNotification.advice(usb,auto,pcOnly=true);assertTrue(k.contains("PC에서"));assertFalse(k.contains("Wi-Fi"));assertNotEquals(k,k,UiText.text(language("en"),k))}
+        assertTrue(WatchNotification.advice(usbOn=false,autoManaged=false,pcOnly=true).startsWith("USB 디버깅을 다시 켜고"))
     }
     /** 1.1.2: languages without a catalog still show English; supported ones show their own catalog. */
     @Test fun everyNonKoreanLanguageFallsBackToEnglish(){

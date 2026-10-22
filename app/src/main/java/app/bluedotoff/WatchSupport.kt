@@ -51,7 +51,9 @@ object WatchNotification {
     }
     /** What the user does to start watching again. Automatic management turns wireless debugging on by itself;
      *  without it the user turns it on too. Pairing is not needed again. */
-    fun advice(usbOn:Boolean,autoManaged:Boolean)=when{
+    fun advice(usbOn:Boolean,autoManaged:Boolean,pcOnly:Boolean=false)=when{
+        pcOnly&&!usbOn->"USB 디버깅을 다시 켜고, PC에서 bluedotOFF 시작 명령을 다시 실행해주세요."
+        pcOnly->"다시 켜려면 PC에서 bluedotOFF 시작 명령을 다시 실행해주세요."
         !usbOn&&autoManaged->"USB 디버깅을 다시 켜고, Wi-Fi에 연결된 상태에서 bluedotOFF를 열어주세요."
         !usbOn->"USB 디버깅을 다시 켜고, Wi-Fi에 연결해 무선 디버깅을 켠 뒤 bluedotOFF를 열어주세요."
         autoManaged->"다시 켜려면 Wi-Fi에 연결된 상태에서 bluedotOFF를 열어주세요."
@@ -70,7 +72,7 @@ object WatchNotification {
         prefs.edit().putString("watchStopNotified",reason.name).apply()
         WatchLog.event("state","watchStopNotice reason=${reason.name}")
         val usb=usbOn(c)
-        post(c,"백그라운드 감시가 멈췄어요",UiText.text(c,reason.message)+" "+UiText.text(c,advice(usb,autoManaged(c))),usbAction=!usb)
+        post(c,"백그라운드 감시가 멈췄어요",UiText.text(c,reason.message)+" "+UiText.text(c,advice(usb,autoManaged(c),app.bluedotoff.adb.PcStart.chosen(c))),usbAction=!usb)
     }
     /** USB debugging is on again while watching is stopped (the app is not open; an open app starts it by itself). */
     fun usbBack(c:Context){
@@ -78,7 +80,7 @@ object WatchNotification {
         val prefs=c.getSharedPreferences("ui-state",Context.MODE_PRIVATE)
         if(prefs.getBoolean("watchUsbBackNotified",false))return
         prefs.edit().putBoolean("watchUsbBackNotified",true).apply()
-        post(c,"USB 디버깅이 켜졌어요",UiText.text(c,if(autoManaged(c))"Wi-Fi에 연결된 상태에서 bluedotOFF를 열면 백그라운드 감시를 다시 시작해요." else "Wi-Fi에 연결해 무선 디버깅을 켠 뒤 bluedotOFF를 열면 백그라운드 감시를 다시 시작해요."),usbAction=false)
+        post(c,"USB 디버깅이 켜졌어요",UiText.text(c,if(app.bluedotoff.adb.PcStart.chosen(c))"PC에서 bluedotOFF 시작 명령을 실행하면 백그라운드 감시를 다시 시작해요." else if(autoManaged(c))"Wi-Fi에 연결된 상태에서 bluedotOFF를 열면 백그라운드 감시를 다시 시작해요." else "Wi-Fi에 연결해 무선 디버깅을 켠 뒤 bluedotOFF를 열면 백그라운드 감시를 다시 시작해요."),usbAction=false)
     }
     private fun post(c:Context,title:String,text:String,usbAction:Boolean){
         if(android.os.Build.VERSION.SDK_INT>=33&&c.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)return

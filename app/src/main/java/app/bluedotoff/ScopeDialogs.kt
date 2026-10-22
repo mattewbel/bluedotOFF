@@ -33,9 +33,9 @@ object ScopeDialogs {
                     Column(Modifier.weight(1f,fill=false).verticalScroll(rememberScrollState())){
                         steps.forEach{step->
                             Row(Modifier.fillMaxWidth().padding(vertical=10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
-                                Text("${step.number}",Modifier.width(24.dp),color=MaterialTheme.colorScheme.primary,style=MaterialTheme.typography.labelLarge)
+                                Text("${step.number}",Modifier.width(24.dp),color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.labelLarge)
                                 Text(UiText.text(activity,step.label),Modifier.weight(1f),style=MaterialTheme.typography.bodyMedium)
-                                Text(UiText.text(activity,when{step.current->"진행 중";step.complete->"완료";else->"아직 안 함"}),style=MaterialTheme.typography.labelMedium,color=if(step.current)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(UiText.text(activity,when{step.current->"진행 중";step.complete->"완료";else->"아직 안 함"}),style=MaterialTheme.typography.labelMedium,color=if(step.current)MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
@@ -110,9 +110,10 @@ object ScopeDialogs {
             }
         }
 
-    /** Setup step 9: the same risk notice as Settings. */
-    fun watch(activity:ComponentActivity,onConfirm:()->Unit):AutoCloseable =
-        show(activity,1f){close->WatchRiskPanel(close){close();onConfirm()}}
+    /** Setup step 9: the same risk notice as Settings. The PC start asks in its own words, in this one notice instead
+     *  of two in a row (owner 2026-10-21). */
+    fun watch(activity:ComponentActivity,title:String=WATCH_TITLE,intro:String=WATCH_INTRO,action:String="켜기",onConfirm:()->Unit):AutoCloseable =
+        show(activity,1f){close->WatchRiskPanel(close,{close();onConfirm()},title,intro,action)}
 
     /** A notice for the native setup screen: the first action is the main button, the others text buttons below it;
      *  every action closes the panel first. */
@@ -124,6 +125,33 @@ object ScopeDialogs {
                 Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(16.dp)){Copy(body);extra?.invoke()}
             }
         }
+    /** 1.2.1, Home and Settings: starting the watch again from a PC; the same steps as the setup screen. */
+    fun pcStart(activity:ComponentActivity):AutoCloseable {
+        val pc=app.bluedotoff.adb.PcStart
+        if(!pc.prepare(activity))return alert(activity,"PC로 시작하는 방법","시작 명령 파일을 만들지 못했어요. 휴대폰 저장공간을 확인한 뒤 이 화면을 다시 열어주세요.","닫기" to {})
+        // Two buttons only (owner 2026-10-21): copy and help sit in the text, next to what they act on.
+        return alert(activity,"PC로 시작하는 방법","Wi-Fi 없이 백그라운드 감시를 다시 시작하려면 PC에서 아래 순서대로 해주세요.",
+            "PC로 안내 보내기" to {pc.share(activity,pc.mac(activity))},"닫기" to {},extra={
+                var mac by remember{mutableStateOf(pc.mac(activity))}
+                Copy("사용할 PC를 고르세요",small=true)
+                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
+                    listOf("Windows" to false,"Mac" to true).forEach{(label,isMac)->
+                        FilterChip(selected=mac==isMac,onClick={pc.setMac(activity,isMac);mac=isMac},label={Text(label)})
+                    }
+                }
+                pc.steps(mac).forEachIndexed{i,step->Text("${i+1}. ${UiText.text(activity,step)}",style=MaterialTheme.typography.bodyMedium)}
+                androidx.compose.foundation.text.selection.SelectionContainer{Surface(Modifier.fillMaxWidth(),shape=RoundedCornerShape(12.dp),color=MaterialTheme.colorScheme.surfaceContainerHigh){
+                    Text(pc.command(mac),Modifier.padding(16.dp),fontFamily=androidx.compose.ui.text.font.FontFamily.Monospace,style=MaterialTheme.typography.bodyMedium)}}
+                Row{
+                    TextButton(onClick={pc.copy(activity,mac)}){Text(UiText.text(activity,"명령 복사"))}
+                    TextButton(onClick={pcHelp(activity)}){Text(UiText.text(activity,"명령이 안 될 때"))}
+                }
+                Copy(pc.AGAIN,small=true)
+            })
+    }
+    /** Short help for the usual adb messages on the PC (Codex U1). */
+    fun pcHelp(activity:ComponentActivity):AutoCloseable =
+        alert(activity,"명령이 안 될 때","PC 명령 창에 나온 문구에 맞는 항목을 확인하세요.","닫기" to {},extra={app.bluedotoff.adb.PcStart.HELP.forEach{Copy(it)}})
     /** Setup: Auto Blocker cannot be detected there, so the same two-picture guide as the Home dialog. */
     fun autoBlocker(activity:ComponentActivity):AutoCloseable =
         alert(activity,"보안 위험 자동 차단을 꺼주세요","이 기능이 켜져 있으면 휴대폰이 무선 디버깅을 막아서 bluedotOFF가 연결할 수 없어요. 아래 순서대로 끈 뒤 다시 시도해주세요.",
@@ -170,11 +198,13 @@ object ScopeDialogs {
 }
 
 /** "백그라운드 감시" risks; the confirm button unlocks after a visible 5-second wait. */
-@Composable private fun WatchRiskPanel(cancel:()->Unit,confirm:()->Unit){
+private const val WATCH_TITLE="백그라운드 감시를 켤까요?"
+private const val WATCH_INTRO="켜기 전에 꼭 읽어주세요."
+@Composable private fun WatchRiskPanel(cancel:()->Unit,confirm:()->Unit,title:String=WATCH_TITLE,intro:String=WATCH_INTRO,action:String="켜기"){
     var left by remember{mutableStateOf(5)}
     LaunchedEffect(Unit){while(left>0){delay(1000);left--}}
-    ScopePanel("백그라운드 감시를 켤까요?",if(left>0)"켜기 (${left}초)" else "켜기",cancel,confirm,enabled=left==0){
-        Copy("켜기 전에 꼭 읽어주세요.")
+    ScopePanel(title,if(left>0)"$action (${left}초)" else action,cancel,confirm,enabled=left==0){
+        Copy(intro)
         BackgroundWatch.RISKS.forEach{risk->Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){Text("•");Copy(risk)}}
         LinearProgressIndicator(progress={(5-left)/5f},modifier=Modifier.fillMaxWidth())
     }
@@ -251,7 +281,7 @@ object ScopeDialogs {
                         }
                         HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant)
                     }
-                    if(!model.canOperate)Copy("먼저 연결 설정을 마친 뒤 재적용을 눌러주세요.",small=true)
+                    if(!model.canOperate)Copy("연결 설정을 마친 뒤 재적용을 눌러주세요.",small=true)
                 }
             }
         }

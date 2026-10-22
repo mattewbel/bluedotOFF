@@ -63,6 +63,18 @@ class MainActivity : ComponentActivity() {
     private fun invalidateScan(){StartupScanHandoff.cache.invalidate();startupScanAdopted=false;packageEpoch++;scanStamp=null;model=model.copy(pickerRows=null,rejectedGroups=emptySet())}
     private fun cacheValid()=scanStamp?.valid(Build.FINGERPRINT,packageEpoch,android.os.SystemClock.elapsedRealtime())==true
     private fun automaticReady()=WatchClient.available(this)||controls.consent&&controls.granted&&Settings.Global.getInt(contentResolver,Settings.Global.DEVELOPMENT_SETTINGS_ENABLED,0)==1&&WifiConnection.connected(this)&&getSharedPreferences("local-adb",0).getString("pairedGuid",null)!=null&&AdbHostIdentity(this).exists
+    /** Keeps Home's "마지막 확인" time and recent-location card across restarts, so neither appears late and moves the
+     *  page (owner 2026-10-22). Display only. The card is saved once this run has read the location history, and a read
+     *  with no recent app clears it; its time is the real access time, the age is worked out when shown. */
+    private fun rememberCheck(){
+        if(model.lastCheckedAt>0L)prefs.edit().putLong("lastCheckedAt",model.lastCheckedAt).apply()
+        if(!model.historyAvailable||model.discovered.isEmpty())return
+        val a=model.recentHistoryApp;val time=a?.access?.latest
+        val saved=if(a==null||time==null)null else SavedRecent(a.packageName,a.label,time)
+        prefs.edit().apply{if(saved==null)remove("recentApp") else putString("recentApp",org.json.JSONObject().put("package",saved.packageName).put("label",saved.label).put("time",saved.time).toString())}.apply()
+        model=model.copy(savedRecent=saved)
+    }
+    private fun savedRecent()=prefs.getString("recentApp",null)?.let{runCatching{org.json.JSONObject(it).let{j->SavedRecent(j.getString("package"),j.getString("label"),j.getLong("time"))}}.getOrNull()}
     private fun refreshFromUser(){invalidateScan();refresh(true)}
     private enum class Check { AUTO, LOCAL, REGISTERED, HISTORY, FULL }
     /** Coming back to the app reconnects only when needed: Android reported a change to a registered app, the last check
@@ -83,8 +95,10 @@ class MainActivity : ComponentActivity() {
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { model = model.copy(notifications = it, notificationOffer = false) }
     private val journalListener:()->Unit = {
         // Watch start/stop also arrives here: show it even when a refresh is skipped (busy or already running).
-        model=model.copy(watchRunning=WatchClient.available(this),usbDebugging=WatchClient.usbEnabled(this))
-        if(ForegroundState.active&&!model.busy){loadReapplyHistory();refresh()} }
+        model=model.copy(watchRunning=WatchClient.available(this),usbDebugging=WatchClient.usbEnabled(this),connected=controls.wireless||WatchClient.available(this))
+        // The watch has just checked these apps itself: re-read the journal only, no second scan of every app
+        // (owner 2026-10-21: two or three "앱 상태 확인 중" in a row after setup).
+        if(ForegroundState.active&&!model.busy){loadReapplyHistory();refresh(mode=Check.LOCAL)} }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -92,7 +106,7 @@ class MainActivity : ComponentActivity() {
         store = JournalStore(this)
         // A recreated screen (fold, rotation) must not handle the last result again; batch ids restart in a new process.
         if(savedInstanceState?.getInt("batchPid")==android.os.Process.myPid())handledBatchId=savedInstanceState.getLong("handledBatchId")
-        model=model.copy(applicationScope=scopes.current,scopePending=scopes.pending!=null||scopes.requested!=null,scopeResolved=scopes.resolved)
+        model=model.copy(applicationScope=scopes.current,scopePending=scopes.pending!=null||scopes.requested!=null,scopeResolved=scopes.resolved,savedRecent=savedRecent(),lastCheckedAt=prefs.getLong("lastCheckedAt",0L))
         prefs.getString("setupNotice",null)?.let{model=model.copy(notice=it);prefs.edit().remove("setupNotice").apply()}
         LifecycleEvents.listener=journalListener
         lifecycleScope.launch {
@@ -137,6 +151,7 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState != null) {
             model = model.copy(uninstallCheck = if (savedInstanceState.containsKey("uninstallCheck")) savedInstanceState.getInt("uninstallCheck") else model.uninstallCheck, page = Page.valueOf(savedInstanceState.getString("page") ?: "HOME"), selected = savedInstanceState.getString("selected"), picked=savedInstanceState.getStringArrayList("picked")?.toSet()?:emptySet(),query=savedInstanceState.getString("query")?:"",filter=AppFilter.valueOf(savedInstanceState.getString("filter")?:"RECENT"),homePicked=savedInstanceState.getStringArrayList("homePicked")?.toSet()?:emptySet(),historyView=HistoryView.valueOf(savedInstanceState.getString("historyView")?:"APPS"))
         }
+        watchAfterUsbPending=savedInstanceState?.getBoolean("watchAfterUsb")==true
         if(savedInstanceState!=null)model=model.copy(restoreSkipped=savedInstanceState.getInt("restoreSkipped",0),pageBack=Page.valueOf(savedInstanceState.getString("pageBack")?:"HOME"))
         if(savedInstanceState==null&&pendingRestore.isNotEmpty())model=model.copy(page=Page.RESTORE,homePicked=pendingRestore)
         pendingRestore=emptySet()
@@ -159,7 +174,7 @@ class MainActivity : ComponentActivity() {
         else @Suppress("DEPRECATION") registerReceiver(packageChanges,packageFilter)
         wifiObserver=WifiConnection.observe(this){runOnUiThread{model=model.copy(automaticReady=automaticReady());if(ForegroundState.active&&!model.busy)refresh()}}
         navigateNotification(intent)
-        setContent { BlueDotApp(model, ::navigate, ::select, ::requestHide, ::requestRestore, ::batchHide, ::restoreAll, ::openBackend, ::openBackend, ::openBackend, ::refreshFromUser, ::allowNotifications, ::dismissNotificationOffer, ::begin, ::loadApps, ::clearNotice, ::togglePick, ::addSelected, ::changeQuery, ::changeFilter, { model=model.copy(homePicked=emptySet());navigate(Page.RESTORE) }, ::toggleHomePick, ::restoreSelected, ::contentShown, pickerRevision, ::historyViewChanged,pickerViewChanged={model=model.copy(pickerView=it,pickerRows=null);filterPicker()},wirelessExit={if(!model.busy)WirelessDebuggingExit.open(this)},toggleAll=::toggleAll,managementChanged=::managementChanged,removeManagementPermission=::removeManagementPermission,sharedInspect={pickGroups(listOf(it))},sharedAccept=::acceptShared,sharedDismiss={sharedGeneration++;model=model.copy(sharedOffer=null)},scopeChange=::chooseScope,reapplyNeeded={perform(it,true)},notificationChanged=::reapplyNotificationChanged,recheck=::recheck,bigGroupsAccept=::acceptBigGroups,bigGroupsDismiss={model=model.copy(bigGroups=emptyList())},rejectedDismiss={model=model.copy(rejectedGroupList=emptyList())},restorePickAll=::toggleAllRestore,showPick=::toggleShowPick,showPickAll=::toggleAllShow,showSelected=::showSelected,refreshHistory=::refreshHistory,autoReapplyChanged=::autoReapplyChanged,openShow={model=model.copy(showPicked=emptySet());navigate(Page.SHOW)},beforeUninstall=::beforeUninstall,uninstallDismiss={model=model.copy(uninstallCheck=null)},openAppInfo=::openAppInfo,copyDiagnostics=::copyDiagnostics,backgroundWatchChanged=::backgroundWatchChanged,openDeveloperOptions={SettingsEntrypoints.developerOptions(this)},openBattery={enable->if(!model.busy)BatteryOptimization.open(this,enable)},dismissUsNotice=::dismissUsNotice,dismissFirmwareNotice=::dismissFirmwareNotice,updateOfferAnswer=::updateCheckChanged,updateCheckChanged=::updateCheckChanged,checkUpdateNow=::checkUpdateNow,openUpdate={UpdateCheck.open(this,UpdateCheck.Release(it));model=model.copy(updateCard=null)},skipUpdate={UpdateCheck.skip(this,it);model=model.copy(updateCard=null)}) }
+        setContent { BlueDotApp(model, ::navigate, ::select, ::requestHide, ::requestRestore, ::batchHide, ::restoreAll, ::openBackend, ::openBackend, ::openBackend, ::refreshFromUser, ::allowNotifications, ::dismissNotificationOffer, ::begin, ::loadApps, ::clearNotice, ::togglePick, ::addSelected, ::changeQuery, ::changeFilter, { model=model.copy(homePicked=emptySet());navigate(Page.RESTORE) }, ::toggleHomePick, ::restoreSelected, ::contentShown, pickerRevision, ::historyViewChanged,pickerViewChanged={model=model.copy(pickerView=it,pickerRows=null);filterPicker()},wirelessExit={if(!model.busy)WirelessDebuggingExit.open(this)},toggleAll=::toggleAll,managementChanged=::managementChanged,removeManagementPermission=::removeManagementPermission,sharedInspect={pickGroups(listOf(it))},sharedAccept=::acceptShared,sharedDismiss={sharedGeneration++;model=model.copy(sharedOffer=null)},scopeChange=::chooseScope,reapplyNeeded={perform(it,true)},notificationChanged=::reapplyNotificationChanged,recheck=::recheck,bigGroupsAccept=::acceptBigGroups,bigGroupsDismiss={model=model.copy(bigGroups=emptyList())},rejectedDismiss={model=model.copy(rejectedGroupList=emptyList())},restorePickAll=::toggleAllRestore,showPick=::toggleShowPick,showPickAll=::toggleAllShow,showSelected=::showSelected,refreshHistory=::refreshHistory,autoReapplyChanged=::autoReapplyChanged,openShow={model=model.copy(showPicked=emptySet());navigate(Page.SHOW)},beforeUninstall=::beforeUninstall,uninstallDismiss={model=model.copy(uninstallCheck=null)},openAppInfo=::openAppInfo,copyDiagnostics=::copyDiagnostics,backgroundWatchChanged=::backgroundWatchChanged,openDeveloperOptions={SettingsEntrypoints.developerOptions(this)},openBattery={enable->if(!model.busy)BatteryOptimization.open(this,enable)},dismissUsNotice=::dismissUsNotice,dismissFirmwareNotice=::dismissFirmwareNotice,updateOfferAnswer=::updateCheckChanged,updateCheckChanged=::updateCheckChanged,checkUpdateNow=::checkUpdateNow,openUpdate={UpdateCheck.open(this,UpdateCheck.Release(it));model=model.copy(updateCard=null)},skipUpdate={UpdateCheck.skip(this,it);model=model.copy(updateCard=null)},pcStart={ScopeDialogs.pcStart(this)},wifiSetup=::wifiSetup,watchAfterUsb=::watchAfterUsb) }
     }
     // Leaving bluedotOFF turns a held wireless debugging off after a short grace (quick switches back keep it on).
     // The system job repeats it if the process is killed first (swiped away from recents, B-7).
@@ -168,9 +183,11 @@ class MainActivity : ComponentActivity() {
     override fun onStart() { super.onStart(); ForegroundState.started(); releaseHandler.removeCallbacks(releaseHeld); WirelessReleaseJob.cancel(applicationContext) }
     override fun onStop() { interactionOpened=0L;autoReapplyTried=false;ForegroundState.stopped(); releaseHandler.postDelayed(releaseHeld,2000); WirelessReleaseJob.schedule(applicationContext); super.onStop() }
     override fun onPause() { ForegroundState.paused();super.onPause() }
-    override fun onResume() { super.onResume();pendingRestore=emptySet();ForegroundState.resumed();autoReapplyArmed=true;model=model.copy(notifications=reapplyNotificationsEnabled(),usbDebugging=WatchClient.usbEnabled(this),watchRunning=WatchClient.available(this),batteryUnrestricted=BatteryOptimization.unrestricted(this)); if (::store.isInitialized) resumeCheck(); updateOnOpen() }
+    override fun onResume() { super.onResume();pendingRestore=emptySet();ForegroundState.resumed();autoReapplyArmed=true;model=model.copy(notifications=reapplyNotificationsEnabled(),usbDebugging=WatchClient.usbEnabled(this),watchRunning=WatchClient.available(this),batteryUnrestricted=BatteryOptimization.unrestricted(this))
+        if(watchAfterUsbPending){watchAfterUsbPending=false;if(WatchClient.usbEnabled(this))backgroundWatchChanged(true) else model=model.copy(notice="USB 디버깅이 꺼져 있어서 백그라운드 감시를 켜지 않았어요.")}
+        if (::store.isInitialized) resumeCheck(); updateOnOpen() }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); navigateNotification(intent); refresh() }
-    override fun onSaveInstanceState(out: Bundle) { out.putString("page",model.page.name); out.putString("selected",model.selected); out.putStringArrayList("picked",ArrayList(model.picked));out.putString("query",model.query);out.putString("filter",model.filter.name);out.putString("historyView",model.historyView.name);out.putStringArrayList("homePicked",ArrayList(model.homePicked));out.putInt("restoreSkipped",model.restoreSkipped);out.putString("pageBack",model.pageBack.name);out.putInt("batchPid",android.os.Process.myPid());out.putLong("handledBatchId",handledBatchId);model.uninstallCheck?.let{out.putInt("uninstallCheck",it)};super.onSaveInstanceState(out) }
+    override fun onSaveInstanceState(out: Bundle) { out.putString("page",model.page.name); out.putString("selected",model.selected); out.putStringArrayList("picked",ArrayList(model.picked));out.putString("query",model.query);out.putString("filter",model.filter.name);out.putString("historyView",model.historyView.name);out.putStringArrayList("homePicked",ArrayList(model.homePicked));out.putInt("restoreSkipped",model.restoreSkipped);out.putString("pageBack",model.pageBack.name);out.putInt("batchPid",android.os.Process.myPid());out.putLong("handledBatchId",handledBatchId);out.putBoolean("watchAfterUsb",watchAfterUsbPending);model.uninstallCheck?.let{out.putInt("uninstallCheck",it)};super.onSaveInstanceState(out) }
     override fun onDestroy() { if(LifecycleEvents.listener===journalListener)LifecycleEvents.listener=null;discovery.close();wifiObserver?.close();unregisterReceiver(packageChanges); super.onDestroy() }
     private fun navigateNotification(intent: Intent?) {
         if (intent?.action != "app.bluedotoff.REAPPLY") return
@@ -216,13 +233,18 @@ class MainActivity : ComponentActivity() {
             try {
                 prefs.getString("setupNotice",null)?.let{cleanupNotice=it;prefs.edit().remove("setupNotice").apply()}
                 val entries=withContext(Dispatchers.IO){markLocalEvents()}
-                model=model.copy(journalProblem=false)
+                // The saved records set the background now, not after the watch start: blue for those seconds read as
+                // "something was unhidden" (owner 2026-10-22).
+                // A record that changed since the last read (the watch re-hid the app) is newer than that read: the old
+                // "shown" read must not make Detail say "재적용 필요" (Codex 2026-10-22). A later read marks it fresh again.
+                val changed=entries.filterNot{it in model.entries}.map{it.identity.packageName}.toSet()
+                model=model.copy(journalProblem=false,entries=entries,freshPackages=model.freshPackages-changed)
                 if(userAction&&prefs.getBoolean("welcomed",false)&&scopes.resolved&&DeviceSupport.basic()&&BackgroundWatch.enabled(this@MainActivity)){
                     // Home hides the "멈춰 있어요" card while a stopped watch is being started.
                     model=model.copy(watchStarting=!WatchClient.available(this@MainActivity))
                     try{withContext(Dispatchers.IO){WatchClient.ensureStarted(applicationContext)}}finally{model=model.copy(watchStarting=false)}
                 }
-                model=model.copy(applicationScope=scopes.current,scopePending=scopes.pending!=null||scopes.requested!=null,scopeResolved=scopes.resolved,entries=entries,usModel=prefs.getBoolean("usModel",false)&&!prefs.getBoolean("usNoticeDismissed",false),firmwareNotice=firmwareNotice(),reapplyNotify=prefs.getBoolean("reapplyNotify",true),autoReapply=prefs.getBoolean("autoReapply",true),backgroundWatch=BackgroundWatch.enabled(this@MainActivity),usbDebugging=WatchClient.usbEnabled(this@MainActivity),watchRunning=WatchClient.available(this@MainActivity),watchAcknowledged=BackgroundWatch.acknowledged(this@MainActivity),notifications=reapplyNotificationsEnabled(),automaticReady=automaticReady(),connected=controls.wireless||WatchClient.available(this@MainActivity),autoManagement=controls.consent,autoPermission=controls.granted,updateCheck=UpdateCheck.enabled(this@MainActivity),updateOffer=!UpdateCheck.asked(this@MainActivity),latestVersion=UpdateCheck.latest(this@MainActivity))
+                model=model.copy(applicationScope=scopes.current,scopePending=scopes.pending!=null||scopes.requested!=null,scopeResolved=scopes.resolved,entries=entries,usModel=prefs.getBoolean("usModel",false)&&!prefs.getBoolean("usNoticeDismissed",false),firmwareNotice=firmwareNotice(),reapplyNotify=prefs.getBoolean("reapplyNotify",true),autoReapply=prefs.getBoolean("autoReapply",true),backgroundWatch=BackgroundWatch.enabled(this@MainActivity),usbDebugging=WatchClient.usbEnabled(this@MainActivity),watchRunning=WatchClient.available(this@MainActivity),watchAcknowledged=BackgroundWatch.acknowledged(this@MainActivity),notifications=reapplyNotificationsEnabled(),automaticReady=automaticReady(),connected=controls.wireless||WatchClient.available(this@MainActivity),autoManagement=controls.consent,autoPermission=controls.granted,paired=getSharedPreferences("local-adb",0).getString("pairedGuid",null)!=null&&AdbHostIdentity(this@MainActivity).exists,updateCheck=UpdateCheck.enabled(this@MainActivity),updateOffer=!UpdateCheck.asked(this@MainActivity),latestVersion=UpdateCheck.latest(this@MainActivity),pcOnly=PcStart.chosen(this@MainActivity))
                 if(mode==Check.LOCAL)return@launch
                 if(!prefs.getBoolean("welcomed",false)){model=model.copy(gate=Gate.WELCOME);return@launch}
                 if(!DeviceSupport.basic()){model=model.copy(gate=Gate.UNSUPPORTED,compatibility="Samsung One UI 9 이상에서 지원 여부를 확인할 수 있어요.");return@launch}
@@ -230,7 +252,7 @@ class MainActivity : ComponentActivity() {
                 val wireless=controls.wireless
                 val paired=getSharedPreferences("local-adb",0).getString("pairedGuid",null)!=null&&AdbHostIdentity(this@MainActivity).exists
                 if(!WatchClient.available(this@MainActivity)&&(!dev||!WifiConnection.connected(this@MainActivity)||!paired||(!wireless&&!model.automaticReady))){
-                    model=model.copy(gate=if(entries.any{it.enabled}||model.automaticReady)Gate.READY else Gate.NOT_RUNNING,connected=false,freshPackages=emptySet(),compatibility=when{!dev->"먼저 개발자 옵션을 켜주세요.";!WifiConnection.connected(this@MainActivity)->"먼저 Wi-Fi에 연결해주세요.";!paired->"이 기기를 한 번 페어링해주세요.";model.automaticReady->"필요할 때 자동으로 연결해요.";else->"무선 디버깅을 켜주세요."})
+                    model=model.copy(gate=if(entries.any{it.enabled}||model.automaticReady)Gate.READY else Gate.NOT_RUNNING,connected=false,freshPackages=emptySet(),compatibility=when{!dev->"개발자 옵션을 켜주세요.";PcStart.chosen(this@MainActivity)->"PC에서 bluedotOFF를 다시 시작해주세요.";!WifiConnection.connected(this@MainActivity)->"Wi-Fi에 연결해주세요.";!paired->"이 기기를 한 번 페어링해주세요.";model.automaticReady->"필요할 때 자동으로 연결해요.";else->"무선 디버깅을 켜주세요."})
                     return@launch
                 }
                 if(!scopes.resolved){openBackend();return@launch}
@@ -242,8 +264,9 @@ class MainActivity : ComponentActivity() {
                     scanStamp=ScanStamp(Build.FINGERPRINT,packageEpoch,android.os.SystemClock.elapsedRealtime())
                     model=model.copy(gate=Gate.READY,entries=entries,candidates=prepared.snapshots,discovered=scan.apps,
                         historyAvailable=scan.historyAvailable,metrics=scan.metrics,loadingApps=false,
-                        connected=wireless||WatchClient.available(this@MainActivity),automaticReady=automaticReady(),freshPackages=emptySet(),compatibility="앱 확인 완료",rechecking=false,lastCheckedAt=System.currentTimeMillis(),firmwareNotice=firmwareNotice(),
+                        connected=wireless||WatchClient.available(this@MainActivity),automaticReady=automaticReady(),freshPackages=emptySet(),compatibility="앱 확인 완료",rechecking=false,wirelessConnecting=false,lastCheckFailed=false,lastCheckedAt=System.currentTimeMillis(),firmwareNotice=firmwareNotice(),
                         notice=cleanupNotice,notificationOffer=!notificationsEnabled()&&!prefs.getBoolean("notificationExplained",false))
+                    rememberCheck()
                     filterPicker()
                     if(model.page==Page.DETAIL&&model.selected!=null&&prepared.snapshots.none{it.identity.packageName==model.selected})select(model.selected!!)
                     return@launch
@@ -257,7 +280,8 @@ class MainActivity : ComponentActivity() {
                 val reuseInventory=model.discovered.isNotEmpty()&&when(mode){Check.FULL->false;Check.REGISTERED,Check.HISTORY->true;else->cacheValid()}
                 // Set-up users keep their screen and see a small progress line; the full-screen check is for first use only.
                 val quiet=model.gate==Gate.READY||prefs.getBoolean("welcomed",false)&&scopes.resolved
-                model=if(quiet)model.copy(gate=Gate.READY,rechecking=true,scanProgress=null,checkingRegistered=reuseInventory,loadingApps=!reuseInventory)
+                // Without the watch the check first opens a wireless debugging connection (up to 15 s): say so (owner 2026-10-22).
+                model=if(quiet)model.copy(gate=Gate.READY,rechecking=true,wirelessConnecting=!WatchClient.available(this@MainActivity),scanProgress=null,checkingRegistered=reuseInventory,loadingApps=!reuseInventory)
                     else model.copy(gate=Gate.CHECKING,scanProgress=null,checkingRegistered=reuseInventory,loadingApps=!reuseInventory,compatibility="앱 확인 중…")
                 val snapshots=mutableListOf<Snapshot>();val epoch=packageEpoch
                 val knownApps=model.discovered;var refreshedHistory:List<DiscoveredApp>?=null
@@ -269,7 +293,7 @@ class MainActivity : ComponentActivity() {
                             val progress=ScanProgress(done,total)
                             if(progress.percent!=reportedPercent||progress.finishing){
                                 reportedPercent=progress.percent
-                                runOnUiThread{if(coroutine.isActive&&(model.gate==Gate.CHECKING||model.rechecking)&&epoch==packageEpoch)model=model.copy(scanProgress=progress)}
+                                runOnUiThread{if(coroutine.isActive&&(model.gate==Gate.CHECKING||model.rechecking)&&epoch==packageEpoch)model=model.copy(scanProgress=progress,wirelessConnecting=false)}
                             }
                         }
                     }
@@ -313,13 +337,16 @@ class MainActivity : ComponentActivity() {
                 if(fullCheck)clock.fullChecked(checkedNow)
                 if(scan!=null){changedPackages.clear();scanStamp=ScanStamp(Build.FINGERPRINT,epoch,android.os.SystemClock.elapsedRealtime());model=model.copy(discovered=scan.apps,historyAvailable=scan.historyAvailable,metrics=scan.metrics)}
                 else refreshedHistory?.let{if(epoch==packageEpoch&&model.discovered===knownApps)model=model.copy(discovered=it,historyAvailable=true)}
-                model=model.copy(gate=Gate.READY,scanProgress=null,rechecking=false,checkingRegistered=false,lastCheckedAt=if(fullCheck)System.currentTimeMillis() else model.lastCheckedAt,entries=store.entries(),candidates=if(mode==Check.HISTORY||only.isNotEmpty())model.candidates.filterNot{c->snapshots.any{it.identity.packageName==c.identity.packageName}}+snapshots else snapshots,loadingApps=false,connected=controls.wireless||WatchClient.available(this@MainActivity),automaticReady=automaticReady(),freshPackages=if(!controls.wireless&&!WatchClient.available(this@MainActivity))emptySet() else if(mode==Check.HISTORY||only.isNotEmpty())model.freshPackages+snapshots.map{it.identity.packageName} else snapshots.map{it.identity.packageName}.toSet(),compatibility="앱 확인 완료",notice=cleanupNotice,notificationOffer=!notificationsEnabled()&&!prefs.getBoolean("notificationExplained",false),firmwareNotice=firmwareNotice())
+                model=model.copy(gate=Gate.READY,scanProgress=null,rechecking=false,wirelessConnecting=false,lastCheckFailed=false,checkingRegistered=false,lastCheckedAt=if(fullCheck)System.currentTimeMillis() else model.lastCheckedAt,entries=store.entries(),candidates=if(mode==Check.HISTORY||only.isNotEmpty())model.candidates.filterNot{c->snapshots.any{it.identity.packageName==c.identity.packageName}}+snapshots else snapshots,loadingApps=false,connected=controls.wireless||WatchClient.available(this@MainActivity),automaticReady=automaticReady(),freshPackages=if(!controls.wireless&&!WatchClient.available(this@MainActivity))emptySet() else if(mode==Check.HISTORY||only.isNotEmpty())model.freshPackages+snapshots.map{it.identity.packageName} else snapshots.map{it.identity.packageName}.toSet(),compatibility="앱 확인 완료",notice=cleanupNotice,notificationOffer=!notificationsEnabled()&&!prefs.getBoolean("notificationExplained",false),firmwareNotice=firmwareNotice())
+                rememberCheck()
                 filterPicker()
                 if(model.page==Page.DETAIL&&model.selected!=null&&snapshots.none{it.identity.packageName==model.selected})select(model.selected!!)
-            }catch(_:CancellationException){model=model.copy(rechecking=false,checkingRegistered=false,scanProgress=null,loadingApps=false)}catch(error:Exception){android.util.Log.w("bluedotOFF","refresh failed: ${error.javaClass.simpleName}: ${error.message?.take(160)}")
+            }catch(_:CancellationException){model=model.copy(rechecking=false,wirelessConnecting=false,checkingRegistered=false,scanProgress=null,loadingApps=false)}catch(error:Exception){android.util.Log.w("bluedotOFF","refresh failed: ${error.javaClass.simpleName}: ${error.message?.take(160)}")
                 // A broken or unsavable restore journal is not a connection problem: reconnecting cannot fix it, and clearing data would lose it.
+                // A failed check the user saw spinning says so; it used to end silently (owner 2026-10-22).
+                val visible=model.rechecking;val connecting=model.wirelessConnecting
                 val journalProblem=error.message=="복원 기록을 저장하지 못해서 바꾸지 않았어요."||withContext(Dispatchers.IO){runCatching{store.entries()}.isFailure}
-                model=model.copy(journalProblem=journalProblem,gate=if(journalProblem||model.entries.any{it.enabled}||model.automaticReady)Gate.READY else Gate.NOT_RUNNING,rechecking=false,checkingRegistered=false,scanProgress=null,loadingApps=false,connected=false,freshPackages=emptySet(),compatibility=if(error.message=="COMPATIBILITY_FAILED")SetupFlow.OS_CHANGED else if(error is UnresponsiveHelperException)WatchClient.UNRESPONSIVE else "현재 기기의 변경 작업을 확인할 수 없어요. 연결 준비에서 다시 확인해주세요.",notice=if(error is UnresponsiveHelperException)WatchClient.UNRESPONSIVE else cleanupNotice)}
+                model=model.copy(journalProblem=journalProblem,gate=if(journalProblem||model.entries.any{it.enabled}||model.automaticReady)Gate.READY else Gate.NOT_RUNNING,rechecking=false,checkingRegistered=false,scanProgress=null,loadingApps=false,connected=false,freshPackages=emptySet(),compatibility=if(error.message=="COMPATIBILITY_FAILED")SetupFlow.OS_CHANGED else if(error is UnresponsiveHelperException)WatchClient.UNRESPONSIVE else "현재 기기의 변경 작업을 확인할 수 없어요. 연결 준비에서 다시 확인해주세요.",wirelessConnecting=false,lastCheckFailed=!journalProblem,notice=if(error is UnresponsiveHelperException)WatchClient.UNRESPONSIVE else if(visible&&!journalProblem)(if(connecting)"무선 디버깅에 연결하지 못했어요. USB 디버깅을 끄거나 켠 직후에는 잠시 연결이 안 될 수 있어요. 잠시 뒤 ⟳를 눌러 다시 확인해주세요." else "앱 상태를 확인하지 못했어요. 잠시 뒤 ⟳를 눌러 다시 확인해주세요.") else cleanupNotice)}
         }
         refreshJob=job
         job.invokeOnCompletion{cause->if(cause==null)releaseHandler.post{val armed=autoReapplyArmed;autoReapplyArmed=false;if(armed)maybeAutoReapply()}}
@@ -392,11 +419,14 @@ class MainActivity : ComponentActivity() {
         val targets=model.reapplyTargetPackages;if(targets.isEmpty())return
         autoReapplyTried=true;perform(targets,hide=true,auto=true)
     }
+    /** Settings watch switch with USB debugging off: after the explanation, to that switch; back here, on only if it is on. */
+    private var watchAfterUsbPending=false
+    private fun watchAfterUsb(){watchAfterUsbPending=true;SettingsEntrypoints.developerOptions(this)}
     private fun backgroundWatchChanged(on:Boolean){
         BackgroundWatch.set(this,on);model=model.copy(backgroundWatch=on,watchAcknowledged=model.watchAcknowledged||on)
         if(!on){WatchClient.stop(applicationContext);model=model.copy(automaticReady=automaticReady(),connected=controls.wireless||WatchClient.available(this@MainActivity));return}
         WatchClient.startFromSwitch(applicationContext){started->runOnUiThread{if(!isDestroyed&&BackgroundWatch.enabled(this)){
-            if(!started)model=model.copy(notice=if(!WatchClient.usbEnabled(this))"감시를 시작하려면 USB 디버깅을 켜주세요." else "감시를 시작하려면 Wi-Fi에 연결하고 연결 준비를 완료해주세요.")
+            if(!started)model=model.copy(notice=if(!WatchClient.usbEnabled(this))"감시를 시작하려면 USB 디버깅을 켜주세요." else if(PcStart.chosen(this))"감시를 시작하려면 PC에서 bluedotOFF 시작 명령을 실행해주세요." else "감시를 시작하려면 Wi-Fi에 연결하고 연결 준비를 완료해주세요.")
             refresh(true)
         }}}
     }
@@ -419,7 +449,8 @@ class MainActivity : ComponentActivity() {
         val text=listOf("bluedotOFF diagnostics","App: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})","Device: ${Build.MANUFACTURER} ${Build.MODEL} (${Build.DEVICE})",
             "Android: ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})","Build: ${Build.DISPLAY}","One UI: ${stored("deviceOneUi").let{v->v.toIntOrNull()?.takeIf{it>=10000}?.let{"${it/10000}.${it/100%100} ($v)"}?:v}}","Country: ${stored("deviceCountry")}",
             "Compatibility check: ${when{model.gate==Gate.UNSUPPORTED->"not supported (stopped safely)";LocalAdbSession.compatibilityConfirmed->"passed";else->"not checked yet (connect once and copy again)"}}",
-            "Automatic management: ${if(model.autoManagement)"on" else "off"}","App scope: ${model.applicationScope.name}",
+            "Automatic management: ${if(model.autoManagement)"on" else "off"}",
+            "Start: ${if(PcStart.chosen(this))"PC" else "Wi-Fi"} (wireless pairing ${if(getSharedPreferences("local-adb",0).getString("pairedGuid",null)!=null)"yes" else "no"}), background watch ${if(model.backgroundWatch)(if(model.watchRunning)"running" else "stopped") else "off"}","App scope: ${model.applicationScope.name}",
             "Registered apps: ${model.visibleEntries.count{it.enabled}} (applied ${model.lastVerifiedAppliedCount}, reapply needed ${model.reapplyCount})").joinToString("\n")
         (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("bluedotOFF diagnostics",text))
         // Opens the user's mail app with the text filled in; nothing is sent until the user taps send there.
@@ -473,12 +504,18 @@ class MainActivity : ComponentActivity() {
             block()
         }
     }
+    /** Settings → auto management without a wireless pairing: setup on the Wi-Fi way; the running watch stays on
+     *  (it is no longer the PC choice's to turn off). Owner 2026-10-21. */
+    private fun wifiSetup(){PcStart.choose(this,false);prefs.edit().remove("pcStartWatchOn").apply();openBackend()}
     private fun managementChanged(enabled:Boolean){
         // Turning automatic management off first closes the kept connection and turns off wireless debugging the app
         // turned on itself (still allowed while consent is on), so nothing it opened stays on afterwards.
         if(!enabled){lifecycleScope.launch{withContext(Dispatchers.IO){runCatching{WirelessWork.releaseNow(applicationContext)}};controls.setConsent(false);model=model.copy(autoManagement=false,automaticReady=false,connected=controls.wireless||WatchClient.available(this@MainActivity))};return}
         if(model.busy){model=model.copy(notice="작업이 끝난 뒤 자동 관리를 켜주세요.");return}
         val paired=getSharedPreferences("local-adb",0).getString("pairedGuid",null)!=null&&AdbHostIdentity(this).exists
+        // With the watch running and the permission already granted, only the choice changes: no connection is opened.
+        if(model.backgroundWatch&&paired&&controls.granted){controls.setConsent(true);model=model.copy(autoManagement=true,automaticReady=automaticReady());return}
+        if(model.backgroundWatch&&!controls.wireless){model=model.copy(notice="자동 관리를 켜려면 Wi-Fi에 연결하고 무선 디버깅을 켠 뒤 다시 눌러주세요.");return}
         if(!paired||!controls.wireless){model=model.copy(notice="먼저 연결 준비를 완료해주세요.");openBackend();return}
         controls.setConsent(true);model=model.copy(busy=true)
         lifecycleScope.launch {

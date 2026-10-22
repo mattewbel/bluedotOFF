@@ -2,7 +2,7 @@
 
 **English** | [한국어](README.ko.md)
 
-**[⬇ Download the latest APK](https://github.com/mattewbel/bluedotOFF/releases/latest)** — get `bluedotOFF-1.2.0-release.apk` under Assets.
+**[⬇ Download the latest APK](https://github.com/mattewbel/bluedotOFF/releases/latest)** — get `bluedotOFF-1.2.1-release.apk` under Assets.
 
 > 🔒 **Open source · No ads, analytics or tracking · No root**  
 > The wireless debugging connection stays inside the phone (127.0.0.1). Location permissions are untouched; only one indicator flag (`0x100`) changes.  
@@ -11,7 +11,7 @@
 An app for Samsung One UI 9 (Android 17) phones that **hides the blue location indicator (Blue Dot) only for the apps you choose**.
 Location permissions and location history stay as they are. bluedotOFF changes a single setting that controls the status bar indicator, and it records the previous state so you can undo it in the app.
 
-- No root, no bootloader unlock, no computer needed. It only uses the phone's built-in **Wireless debugging** (and USB debugging if you turn on background watch).
+- No root, no bootloader unlock, no computer needed on Wi-Fi (without Wi-Fi, [a PC can start it](#no-wi-fi-start-from-a-pc)). It only uses the phone's built-in **Wireless debugging** (and USB debugging if you turn on background watch).
 - No ads, no analytics, no tracking. The internet is used only if you turn on the optional [update check](#update-check) (off by default), to check GitHub for a new version.
 
 > **Note:** bluedotOFF is a personal project and is not affiliated with Samsung or Google. It uses Developer options and Wireless debugging; use it at your own risk. You can restore the original state from the app, but **restore everything before uninstalling the app**.
@@ -48,10 +48,10 @@ bluedotOFF has one goal:
 - **For some apps, the blue dot comes back quickly.** When an app changes its own components, is updated, or the phone restarts, Android resets the indicator setting to its default. Some banking apps, for example, lose it within minutes. With automatic wireless debugging management, such apps are hidden again automatically when you open bluedotOFF (Settings → **Re-apply automatically when opened**, on by default). While [background watch](#background-watch) is running, they are hidden again as soon as the change is detected, without opening the app; after a phone restart, with automatic management and **Re-apply automatically when opened** on, the watch starts again and re-hides them once Wi-Fi connects (otherwise open the app once). With it off, nothing changes while the app is not open.
 - **Only apps allowed “Precise” location can be hidden.** Apps allowed only approximate location are not listed (or, in All apps mode, are shown for reference only). To hide one, change its location permission to “Precise”.
 - **Only a few devices have been tested.** The developer verified the Galaxy Z Fold7; users reported it working on the Galaxy Z Fold8 and a US Galaxy S25 ([Tested devices](#tested-devices)). Other One UI 9 Galaxy models, and phones after a system update, also run as long as the parts of Android the app uses keep the same form. The app then shows an **Unverified system notice**, because it cannot confirm that the blue dot disappears there. If those parts changed (for example after a major Android update), the app stops without changing anything.
-- **Some banking and payment apps refuse to run while Developer options are on.** This is common in Korea. bluedotOFF needs Developer options, so you may have to turn them off briefly to use such an app, then turn them back on before opening bluedotOFF. Background watch also needs USB debugging on, so such apps may refuse more often. If you turned USB debugging or Developer options off, turn Developer options and USB debugging back on and open bluedotOFF on Wi-Fi to start the watch again (no new pairing code needed).
+- **Some banking and payment apps refuse to run while Developer options are on.** This is common in Korea. bluedotOFF needs Developer options, so you may have to turn them off briefly to use such an app, then turn them back on before opening bluedotOFF. Background watch also needs USB debugging on, so such apps may refuse more often. If you turned USB debugging or Developer options off, turn Developer options and USB debugging back on and open bluedotOFF on Wi-Fi to start the watch again (no new pairing code needed), or run the [PC command](#no-wi-fi-start-from-a-pc) again.
 - **US models** have an extra location indicator path, so the dot may not be hidden. A user reported it working on a US Galaxy S25.
 - **It does not work while Auto Blocker is on.** Auto Blocker blocks wireless debugging. Turn it off in Settings → Security and privacy → Auto Blocker when you use the app. New Galaxy phones have it on by default, and with “Turn on automatically” it turns back on after 30 minutes. With automatic management, the app notices the block and tells you how to turn it off. It also turns USB debugging off, which stops background watch.
-- **Developer options and Wireless debugging are required.** With automatic management, Wireless debugging stays on while you use the app (Android may show a "Wireless debugging connected" notification once when it opens) and turns off shortly after you leave.
+- **Developer options and Wireless debugging are required** (without Wi-Fi: USB debugging and a PC, see [Start from a PC](#no-wi-fi-start-from-a-pc)). With automatic management, Wireless debugging stays on while you use the app (Android may show a "Wireless debugging connected" notification once when it opens) and turns off shortly after you leave.
 - **Restore everything before uninstalling.** Tap Settings → **Restore before uninstalling**. If you just uninstall, the hidden apps may stay hidden. After reinstalling, you can unhide them in Settings → **Apps left hidden (after reinstalling only)**. However, shared app groups and some internal system apps cannot be unhidden there after their records are lost.
 
 
@@ -69,14 +69,14 @@ If you tried another model, please share the result in [Issues](../../issues) us
 
 ## Install
 
-Download the latest APK (`bluedotOFF-1.2.0-release.apk`) from [Releases](../../releases) and install it. You may need to allow "Install unknown apps" the first time.
+Download the latest APK (`bluedotOFF-1.2.1-release.apk`) from [Releases](../../releases) and install it. You may need to allow "Install unknown apps" the first time.
 
 To get new versions without checking GitHub yourself, add `https://github.com/mattewbel/bluedotOFF` to [Obtainium](https://github.com/ImranR98/Obtainium), an open-source app that installs updates from GitHub releases. It installs the same signed APK, and Android refuses an update signed by anyone else.
 
 ## Requirements
 
 - A phone with Samsung One UI 9 or later and Android 17 or later
-- Wi-Fi connection (needed for Wireless debugging; no data is sent over the internet. With background watch it is needed only to start the watch.) The optional [update check](#update-check) is the only internet use.
+- Wi-Fi connection (needed for Wireless debugging; no data is sent over the internet. With background watch it is needed only to start the watch.) No Wi-Fi at all? [Start from a PC](#no-wi-fi-start-from-a-pc) instead. The optional [update check](#update-check) is the only internet use.
 - Apps to hide must have location allowed as “Precise”.
 - US models (CSC country code US) can use the app, but Home shows a notice (tap **Got it** to hide it for good). US models have one more way of showing the location indicator, so the blue dot may remain even after applying.
 - On first connection, the app checks the parts of Android it uses. Verified on the Galaxy Z Fold7; users reported it working on the Galaxy Z Fold8 and a US Galaxy S25. Other One UI 9 models run with an **Unverified system notice** as long as those parts keep the same form; if they changed, the app stops without changing anything.
@@ -87,8 +87,8 @@ Tap **Get started** and the app guides you step by step. Completed steps are ski
 
 1. **Get started**
 2. Choose whether to allow notifications (you can enter the pairing code from a notification)
-3. Enable Developer options — About phone → Software information → tap **Build number** seven times
-4. Connect to Wi-Fi
+3. Enable Developer options — About phone → Software information → tap **Build number** seven times (with notifications allowed, a notification at the top says what to tap)
+4. Connect to Wi-Fi (no Wi-Fi? tap **No Wi-Fi? Start from a PC** below the button; see [Start from a PC](#no-wi-fi-start-from-a-pc))
 5. Allow Nearby devices
 6. Turn on Wireless debugging → tap **Pair device with pairing code**
 7. Enter the six-digit code using **Enter code** in the notification (without notifications, use split screen and enter it in the app)
@@ -133,17 +133,37 @@ With background watch on, this switch is locked, and wireless debugging is turne
 
 ### Background watch
 
-The third item in Settings (off by default). The first time you turn it on, read the five-second warning and confirm. Choosing **② Automatic background watch** in setup step 9 turns it on too. The **Disable battery optimization** switch is available to all users. Turning it off opens App info; choose Battery → **Optimized** to remove the exemption. The switch changes only after the app reads the actual setting again. Turning it on opens Android’s confirmation dialog, where you choose whether to allow it. On Samsung phones, allowing the request applies **Unrestricted** battery use. If the dialog cannot open or the exemption is already allowed, you can use Settings → App info → Battery → **Unrestricted**. This may help background watch work after you close the app, but may increase battery use and does not guarantee Android will keep the process alive. You can change the setting at any time. During first-time setup, this offer appears before scope selection only if you chose background watch; **Not now** is available.
+In Settings → **Connection** (off by default). The first time you turn it on, read the five-second warning and confirm. Choosing **② Automatic background watch** in setup step 9 turns it on too. The **Disable battery optimization** switch is available to all users. Turning it off opens App info; choose Battery → **Optimized** to remove the exemption. The switch changes only after the app reads the actual setting again. Turning it on opens Android’s confirmation dialog, where you choose whether to allow it. On Samsung phones, allowing the request applies **Unrestricted** battery use. If the dialog cannot open or the exemption is already allowed, you can use Settings → App info → Battery → **Unrestricted**. This may help background watch work after you close the app, but may increase battery use and does not guarantee Android will keep the process alive. You can change the setting at any time. During first-time setup, this offer appears before scope selection only if you chose background watch; **Not now** is available.
 
 - **What it does:** While USB debugging is on, apps that lost hiding (an app changed its own settings or was updated) are hidden again as soon as the change is detected, even without opening bluedotOFF. This usually takes a few seconds but can be slower, for example in power saving. Wi-Fi and wireless debugging can be off meanwhile.
-- **What it needs:** USB debugging has to stay on. The app never turns USB debugging on for you; it opens Developer options for you.
-- **Starting and restarting:** Starting the watch briefly needs Wi-Fi and wireless debugging. Restarting the phone, updating bluedotOFF or turning USB debugging off stops it. After a restart, with automatic management and **Re-apply automatically when opened** on, it starts again by itself once Wi-Fi connects and re-hides what the restart undid; otherwise a notification tells you. Turn USB debugging back on and open the app while connected to Wi-Fi to start it again (automatically with automatic management on; otherwise turn wireless debugging on yourself first). While it is stopped, Home says so, and a notification tells you when USB debugging is on again.
+- **What it needs:** USB debugging has to stay on. The app never turns USB debugging on for you; it opens Developer options for you. If USB debugging is off when you turn the switch on, the app explains this first, and the watch turns on only once you come back with USB debugging on.
+- **Starting and restarting:** Starting the watch briefly needs Wi-Fi and wireless debugging, or a PC ([Start from a PC](#no-wi-fi-start-from-a-pc)). Restarting the phone, updating bluedotOFF or turning USB debugging off stops it. After a restart, with automatic management and **Re-apply automatically when opened** on, it starts again by itself once Wi-Fi connects and re-hides what the restart undid; otherwise a notification tells you. Turn USB debugging back on and open the app while connected to Wi-Fi to start it again (automatically with automatic management on; otherwise turn wireless debugging on yourself first). While it is stopped, Home says so, and a notification tells you when USB debugging is on again.
 - **With automatic management:** While watching, wireless debugging stays off. The **Manage wireless debugging automatically** switch is locked and is used only to start the watch again.
 - **Which apps:** Only registered apps that are currently applied. Restored or unregistered apps, reinstalled apps and apps that need checking are left alone. Shared groups are handled only when the whole group is registered.
 - **Caution:** Some banking and payment apps may not run while USB debugging is on. Auto Blocker turns USB debugging off too, which stops the watch. Battery use may increase slightly.
 - **Turning it off:** The switch in Settings stops new work at once and ends the watch after any running safety check. **Restore before uninstalling** restores through the watch connection first (no Wi-Fi needed) and then turns the watch off.
 - **Recovery:** If the app cannot safely confirm a change, it stops and asks you to reconnect and check the status. Keep app data so the saved recovery record is available.
 - **Safety:** No external port, root or arbitrary command execution. The watch helper accepts only fixed requests from this app (signature checked) and uses the same saved original state, fresh checks, 0/0.5/1.5-second verification and rollback. Immediate re-hiding in every sleep state is not promised.
+
+### No Wi-Fi? Start from a PC
+
+For phones that cannot use any Wi-Fi. Wi-Fi stays the normal way; another phone's hotspot may also work.
+
+1. In setup step 4, tap **No Wi-Fi? Start from a PC**, read the notice and tap **Start from a PC** (starting from a PC works only as the background watch).
+2. Pick **Windows** or **Mac** in the app; it then shows only the steps and command for that PC. **Send the guide to the PC** sends them by mail or a messenger, so you can copy the command on the PC.
+   On the PC, open [Android SDK Platform-Tools](https://developer.android.com/tools/releases/platform-tools), click **Download SDK Platform-Tools for Windows** (or **for Mac**), check **I have read and agree with the above terms and conditions**, download and unzip it (Windows: right-click → **Extract All**; the Mac file is `platform-tools-latest-darwin.zip`).
+3. On the phone, turn on USB debugging, connect the cable and allow **Allow USB debugging?**.
+4. Open a command window in the unzipped `platform-tools` folder:
+   - Windows: right-click an empty spot in the folder → **Open in Terminal** (Windows 10: Shift + right-click → **Open PowerShell window here**).
+   - Mac: open Terminal (Command+Space, search "Terminal"), type `cd ` (with a space), drag the `platform-tools` folder into the window and press Return.
+5. Type or paste the command shown in the app and press Enter (Return on Mac):
+   - Windows: `.\adb shell sh /sdcard/Android/data/app.bluedotoff/files/start.sh`
+   - Mac: `./adb shell sh /sdcard/Android/data/app.bluedotoff/files/start.sh`
+6. The app moves on by itself: device check, scope, final check, Home. You can unplug the cable then; keep USB debugging on.
+
+If it doesn't work, **If the command doesn't work** in the app explains the usual messages (`adb` not found, `unauthorized`, `no devices/emulators found`, `more than one device/emulator`).
+
+Then you can hide and restore apps without Wi-Fi, and the watch re-hides apps as described above. After restarting the phone or updating bluedotOFF, run the command again (if you turned USB debugging off, turn it back on first); Home and a notification say so, and **How to start from a PC** shows the steps again. Automatic re-hiding after a restart is not available this way. The script only starts the app's own watch helper (no network port); the app accepts it only after the usual checks.
 
 ### Update check
 
@@ -179,6 +199,7 @@ Please open an issue in this repository's [Issues](../../issues). If the app sto
 - The background watch helper opens no external port and accepts only fixed requests from this app (signature checked).
 - Connection keys are encrypted with the phone's secure storage (AndroidKeyStore) and are not backed up.
 - Pairing codes and keys are never written to logs or the clipboard.
+- The full-screen notification permission only keeps the **Enter code** prompt on screen while you pair (only while the phone is unlocked; it never opens a screen by itself).
 - For the apps you pick, the only thing changed is one "user sensitive" display flag of the precise location permission (FINE permission flag `0x100`). The permission itself and usage history are not changed. The only other change is turning Wireless debugging on/off when [automatic management](#manage-wireless-debugging-automatically) is on, plus the permission bluedotOFF gives itself for that. Lifting battery restrictions for bluedotOFF is optional and only happens when you approve it in Android's own dialog.
 
 ---

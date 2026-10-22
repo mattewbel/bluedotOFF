@@ -32,6 +32,8 @@ internal class FakeSetupRuntime:SetupRuntime {
     override var batteryChoiceRequired=false
     override var batteryChoiceResolved=true
     override fun skipBatteryChoice(){batteryChoiceResolved=true}
+    override var pcStart=false;override var pcHelper=false
+    override fun choosePcStart(on:Boolean){pcStart=on}
     override var finalCheckResolved=true
     var initialChecks=0;var fullScans=0
     override fun completeFinalCheck(){finalCheckResolved=true}
@@ -57,7 +59,8 @@ internal class FakeSetupRuntime:SetupRuntime {
         override fun choose(type:String){chosen=true}
         override fun close(){closed++}
     }}
-    override fun pair(port:Int,code:ByteArray,current:()->Boolean){pairCalls++;codeRef=code;check(current());if(pairFailure)throw java.io.IOException();paired=true}
+    var pairPort=0
+    override fun pair(port:Int,code:ByteArray,current:()->Boolean){pairCalls++;pairPort=port;codeRef=code;check(current());if(pairFailure)throw java.io.IOException();paired=true}
     override fun verify(port:Int,started:()->Unit){connectCalls++;started();if(connectFailure)throw java.io.IOException();if(exitAfterVerify){intentionalExit=true;wireless=false;changed?.invoke()}}
     var scanHook:((()->Boolean)->Unit)?=null
     var progressHook:(((ScanProgress)->Unit)->Unit)?=null
@@ -268,8 +271,42 @@ class SetupSessionTest {
     @Before fun create(){ScopePreferences(context).select(ApplicationScope.GROUPS);context.getSharedPreferences("ui-state",0).edit().putBoolean("welcomed",true).commit();runtime=FakeSetupRuntime();queue=SetupQueue();session=SetupSession(context,runtime,queue);session.attach{}}
     @After fun close(){session.close();shadowOf(Looper.getMainLooper()).idle()}
     private fun stage()=SetupFlow.stage(session.facts)
+    /** 1.2.1: without Wi-Fi the user picks the PC; waiting for it never expires, the helper's arrival runs the same
+     *  checks (no port, no pairing, no management choice), and losing the helper sends setup back to the PC step. */
+    @Test fun pcStartWaitsForTheHelperAndVerifiesThroughItWithoutWifi(){
+        runtime.finalCheckResolved=false;runtime.managementChoiceResolved=false
+        context.getSharedPreferences("application-scope",0).edit().clear().commit()
+        runtime.wifiConnected=false;runtime.wireless=false;session.refresh()
+        assertEquals(SetupStage.WIFI_NOT_CONNECTED,stage())
+        session.choosePcStart(true);assertEquals(SetupStage.PC_START,stage());assertTrue(queue.tasks.isEmpty())
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMinutes(6))
+        assertEquals(SetupStage.PC_START,stage());assertNull(session.facts.error)
+        runtime.pcHelper=true;session.refresh()
+        assertEquals(SetupStage.VERIFYING,stage());queue.next();shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(1,runtime.initialChecks);assertEquals(0,runtime.pairCalls);assertEquals(SetupStage.APPLICATION_SCOPE,stage())
+        runtime.pcHelper=false;session.refresh();assertEquals(SetupStage.PC_START,stage());assertFalse(session.facts.verified)
+        runtime.pcHelper=true;session.refresh();queue.next();shadowOf(Looper.getMainLooper()).idle()
+        session.chooseScope(ApplicationScope.ALL);assertEquals(SetupStage.FINAL_CHECK,stage())
+        queue.next();shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(SetupStage.READY,stage());assertEquals(1,runtime.fullScans);assertEquals(0,runtime.managementCalls)
+        session.choosePcStart(false);assertEquals(SetupStage.WIFI_NOT_CONNECTED,stage())
+    }
     private fun readyCode():Long{runtime.pairEndpoint=LocalAdbDiscovery.Endpoint("own",37000);session.refresh();return shadowOf(shadowOf(manager).allNotifications.single().actions.single().actionIntent).savedIntent.getLongExtra("generation",-1)}
-    @Test fun advertisementAndLossReplaceAndRemoveCodeAction(){assertEquals(SetupStage.WAIT_FOR_PAIRING_ADVERTISEMENT,stage());readyCode();assertEquals(SetupStage.PAIRING_NOTIFICATION_READY,stage());runtime.pairEndpoint=null;session.refresh();assertEquals(SetupStage.WAIT_FOR_PAIRING_ADVERTISEMENT,stage());assertTrue(shadowOf(manager).allNotifications.single().actions.isNullOrEmpty())}
+    private fun noticeGeneration()=shadowOf(shadowOf(manager).allNotifications.single().actions.single().actionIntent).savedIntent.getLongExtra("generation",-1)
+    /** Owner 2026-10-21: 'Enter code' is there from the start; the advertisement does not replace it, its loss does. */
+    @Test fun codeActionIsThereBeforeTheAdvertisementAndSurvivesIt(){
+        assertEquals(SetupStage.WAIT_FOR_PAIRING_ADVERTISEMENT,stage());val early=noticeGeneration()
+        assertEquals(early,readyCode());assertEquals(SetupStage.PAIRING_NOTIFICATION_READY,stage())
+        runtime.pairEndpoint=null;session.refresh();assertEquals(SetupStage.WAIT_FOR_PAIRING_ADVERTISEMENT,stage());assertTrue(noticeGeneration()>early)
+    }
+    @Test fun codeSentBeforeTheAdvertisementWaitsForIt(){
+        session.submit("123456",noticeGeneration());assertTrue(queue.tasks.isEmpty());assertEquals(SetupStage.WAIT_FOR_PAIRING_ADVERTISEMENT,stage())
+        runtime.pairEndpoint=LocalAdbDiscovery.Endpoint("own",37000);session.refresh()
+        assertEquals(SetupStage.PAIRING,stage());assertEquals(1,queue.tasks.size);queue.next();assertEquals(37000,runtime.pairPort)
+    }
+    @Test fun heldCodeIsDroppedWhenWirelessDebuggingGoesOff(){
+        session.submit("123456",noticeGeneration());runtime.wireless=false;session.refresh();runtime.wireless=true;readyCode();assertTrue(queue.tasks.isEmpty())
+    }
     @Test fun pairingLifetimeCoversLossAndEndsOnSuccessOrCancel(){
         assertTrue(runtime.alive);val token=readyCode();runtime.pairEndpoint=null;session.refresh();assertTrue(runtime.alive)
         readyCode();runtime.connectEndpoint=LocalAdbDiscovery.Endpoint("own-connect",42000);session.submit("123456");assertTrue(runtime.alive)

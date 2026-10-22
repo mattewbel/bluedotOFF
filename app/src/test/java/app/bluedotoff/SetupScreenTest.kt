@@ -151,6 +151,16 @@ class SetupScreenTest {
         return all(root)
     }
     @Test fun developerOffHasOneActionAndBuildNumberGuide(){runtime.developer=false;val views=show("01-developer-off");assertEquals(listOf("휴대전화 정보 열기"),views.filterIsInstance<Button>().map{it.text.toString()});assertTrue(views.filterIsInstance<TextView>().any{it.text.contains("7번")});assertTrue(views.filterIsInstance<EditText>().isEmpty());assertEquals(0,controller!!.get().window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE)}
+    /** Owner 2026-10-22: the step 3 button also leaves what to tap at the top of the screen; it is gone on return. */
+    @Test fun developerStepLeavesANotificationUntilTheUserReturns(){
+        runtime.developer=false;val views=show("01-developer-off")
+        val nm=shadowOf(context.getSystemService(android.app.NotificationManager::class.java))
+        views.filterIsInstance<Button>().single().performClick()
+        val n=checkNotNull(nm.getNotification(PairingNotifications.HINT_ID))
+        assertTrue(n.extras.getCharSequence(android.app.Notification.EXTRA_TEXT).toString().contains("빌드번호"))
+        controller!!.pause().resume()
+        assertNull(nm.getNotification(PairingNotifications.HINT_ID))
+    }
     @Test fun recommendedChoiceIsExplicitAndHasVisibleSkipBeforeHome(){
         runtime.managementChoiceResolved=false;runtime.paired=true;runtime.connectEndpoint=LocalAdbDiscovery.Endpoint("saved",42000)
         val views=show("13-recommended-management")
@@ -162,6 +172,60 @@ class SetupScreenTest {
         assertTrue(views.filterIsInstance<TextView>().any{it.text=="지금은 사용하지 않기"})
         assertTrue(views.filterIsInstance<TextView>().any{it.text.contains("일부 은행·결제 앱이 안 열릴 수 있어요")})
         assertEquals(0,runtime.managementCalls);assertNull(shadowOf(controller!!.get()).nextStartedActivity)
+    }
+    /** 1.2.1: Wi-Fi stays the default; "Wi-Fi가 없나요?" explains in one notice that the PC way is the watch, the PC
+     *  step shows the command, and going back to Wi-Fi turns off the watch that this choice turned on. */
+    @Test fun noWifiOffersThePcAfterTheWatchNoticeAndCanGoBack(){
+        android.provider.Settings.Global.putInt(context.contentResolver,android.provider.Settings.Global.ADB_ENABLED,1)
+        BackgroundWatch.set(context,false);context.getSharedPreferences("ui-state",0).edit().remove("pcStartWatchOn").commit()
+        runtime.wifiConnected=false;runtime.wireless=false
+        val views=show("05b-no-wifi")
+        val activity=controller!!.get()
+        fun views()=descendants(activity.findViewById<ViewGroup>(android.R.id.content))
+        assertEquals(SetupStage.WIFI_NOT_CONNECTED,SetupFlow.stage(session.facts))
+        assertEquals("Wi-Fi stays the main button",listOf("Wi-Fi 열기"),views.filterIsInstance<Button>().map{it.text.toString()})
+        compose.mainClock.autoAdvance=false
+        views.filterIsInstance<TextView>().single{it.text=="Wi-Fi가 없나요? PC로 시작하기"}.performClick()
+        shadowOf(Looper.getMainLooper()).idle();compose.mainClock.advanceTimeBy(100)
+        compose.onNodeWithText("Wi-Fi 없이 PC로 시작할까요?").assertExists()
+        compose.onNodeWithText("일부 은행·결제 앱이 열리지 않을 수 있어요.").assertExists()
+        compose.onNodeWithText("PC로 시작 (5초)").assertIsNotEnabled()
+        compose.mainClock.advanceTimeBy(5100)
+        compose.onNodeWithText("PC로 시작").assertIsEnabled().performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(BackgroundWatch.enabled(context));assertTrue(runtime.pcStart)
+        assertEquals(SetupStage.PC_START,SetupFlow.stage(session.facts))
+        // Windows first; picking Mac swaps the steps and the command (owner 2026-10-21).
+        assertTrue(views().filterIsInstance<TextView>().any{it.text.toString()==PcStart.WINDOWS})
+        assertFalse(views().filterIsInstance<TextView>().any{it.text.toString()==PcStart.MAC})
+        assertTrue(views().filterIsInstance<TextView>().any{it.text=="연결 준비 · 4 / 7"})
+        // Step 2 leads to USB debugging itself (owner 2026-10-21): a check while on, a link to the switch while off.
+        assertTrue(views().filterIsInstance<TextView>().any{it.text=="✓ USB 디버깅이 켜졌어요"})
+        android.provider.Settings.Global.putInt(context.contentResolver,android.provider.Settings.Global.ADB_ENABLED,0)
+        shadowOf(Looper.getMainLooper()).idleFor(1,java.util.concurrent.TimeUnit.SECONDS)
+        views().filterIsInstance<TextView>().single{it.text=="USB 디버깅 켜러 가기"}.performClick()
+        assertEquals("enable_adb",shadowOf(activity).nextStartedActivity.getStringExtra(":settings:fragment_args_key"))
+        android.provider.Settings.Global.putInt(context.contentResolver,android.provider.Settings.Global.ADB_ENABLED,1)
+        shadowOf(Looper.getMainLooper()).idleFor(1,java.util.concurrent.TimeUnit.SECONDS)
+        assertEquals(listOf("PC로 안내 보내기"),views().filterIsInstance<Button>().map{it.text.toString()})
+        assertTrue(File(context.getExternalFilesDir(null),"start.sh").isFile)
+        views().filterIsInstance<TextView>().single{it.text=="Mac"}.performClick()
+        assertTrue(views().filterIsInstance<TextView>().any{it.text.toString()==PcStart.MAC})
+        assertTrue(views().filterIsInstance<TextView>().any{it.text.toString().contains("Command+스페이스")})
+        views().filterIsInstance<TextView>().single{it.text=="명령 복사"}.performClick()
+        assertEquals(PcStart.MAC,context.getSystemService(android.content.ClipboardManager::class.java).primaryClip!!.getItemAt(0).text.toString())
+        views().filterIsInstance<TextView>().single{it.text=="Wi-Fi로 연결할게요"}.performClick()
+        assertFalse(runtime.pcStart);assertFalse(BackgroundWatch.enabled(context))
+        assertEquals(SetupStage.WIFI_NOT_CONNECTED,SetupFlow.stage(session.facts))
+    }
+    /** Codex U2: finishing setup from the PC leaves Home a note that the cable may go and USB debugging stays on. */
+    @Test fun pcStartFinishLeavesTheCableNoteForHome(){
+        android.provider.Settings.Global.putInt(context.contentResolver,android.provider.Settings.Global.ADB_ENABLED,1)
+        val ui=context.getSharedPreferences("ui-state",0);ui.edit().remove("setupNotice").commit()
+        runtime.wifiConnected=false;runtime.wireless=false;runtime.pcStart=true;runtime.pcHelper=true
+        show("05c-pc-finish");queue.next();shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(SetupStage.READY,SetupFlow.stage(session.facts))
+        assertEquals(PcStart.DONE,ui.getString("setupNotice",null))
     }
     /** USB debugging already on: confirming the 5-second risk dialog must continue by itself (no Settings visit
      *  re-renders the screen). Previously the pending choice was not part of the render key and setup stalled. */

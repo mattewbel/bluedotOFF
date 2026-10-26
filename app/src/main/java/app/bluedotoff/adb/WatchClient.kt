@@ -136,7 +136,8 @@ object WatchClient {
         }
         try{
             if(attaching.await(500,TimeUnit.MILLISECONDS)&&available(c))return true
-            if(!(ForegroundState.active||afterRestart)||!WifiConnection.connected(c)){WatchLog.event("state","watchStartBlocked foreground=${ForegroundState.active} wifiConnected=${WifiConnection.connected(c)}");lost(c);return false}
+            // A start blocked before any connection is not a try: Wi-Fi turned on seconds later must not wait 30 s (owner 2026-10-26).
+            if(!(ForegroundState.active||afterRestart)||!WifiConnection.connected(c)){WatchLog.event("state","watchStartBlocked foreground=${ForegroundState.active} wifiConnected=${WifiConnection.connected(c)}");synchronized(queueLock){lastStart=0};lost(c);return false}
             WirelessWork.run(c,true,hold=false,forceWireless=true,afterRestart=afterRestart){it.startWatch()}
             check(attaching.await(10,TimeUnit.SECONDS)&&available(c)){"Watch helper handshake failed"}
             return true

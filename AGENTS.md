@@ -21,17 +21,17 @@ The owner is not a professional developer and is happy with the current behavior
 .\gradlew.bat :core:test :app:testLocalDebugUnitTest :app:testLocalReleaseUnitTest :app:assembleLocalDebug :app:assembleLocalRelease :app:lintLocalDebug :app:lintLocalRelease
 ```
 
-Expected on 2026-10-09: core 310 tests, app debug 289, app release 289, all passing; lint 0 errors, 42 warnings.
-`scripts/finalize.py` and `scripts/package_source.py` write into `artifacts/`, which already holds the
-delivered 1.0.0 APKs. Do not run them for a build you do not intend to deliver, or they overwrite
+Expected for 1.2.2 (2026-10-26): core 381 tests, app debug 521, app release 521, all passing; lint 0 errors,
+91 warnings per variant. `scripts/finalize.py` and `scripts/package_source.py` write into `artifacts/`, which holds the
+current release files. Do not run them for a build you do not intend to deliver, or they overwrite
 those files; bump `versionName`/`versionCode` in `app/build.gradle.kts` first.
 
 ## Rules that are easy to break
 
 - **Translations use the Korean sentence itself as the key.** UI code passes Korean literals to
-  `UiText.text()`, which looks them up in `app/src/main/assets/i18n/en.json`. If you change a
-  Korean string in code, rename the matching key in `en.json` too, or English users silently see
-  Korean. Strings with `{0}` placeholders are matched as patterns.
+  `UiText.text()`, which looks them up in the catalogs in `app/src/main/assets/i18n/` (9 languages since 1.2.2).
+  If you change a Korean string in code, rename the matching key in every catalog, or those users silently see
+  English or Korean. Strings with `{0}` placeholders are matched as patterns.
 - Keep old `en.json` keys for messages that may already be stored in users' journals
   (`Entry.error`), e.g. the two legacy "UID …" messages kept on 2026-10-09.
 - **Do not rename or remove `TargetState` enum values** (including `SHIZUKU_REQUIRED`). They are
@@ -49,6 +49,9 @@ those files; bump `versionName`/`versionCode` in `app/build.gradle.kts` first.
   edits; a large reformat should be its own change with the full test run.
 
 ## Work log
+
+This log covers the work up to 1.1.0 (2026-10-14). Later releases (1.1.1 to 1.2.2) are described in
+`docs/CHANGELOG.md` and the `docs/<version>-validation.md` reports.
 
 ### 2026-10-09 — Claude Code review cleanup (in the private repository, before this public repository existed)
 

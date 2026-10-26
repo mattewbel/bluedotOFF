@@ -21,7 +21,7 @@ class UiTextTest {
     }
     /** 1.1.2: one catalog per language; unsupported languages use English; zh splits by script/region. */
     @Test fun catalogIsChosenPerLanguageWithEnglishForTheRest(){
-        val cases=mapOf("ko-KR" to null,"en-US" to "en","fr-FR" to "en","de" to "en","es-MX" to "es","pt-PT" to "pt-BR","pt-BR" to "pt-BR",
+        val cases=mapOf("ko-KR" to null,"en-US" to "en","fr-FR" to "en","ru-RU" to "en","de" to "de","de-AT" to "de","ja-JP" to "ja","id-ID" to "id","in-ID" to "id","es-MX" to "es","pt-PT" to "pt-BR","pt-BR" to "pt-BR",
             "hi-IN" to "hi","zh-TW" to "zh-Hant","zh-HK" to "zh-Hant","zh-Hant-CN" to "zh-Hant","zh-CN" to "zh-Hans","zh-Hans" to "zh-Hans","zh" to "zh-Hans")
         for((tag,expected) in cases)assertEquals(tag,expected,UiText.catalogFor(Locale.forLanguageTag(tag)))
     }
@@ -52,8 +52,8 @@ class UiTextTest {
     }
     /** 1.1.2: languages without a catalog still show English; supported ones show their own catalog. */
     @Test fun everyNonKoreanLanguageFallsBackToEnglish(){
-        for(tag in listOf("fr-FR","ja-JP","de-DE","ru-RU"))assertEquals(tag,"Home",UiText.text(language(tag),"홈"))
-        for(tag in listOf("es-ES","pt-BR","hi-IN","zh-TW","zh-CN")){val shown=UiText.text(language(tag),"홈");assertNotEquals(tag,"홈",shown);assertNotEquals(tag,"Home",shown)}
+        for(tag in listOf("fr-FR","ru-RU"))assertEquals(tag,"Home",UiText.text(language(tag),"홈"))
+        for(tag in listOf("es-ES","pt-BR","hi-IN","zh-TW","zh-CN","ja-JP","de-DE","id-ID")){val shown=UiText.text(language(tag),"홈");assertNotEquals(tag,"홈",shown);assertNotEquals(tag,"Home",shown)}
     }
     @Test fun dynamicCountsAndCompletionTranslateWithoutTouchingValues(){
         assertEquals("35 / 70 apps checked · 50%",UiText.text(language("en"),"35 / 70개 확인 · 50%"))

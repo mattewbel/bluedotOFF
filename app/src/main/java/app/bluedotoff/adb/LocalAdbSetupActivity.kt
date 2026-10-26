@@ -22,6 +22,7 @@ import app.bluedotoff.core.*
 
 /** One actual step and one primary action; technical diagnostics are kept in advanced options. */
 class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
+    companion object { const val WIRELESS_SETUP="app.bluedotoff.WIRELESS_SETUP" }
     private lateinit var session:SetupSession
     private lateinit var box:LinearLayout
     private val colors by lazy { BlueDotAppearance.scheme(this) }
@@ -43,7 +44,9 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         notificationSettingsOpened=state?.getBoolean("notificationSettingsOpened")?:false
         batterySettingsOpened=state?.getBoolean("batterySettingsOpened")?:false
         advanced=app.bluedotoff.BuildConfig.DEBUG&&intent.getBooleanExtra("diagnostics",false)
-        session=SetupSession.acquire(this)
+        val wirelessSetup=state?.getBoolean(WIRELESS_SETUP,intent.getBooleanExtra(WIRELESS_SETUP,false))?:intent.getBooleanExtra(WIRELESS_SETUP,false)
+        intent.putExtra(WIRELESS_SETUP,wirelessSetup)
+        session=SetupSession.acquire(this,wirelessSetup)
         val gutter=dp(if(resources.configuration.screenWidthDp>=760)BlueDotAppearance.WIDE_GUTTER else BlueDotAppearance.PAGE_GUTTER)
         val root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setBackgroundColor(colors.surface.toArgb())}
         root.addView(LinearLayout(this).apply {
@@ -88,7 +91,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
     override fun onStop(){app.bluedotoff.ForegroundState.stopped();super.onStop()}
     override fun onResume(){super.onResume();foreground=true;PairingNotifications.cancelHint(this);if(notificationSettingsOpened){notificationSettingsOpened=false;session.notificationsResult()};if(!permissionDialog){if(batterySettingsOpened){batterySettingsOpened=false;session.batterySettingsReturned()}else session.resume()};render()}
     override fun onPause(){foreground=false;super.onPause()}
-    override fun onSaveInstanceState(state:Bundle){state.putBoolean("permissionDialog",permissionDialog);state.putBoolean("usbChoicePending",usbChoicePending);state.putBoolean("notificationSettingsOpened",notificationSettingsOpened);state.putBoolean("batterySettingsOpened",batterySettingsOpened);super.onSaveInstanceState(state)}
+    override fun onSaveInstanceState(state:Bundle){state.putBoolean("permissionDialog",permissionDialog);state.putBoolean("usbChoicePending",usbChoicePending);state.putBoolean("notificationSettingsOpened",notificationSettingsOpened);state.putBoolean("batterySettingsOpened",batterySettingsOpened);state.putBoolean(WIRELESS_SETUP,intent.getBooleanExtra(WIRELESS_SETUP,false));super.onSaveInstanceState(state)}
     override fun onDestroy(){notificationReminder?.close();code?.text?.clear();session.detach(changed);if(isFinishing&&!isChangingConfigurations)session.close();super.onDestroy()}
     private fun add(view:View){
         box.addView(view,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(BlueDotAppearance.SECTION_GAP)})
@@ -206,7 +209,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
     private fun render(){
         if(isDestroyed||!::box.isInitialized||permissionDialog)return
         val f=session.facts;val p=SetupFlow.presentation(f)
-        if(p.stage==SetupStage.READY&&foreground&&!navigating&&!advanced){navigating=true;getSharedPreferences("ui-state",0).let{if(f.pcStart&&!it.contains("setupNotice"))it.edit().putString("setupNotice",PcStart.DONE).apply()};session.close(keepScan=true);startActivity(Intent(this,app.bluedotoff.MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP));finish();return}
+        if(p.stage==SetupStage.READY&&foreground&&!navigating&&!advanced){navigating=true;getSharedPreferences("ui-state",0).let{if(f.pcStart&&!it.contains("setupNotice"))it.edit().putString("setupNotice",PcStart.DONE).apply()};returnHome();return}
         // The pending USB choice must re-render: with USB debugging already on, that render is where step 9 finishes.
         val key="${p.stage}|${p.total}|${f.autoBlocked}|${session.notifications}|${session.manualInput}|${session.needsPort}|${session.inputError}|$advanced|${session.diagnosticResult}|${session.managementError}|${session.scanProgress}|$usbChoicePending|${f.pcStart&&WatchClient.usbEnabled(this)}|${f.pcStart&&app.bluedotoff.BackgroundWatch.enabled(this)}|${f.pcStart&&PcStart.mac(this)}"
         if(lastKey==key)return;lastKey=key;code?.text?.clear();code=null;box.removeAllViews()
@@ -295,7 +298,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         if(p.stage==SetupStage.CONNECTION_RECOVERY&&!f.pcStart)link("한 번만 다시 페어링"){session.beginPairing()}
         link(if(advanced)"고급 옵션 닫기" else "문제가 있나요? 고급 옵션"){advanced=!advanced;render()}
         if(advanced){
-            if(p.stage==SetupStage.READY)button("홈으로 돌아가기"){session.close(keepScan=true);startActivity(Intent(this,app.bluedotoff.MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP));finish()}
+            if(p.stage==SetupStage.READY)button("홈으로 돌아가기"){returnHome()}
             text("네트워크 권한은 이 휴대폰의 연결에만 사용해요. 직접 켜는 업데이트 확인 말고는 인터넷을 쓰지 않아요.",14f)
             link("이 앱의 알림 설정"){openSettings(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,packageName))}
             link("무선 디버깅 화면 열기"){wirelessSettings()}
@@ -319,9 +322,18 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         app.bluedotoff.ScopeDialogs.watch(this,"Wi-Fi 없이 PC로 시작할까요?","보통은 Wi-Fi로 시작해요. 다른 휴대폰의 핫스팟에 연결해도 될 수 있어요. Wi-Fi가 전혀 없다면 PC와 USB 케이블로 시작할 수 있어요. PC로 시작하면 백그라운드 감시 방법으로만 동작하고, 휴대폰을 다시 시작하거나 bluedotOFF를 업데이트할 때마다 PC에서 명령을 다시 실행해야 해요.","PC로 시작"){startPc()}
     }
     private fun startPc(){
+        intent.removeExtra(WIRELESS_SETUP)
         val ui=getSharedPreferences("ui-state",0)
         if(!app.bluedotoff.BackgroundWatch.enabled(this)){app.bluedotoff.BackgroundWatch.set(this,true);ui.edit().putBoolean("pcStartWatchOn",true).apply()}
         session.choosePcStart(true)
+    }
+    private fun returnHome(){
+        // Keep the working PC choice until this wireless setup has actually passed its checks.
+        if(intent.getBooleanExtra(WIRELESS_SETUP,false)&&!session.facts.pcStart&&session.facts.verified){
+            check(getSharedPreferences("ui-state",0).edit().putBoolean("pcStart",false).remove("pcStartWatchOn").commit())
+        }
+        session.close(keepScan=true)
+        startActivity(Intent(this,app.bluedotoff.MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP));finish()
     }
     /** Back to Wi-Fi: the watch is turned off again only if "PC로 시작" turned it on. */
     private fun stopPc(){

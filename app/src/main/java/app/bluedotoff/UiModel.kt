@@ -85,7 +85,7 @@ data class UiModel(val gate: Gate = Gate.CHECKING, val page: Page = Page.HOME, v
     val reapplyCount get()=reapplyEntries.size
     // Mirror the existing batch's indivisible shared-UID units in the confirmation.
     val reapplyTargetPackages get()=reapplyEntries.flatMap{selectionGroup(it.identity.packageName)}.distinct()
-    /** Registered apps that are neither verified-applied nor waiting for a reapply (Home's "상태 확인 필요"). */
+    /** Registered apps that are neither verified-applied nor waiting for a reapply (Home's "직접 확인할 앱 N개" row). */
     val checkEntries get()=activeEntries.filter{!(it.state==TargetState.APPLIED&&it.settlingVerified)&&!needsReapply(it)}
     val otherCheckCount get()=checkEntries.size
     /** A batch stops at the first app it cannot change, leaving every later app untouched. Uninstalled apps have

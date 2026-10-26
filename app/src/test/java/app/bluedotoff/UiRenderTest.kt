@@ -298,13 +298,13 @@ class UiRenderTest {
         var called:List<String>?=null;var allCalled=false
         val m=model(applied=true).copy(entries=listOf(base,needed))
         controller.get().setContent{BlueDotApp(m,{}, {}, {}, {}, {allCalled=true}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},reapplyNeeded={called=it})}
-        compose.onNodeWithText("1개 앱 · 재적용 필요").performClick()
+        compose.onNodeWithText("다시 적용할 앱 1개").performClick()
         compose.onNodeWithText("재적용이 필요한 앱").assertExists()
         compose.onNode(hasText("재적용 대상") and hasAnyAncestor(isDialog())).assertExists()
         compose.onNode(hasText("날씨") and hasAnyAncestor(isDialog())).assertDoesNotExist()
         captureDialog("25-reapply-needed")
         org.junit.Assert.assertNull(called);org.junit.Assert.assertFalse(allCalled)
-        compose.onNodeWithText("1개 앱 재적용").performClick()
+        compose.onNode(hasText("1개 앱 재적용") and hasAnyAncestor(isDialog())).performClick()
         org.junit.Assert.assertEquals(listOf("demo.needs"),called)
         org.junit.Assert.assertFalse(allCalled)
         compose.onNodeWithText("재적용이 필요한 앱").assertDoesNotExist()
@@ -315,7 +315,7 @@ class UiRenderTest {
         val m=model(applied=true).copy(entries=listOf(base)+entries)
         var called=false
         controller.get().setContent{BlueDotApp(m,{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},reapplyNeeded={called=true})}
-        compose.onNodeWithText("1개 앱 · 재적용 필요").performClick()
+        compose.onNodeWithText("다시 적용할 앱 1개").performClick()
         compose.onNode(hasText("전화") and hasAnyAncestor(isDialog())).assertExists();compose.onNode(hasText("114 서비스") and hasAnyAncestor(isDialog())).assertExists()
         compose.onNode(hasText("날씨") and hasAnyAncestor(isDialog())).assertDoesNotExist()
         compose.onNodeWithText("2개 앱 재적용").assertExists()
@@ -326,10 +326,10 @@ class UiRenderTest {
         var opened=false;var applied=false
         val m=model().copy(connected=false,automaticReady=false)
         controller.get().setContent{BlueDotApp(m,{}, {}, {}, {}, {}, {}, {opened=true}, {}, {}, {}, {}, {}, {}, {}, {},reapplyNeeded={applied=true})}
-        compose.onNodeWithText("Reapply needed: 1").performClick()
+        compose.onNodeWithText("Apps to reapply: 1").performClick()
         compose.onNodeWithText("Apps that need reapplying").assertExists()
         captureDialog("25-reapply-offline-en")
-        compose.onNodeWithText("Reapply to 1 app").assertDoesNotExist()
+        compose.onNode(hasText("Reapply to 1 app") and hasAnyAncestor(isDialog())).assertDoesNotExist()
         compose.onNode(hasText(UiText.text(controller.get(),"연결 설정 열기")) and hasAnyAncestor(isDialog())).performClick()
         org.junit.Assert.assertTrue(opened);org.junit.Assert.assertFalse(applied)
     }
@@ -378,8 +378,45 @@ class UiRenderTest {
         render("83-home-attention",model(applied=true).copy(entries=listOf(entries[0],entries[1].copy(state=TargetState.NEEDS_REAPPLY_POLICY),entries[2].copy(state=TargetState.SHIZUKU_REQUIRED))))
         compose.onNodeWithText("일부 앱의\n재적용이 필요해요").assertExists()
         compose.onNodeWithText("1개 앱 적용 중").assertExists()
-        compose.onNodeWithText("1개 앱 · 재적용 필요").assertExists()
-        compose.onNodeWithText("1개 앱 · 상태 확인 필요").assertExists()
+        compose.onNodeWithText("다시 적용할 앱 1개").assertExists()
+        compose.onNodeWithText("직접 확인할 앱 1개").assertExists()
+    }
+    private fun p3Entries():Map<String,List<Entry>>{
+        val base=model(applied=true).entries.single()
+        val reapply=base.copy(identity=base.identity.copy(packageName="demo.re"),label="재적용앱",state=TargetState.NEEDS_REAPPLY_POLICY)
+        val check=base.copy(identity=base.identity.copy(packageName="demo.ck"),label="확인앱",state=TargetState.SHIZUKU_REQUIRED)
+        return mapOf("reapply" to listOf(base,reapply),"check" to listOf(base,check),"both" to listOf(base,reapply,check),"none" to listOf(base))
+    }
+    /** P-3: each Home attention row shows alone or together in the same style; with neither, no row is left. */
+    @Test fun homeAttentionRowsForEveryCombination(){
+        for((name,entries) in p3Entries()){
+            render("95-home-p3-$name",model(applied=true).copy(entries=entries))
+            val reapply=name=="reapply"||name=="both";val check=name=="check"||name=="both"
+            if(reapply){compose.onNodeWithText("다시 적용할 앱 1개").assertExists();compose.onNodeWithText("재적용").assertExists()}
+            else compose.onNodeWithText("다시 적용할 앱",substring=true).assertDoesNotExist()
+            if(check){compose.onNodeWithText("직접 확인할 앱 1개").assertExists();compose.onNodeWithText("이유 보기").assertExists()}
+            else compose.onNodeWithText("직접 확인할 앱",substring=true).assertDoesNotExist()
+        }
+    }
+    /** P-3: the links only open the existing dialogs; nothing is applied by the tap itself. */
+    @Test fun homeAttentionLinksOnlyOpenDialogs(){
+        var acted=false
+        val m=model(applied=true).copy(entries=p3Entries().getValue("both"))
+        controller.get().setContent{BlueDotApp(m,{}, {acted=true}, {acted=true}, {acted=true}, {acted=true}, {acted=true}, {}, {}, {}, {}, {}, {}, {}, {}, {},reapplyNeeded={acted=true})}
+        compose.onNodeWithText("재적용").performClick()
+        compose.onNodeWithText("재적용이 필요한 앱").assertExists()
+        compose.onNode(hasText("취소") and hasAnyAncestor(isDialog())).performClick()
+        compose.onNodeWithText("이유 보기").performClick()
+        compose.onNodeWithText("상태 확인이 필요한 앱").assertExists()
+        org.junit.Assert.assertFalse(acted)
+    }
+    @Test @Config(qualifiers="de-rDE-w360dp-h780dp-xxhdpi",fontScale=1.3f) fun homeAttentionRowsGermanLargeNarrow(){
+        render("95-home-p3-both-de-large",model(applied=true).copy(entries=p3Entries().getValue("both")))
+        compose.onNodeWithText("Apps zum erneuten Anwenden: 1").assertExists();compose.onNodeWithText("Grund ansehen").assertExists()
+    }
+    @Test @Config(qualifiers="en-rUS-w360dp-h780dp-xxhdpi",fontScale=2.0f) fun homeAttentionRowsEnglishLargestText(){
+        render("95-home-p3-both-en-x2",model(applied=true).copy(entries=p3Entries().getValue("both")))
+        compose.onNodeWithText("Apps to check yourself: 1").assertExists();compose.onNodeWithText("See why").assertExists()
     }
     /** Picker: an already applied app shows "적용 중" with a plain check mark, never a checked box next to "0개 선택됨". */
     @Test fun appliedAppInPickerIsNotShownAsASelection(){
@@ -397,7 +434,7 @@ class UiRenderTest {
         val failed=base.copy(identity=base.identity.copy(packageName="demo.map"),label="지도",state=TargetState.FAILED_SAFE,error="확인 실패")
         val reapply=base.copy(identity=base.identity.copy(packageName="demo.bus"),label="버스",state=TargetState.NEEDS_REAPPLY_POLICY)
         controller.get().setContent{BlueDotApp(model(applied=true).copy(entries=listOf(base,failed,reapply)),{}, {pkg->opened=pkg}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})}
-        compose.onNodeWithText("1개 앱 · 상태 확인 필요").performClick()
+        compose.onNodeWithText("직접 확인할 앱 1개").performClick()
         compose.onNodeWithText("상태 확인이 필요한 앱").assertExists()
         compose.onNode(hasText("버스") and hasAnyAncestor(isDialog())).assertDoesNotExist()
         compose.onNode(hasText("지도") and hasAnyAncestor(isDialog())).performClick()
@@ -511,6 +548,7 @@ class UiRenderTest {
     }
     @Test @Config(qualifiers="es-rES-w360dp-h780dp-xxhdpi",fontScale=1.3f) fun spanishLargeNarrowScreens()=longLanguageScreens("es")
     @Test @Config(qualifiers="hi-rIN-w360dp-h780dp-xxhdpi",fontScale=1.3f) fun hindiLargeNarrowScreens()=longLanguageScreens("hi")
+    @Test @Config(qualifiers="de-rDE-w360dp-h780dp-xxhdpi",fontScale=1.3f) fun germanLargeNarrowScreens()=longLanguageScreens("de")
     // 1.1.5: Android's largest font scale (2.0) on a narrow screen, Korean and English.
     @Test @Config(qualifiers="ko-rKR-w360dp-h780dp-xxhdpi",fontScale=2.0f) fun koreanLargestTextNarrowScreens()=longLanguageScreens("ko-x2")
     @Test @Config(qualifiers="en-rUS-w360dp-h780dp-night-xxhdpi",fontScale=2.0f) fun englishLargestTextNarrowScreens()=longLanguageScreens("en-x2")
@@ -539,8 +577,8 @@ class UiRenderTest {
         val base=model(applied=true).entries.single()
         render("83-home-attention-en",model(applied=true).copy(entries=listOf(base.copy(state=TargetState.NEEDS_REAPPLY_POLICY))))
         compose.onNodeWithText("Some apps\nneed reapplying").assertExists()
-        compose.onNodeWithText("Reapply needed: 1").assertExists()
-        compose.onNodeWithText("Keep completed apps as they are. Check only the apps that need attention.").assertExists()
+        compose.onNodeWithText("Apps to reapply: 1").assertExists();compose.onNodeWithText("Reapply").assertExists()
+        compose.onNodeWithText("Keep completed apps as they are. Check only the apps that need attention.").assertDoesNotExist()
     }
     private val leftOffApp=DiscoveredApp("demo.old","기존 위치 앱",10001,launcher=true,indicator=IndicatorAssessment(IndicatorEligibility.EXEMPT_SYSTEM_USAGE,true,0x100),hasLocationDeclaration=true)
     /** After a journal reset (e.g. bluedotOFF reinstalled) an OFF app has no record: it is listed but not offered for
@@ -812,7 +850,7 @@ class UiRenderTest {
     @Test fun uninstalledAppShowsAsNoActionNeeded(){
         val base=model(applied=true);val gone=base.entries.single().let{it.copy(identity=it.identity.copy(packageName="demo.gone"),label="삭제앱",state=TargetState.MISSING_TARGET,settlingVerified=false)}
         render("87-home-uninstalled",base.copy(entries=base.entries+gone))
-        compose.onNodeWithText("삭제앱").assertDoesNotExist();compose.onNodeWithText("등록한 앱 · 1개").assertExists();compose.onNodeWithText("1개 앱 적용 중").assertExists();compose.onNodeWithText("상태 확인 필요",substring=true).assertDoesNotExist()
+        compose.onNodeWithText("삭제앱").assertDoesNotExist();compose.onNodeWithText("등록한 앱 · 1개").assertExists();compose.onNodeWithText("1개 앱 적용 중").assertExists();compose.onNodeWithText("직접 확인할 앱",substring=true).assertDoesNotExist()
     }
     @Test fun advancedSettingsListsOpenSourceLicenses(){
         render("88-settings",model(page=Page.SETTINGS))

@@ -6,7 +6,7 @@ import org.json.JSONObject
 /** Presentation-only translation. Journal values, predicates, package labels and IPC stay intact. */
 object UiText {
     /** Catalogs in assets/i18n, keyed by the Korean source sentence. Korean shows the source itself. */
-    val LANGUAGES=listOf("en","es","pt-BR","hi","zh-Hant","zh-Hans")
+    val LANGUAGES=listOf("en","es","pt-BR","hi","zh-Hant","zh-Hans","ja","de","id")
     private val catalogs=HashMap<String,Pair<Map<String,String>,List<Pair<Regex,String>>>>()
     /** Catalog for a locale: null = Korean (source text). Unsupported languages use English (owner decision 2026-10-17). */
     fun catalogFor(locale:java.util.Locale):String?=when(locale.language){
@@ -14,6 +14,10 @@ object UiText {
         "es"->"es"
         "pt"->"pt-BR"
         "hi"->"hi"
+        "ja"->"ja"
+        "de"->"de"
+        // Android still reports Indonesian with the legacy code "in".
+        "id","in"->"id"
         "zh"->if(locale.script=="Hant"||locale.script.isEmpty()&&locale.country in setOf("TW","HK","MO"))"zh-Hant" else "zh-Hans"
         else->"en"
     }

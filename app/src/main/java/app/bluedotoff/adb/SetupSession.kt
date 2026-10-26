@@ -11,7 +11,10 @@ import java.util.concurrent.Executors
 class SetupSession internal constructor(private val context:Context,private val runtime:SetupRuntime=AndroidSetupRuntime(context),private val worker:java.util.concurrent.ExecutorService=Executors.newSingleThreadExecutor()) {
     companion object {
         private var active:SetupSession?=null
-        fun acquire(context:Context):SetupSession=active?:SetupSession(context.applicationContext).also{active=it}
+        fun acquire(context:Context,wirelessSetup:Boolean=false):SetupSession {
+            if(wirelessSetup&&active?.runtime?.pcStart==true)active?.close()
+            return active?:SetupSession(context.applicationContext,AndroidSetupRuntime(context.applicationContext,wirelessSetup)).also{active=it}
+        }
         fun current()=active
     }
     private val main=Handler(Looper.getMainLooper())

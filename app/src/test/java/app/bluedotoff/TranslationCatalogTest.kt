@@ -36,7 +36,8 @@ class TranslationCatalogTest {
                 assertEquals("$name placeholders: $key",placeholder.findAll(english).map{it.value}.sorted().toList(),placeholder.findAll(value).map{it.value}.sorted().toList())
                 assertFalse("$name has Korean left: $key -> $value",value.any{it in '가'..'힣'})
                 assertTrue("$name empty: $key",value.isNotBlank())
-                for(word in protectedNames)if(english.contains(word))assertTrue("$name lost '$word': $key -> $value",value.contains(word))
+                // German Samsung menus say WLAN for Wi-Fi.
+                for(word in protectedNames)if(english.contains(word))assertTrue("$name lost '$word': $key -> $value",value.contains(word)||name=="de"&&word=="Wi-Fi"&&value.contains("WLAN"))
             }
         }
     }

@@ -53,7 +53,7 @@ internal interface SetupRuntime {
     val pcHelper:Boolean get()=false
     fun choosePcStart(on:Boolean) {}
 }
-internal class AndroidSetupRuntime(private val context:Context):SetupRuntime {
+internal class AndroidSetupRuntime(private val context:Context,private var wirelessSetup:Boolean=false):SetupRuntime {
     override fun keepPairingAlive(required:Boolean):Boolean {
         if(required)return if(app.bluedotoff.ForegroundState.active)PairingLifetimeService.ensure(context) else PairingLifetimeService.isRequested
         PairingLifetimeService.stop(context);return true
@@ -98,7 +98,7 @@ internal class AndroidSetupRuntime(private val context:Context):SetupRuntime {
     override fun observeWifi(changed:()->Unit)=app.bluedotoff.WifiConnection.observe(context,changed)
     override val wifiConnected get()=app.bluedotoff.WifiConnection.connected(context)
     // PC start never uses wireless debugging, so setup does not turn it on there (Codex R2).
-    override fun foregroundUse(){ending=false;if(busy||PcStart.chosen(context))return;val controls=WirelessControls(context);if(controls.mayStart(app.bluedotoff.ForegroundState.active))controls.enableWirelessDebugging()}
+    override fun foregroundUse(){ending=false;if(busy||pcStart)return;val controls=WirelessControls(context);if(controls.mayStart(app.bluedotoff.ForegroundState.active))controls.enableWirelessDebugging()}
     override val developer get()=Settings.Global.getInt(context.contentResolver,Settings.Global.DEVELOPMENT_SETTINGS_ENABLED,0)==1
     override val wireless get()=Settings.Global.getInt(context.contentResolver,"adb_wifi_enabled",0)==1
     override val autoBlocked get()=AutoBlocker.suspected&&!wireless
@@ -142,9 +142,9 @@ internal class AndroidSetupRuntime(private val context:Context):SetupRuntime {
         check(cache.publish(revision,prepared)){"앱 설치 상태가 바뀌었어요. 다시 확인해주세요."}
     }
     override fun cancelPairing()=LocalAdbSession.cancelPairing()
-    override val pcStart get()=PcStart.chosen(context)
+    override val pcStart get()=!wirelessSetup&&PcStart.chosen(context)
     override val pcHelper get()=WatchClient.available(context)
-    override fun choosePcStart(on:Boolean)=PcStart.choose(context,on)
+    override fun choosePcStart(on:Boolean){wirelessSetup=false;PcStart.choose(context,on)}
     override fun debugReadOnly(port:Int,interrupt:Boolean) {
         check(app.bluedotoff.BuildConfig.DEBUG)
         if(interrupt)LocalAdbSession.interruptionProof(context,port)

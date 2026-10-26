@@ -341,6 +341,13 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
             RecentPanel(a.label,a.access.latest,false,if(canHide)({hide(a.packageName)}) else null)
         }
     }
+    @Composable fun AttentionRow(label:String,action:String,onClick:()->Unit) {
+        Row(Modifier.fillMaxWidth().heightIn(min=48.dp).clip(RoundedCornerShape(12.dp)).clickable(role=androidx.compose.ui.semantics.Role.Button,onClick=onClick).padding(vertical=12.dp),verticalAlignment=Alignment.CenterVertically) {
+            Text(label,Modifier.weight(1f),style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurface)
+            Text(action,Modifier.padding(start=12.dp),style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.primary)
+            Text(" ›",style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.primary)
+        }
+    }
     @Composable fun Hero() {
         Column(Modifier.padding(top=10.dp,bottom=20.dp),verticalArrangement=Arrangement.spacedBy(18.dp)) {
             if(m.usModel)Surface(shape=RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.tertiaryContainer,contentColor=MaterialTheme.colorScheme.onTertiaryContainer,border=BorderStroke(1.dp,MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha=0.18f))){
@@ -395,9 +402,13 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
             if(m.allLastVerifiedApplied)Text("${m.lastVerifiedAppliedCount}개 앱 적용 중",style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
             else if(m.visibleEntries.any{it.enabled}){
                 Text("${m.lastVerifiedAppliedCount}개 앱 적용 중",style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                if(m.reapplyCount>0)Text("${m.reapplyCount}개 앱 · 재적용 필요",Modifier.fillMaxWidth().heightIn(min=48.dp).clip(RoundedCornerShape(12.dp)).clickable(role=androidx.compose.ui.semantics.Role.Button,onClick=showNeeded).padding(vertical=12.dp),style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.primary)
-                if(m.otherCheckCount>0)Text("${m.otherCheckCount}개 앱 · 상태 확인 필요",Modifier.fillMaxWidth().heightIn(min=48.dp).clip(RoundedCornerShape(12.dp)).clickable(role=androidx.compose.ui.semantics.Role.Button,onClick={showCheck=true}).padding(vertical=12.dp),style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.primary)
-                Text("완료된 앱은 유지하고, 필요한 앱만 확인해주세요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                // P-3 (owner + Codex 2026-10-25): both lines look the same, a description and a blue link on the right;
+                // each opens its existing dialog, never acts directly.
+                if(m.reapplyCount>0||m.otherCheckCount>0)Column(Modifier.padding(vertical=8.dp)){
+                    if(m.reapplyCount>0)AttentionRow("다시 적용할 앱 ${m.reapplyCount}개","재적용",showNeeded)
+                    if(m.reapplyCount>0&&m.otherCheckCount>0)HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant)
+                    if(m.otherCheckCount>0)AttentionRow("직접 확인할 앱 ${m.otherCheckCount}개","이유 보기"){showCheck=true}
+                }
             }else Text("신뢰하는 앱을 골라\n위치 표시만 가볍게 숨기세요.",style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
             if(m.visibleEntries.any{it.enabled})CheckLine(m,recheck)
             // Owner choice (2026-10-17): when apps need attention the list comes first, so this card moves below it.
@@ -951,7 +962,7 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
         if(setupFirst){Setup();HorizontalDivider()}
         Group("자주 겪는 문제")
         Topic("숨김이 풀렸을 때")
-        Text("백그라운드 감시가 켜져 있으면 감지하는 대로 다시 숨겨요. 감시가 꺼져 있으면 bluedotOFF를 열 때 다시 숨기거나(설정 → ‘앱을 열 때 자동 재적용’), 홈의 ‘재적용 필요’를 눌러 다시 숨길 수 있어요. 일부 앱은 스스로 설정을 바꿔서 자주 풀려요. 언제 다시 숨겼는지는 기록 → ‘재적용 기록’에서 볼 수 있어요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("백그라운드 감시가 켜져 있으면 감지하는 대로 다시 숨겨요. 감시가 꺼져 있으면 bluedotOFF를 열 때 다시 숨기거나(설정 → ‘앱을 열 때 자동 재적용’), 홈의 ‘다시 적용할 앱’ 줄에서 ‘재적용’을 눌러 다시 숨길 수 있어요. 일부 앱은 스스로 설정을 바꿔서 자주 풀려요. 언제 다시 숨겼는지는 기록 → ‘재적용 기록’에서 볼 수 있어요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         Topic("감시가 멈췄을 때")
         Text("휴대폰을 재시작하거나 bluedotOFF를 업데이트하거나 USB 디버깅을 끄면 감시가 멈추고 알림과 홈에서 알려드려요. USB 디버깅을 다시 켜고 Wi-Fi에 연결된 상태에서 bluedotOFF를 열면 다시 시작해요(자동 관리가 꺼져 있으면 무선 디버깅도 켜주세요). 처음 연결할 때처럼 코드를 다시 넣을 필요는 없어요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         Text("휴대폰을 재시작한 경우에는 자동 관리와 앱을 열 때 자동 재적용이 켜져 있으면, Wi-Fi에 연결될 때 감시를 다시 켜고 풀린 숨김도 다시 적용해요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1051,7 +1062,7 @@ private fun demo(applied:Boolean=false,gate:Gate=Gate.READY,page:Page=Page.HOME)
         overflow=overflow,maxLines=maxLines,textAlign=textAlign,style=style)
 }
 
-/** Home's "상태 확인 필요": the apps behind the number. Tapping one opens its detail, which explains the state. */
+/** Home's "직접 확인할 앱 N개" row: the apps behind the number. Tapping one opens its detail, which explains the state. */
 @Composable private fun CheckNeededDialog(m:UiModel,close:()->Unit,open:(String)->Unit){
     PanelAlert(onDismissRequest=close,title={Text("상태 확인이 필요한 앱")},
         text={Column(Modifier.heightIn(max=420.dp).verticalScroll(rememberScrollState())){
@@ -1069,7 +1080,7 @@ private fun demo(applied:Boolean=false,gate:Gate=Gate.READY,page:Page=Page.HOME)
 
 /** App language (Android 13+ per-app language; the same list appears in Android Settings > Apps > bluedotOFF > Language).
  *  Android recreates the screen in the chosen language. Names are shown in their own language. */
-private val APP_LANGUAGES=listOf("" to "시스템 기본값","en" to "English","ko" to "한국어","es" to "Español","pt-BR" to "Português (Brasil)","hi" to "हिन्दी","zh-Hant" to "繁體中文","zh-Hans" to "简体中文")
+private val APP_LANGUAGES=listOf("" to "시스템 기본값","en" to "English","ko" to "한국어","es" to "Español","pt-BR" to "Português (Brasil)","hi" to "हिन्दी","zh-Hant" to "繁體中文","zh-Hans" to "简体中文","ja" to "日本語","de" to "Deutsch","id" to "Bahasa Indonesia")
 @Composable private fun LanguageRow(){
     val context=LocalContext.current
     if(android.os.Build.VERSION.SDK_INT<33)return

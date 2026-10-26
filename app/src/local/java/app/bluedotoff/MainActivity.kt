@@ -106,7 +106,9 @@ class MainActivity : ComponentActivity() {
         store = JournalStore(this)
         // A recreated screen (fold, rotation) must not handle the last result again; batch ids restart in a new process.
         if(savedInstanceState?.getInt("batchPid")==android.os.Process.myPid())handledBatchId=savedInstanceState.getLong("handledBatchId")
-        model=model.copy(applicationScope=scopes.current,scopePending=scopes.pending!=null||scopes.requested!=null,scopeResolved=scopes.resolved,savedRecent=savedRecent(),lastCheckedAt=prefs.getLong("lastCheckedAt",0L))
+        // The first frame already shows the saved records: an empty list painted the screen blue and then drained it like
+        // an apply on every new screen (fold, language, Wi-Fi on; owner 2026-10-25). A broken journal is reported by refresh.
+        model=model.copy(entries=runCatching{store.entries()}.getOrDefault(emptyList()),applicationScope=scopes.current,scopePending=scopes.pending!=null||scopes.requested!=null,scopeResolved=scopes.resolved,savedRecent=savedRecent(),lastCheckedAt=prefs.getLong("lastCheckedAt",0L))
         prefs.getString("setupNotice",null)?.let{model=model.copy(notice=it);prefs.edit().remove("setupNotice").apply()}
         LifecycleEvents.listener=journalListener
         lifecycleScope.launch {
@@ -173,7 +175,8 @@ class MainActivity : ComponentActivity() {
         if(Build.VERSION.SDK_INT>=33)registerReceiver(packageChanges,packageFilter,android.content.Context.RECEIVER_NOT_EXPORTED)
         else @Suppress("DEPRECATION") registerReceiver(packageChanges,packageFilter)
         wifiObserver=WifiConnection.observe(this){runOnUiThread{model=model.copy(automaticReady=automaticReady());if(ForegroundState.active&&!model.busy)refresh()}}
-        navigateNotification(intent)
+        // A recreated screen keeps its saved page, rather than replaying the original notification.
+        if(savedInstanceState==null)navigateNotification(intent)
         setContent { BlueDotApp(model, ::navigate, ::select, ::requestHide, ::requestRestore, ::batchHide, ::restoreAll, ::openBackend, ::openBackend, ::openBackend, ::refreshFromUser, ::allowNotifications, ::dismissNotificationOffer, ::begin, ::loadApps, ::clearNotice, ::togglePick, ::addSelected, ::changeQuery, ::changeFilter, { model=model.copy(homePicked=emptySet());navigate(Page.RESTORE) }, ::toggleHomePick, ::restoreSelected, ::contentShown, pickerRevision, ::historyViewChanged,pickerViewChanged={model=model.copy(pickerView=it,pickerRows=null);filterPicker()},wirelessExit={if(!model.busy)WirelessDebuggingExit.open(this)},toggleAll=::toggleAll,managementChanged=::managementChanged,removeManagementPermission=::removeManagementPermission,sharedInspect={pickGroups(listOf(it))},sharedAccept=::acceptShared,sharedDismiss={sharedGeneration++;model=model.copy(sharedOffer=null)},scopeChange=::chooseScope,reapplyNeeded={perform(it,true)},notificationChanged=::reapplyNotificationChanged,recheck=::recheck,bigGroupsAccept=::acceptBigGroups,bigGroupsDismiss={model=model.copy(bigGroups=emptyList())},rejectedDismiss={model=model.copy(rejectedGroupList=emptyList())},restorePickAll=::toggleAllRestore,showPick=::toggleShowPick,showPickAll=::toggleAllShow,showSelected=::showSelected,refreshHistory=::refreshHistory,autoReapplyChanged=::autoReapplyChanged,openShow={model=model.copy(showPicked=emptySet());navigate(Page.SHOW)},beforeUninstall=::beforeUninstall,uninstallDismiss={model=model.copy(uninstallCheck=null)},openAppInfo=::openAppInfo,copyDiagnostics=::copyDiagnostics,backgroundWatchChanged=::backgroundWatchChanged,openDeveloperOptions={SettingsEntrypoints.developerOptions(this)},openBattery={enable->if(!model.busy)BatteryOptimization.open(this,enable)},dismissUsNotice=::dismissUsNotice,dismissFirmwareNotice=::dismissFirmwareNotice,updateOfferAnswer=::updateCheckChanged,updateCheckChanged=::updateCheckChanged,checkUpdateNow=::checkUpdateNow,openUpdate={UpdateCheck.open(this,UpdateCheck.Release(it));model=model.copy(updateCard=null)},skipUpdate={UpdateCheck.skip(this,it);model=model.copy(updateCard=null)},pcStart={ScopeDialogs.pcStart(this)},wifiSetup=::wifiSetup,watchAfterUsb=::watchAfterUsb) }
     }
     // Leaving bluedotOFF turns a held wireless debugging off after a short grace (quick switches back keep it on).
@@ -195,6 +198,7 @@ class MainActivity : ComponentActivity() {
         val target = intent.getStringExtra("target")
         val auto = prefs.getBoolean("autoReapply",true) && automaticReady()
         model = model.copy(page = if (target != null) Page.DETAIL else if (auto) Page.HOME else Page.REAPPLY, selected = target)
+        setIntent(Intent(intent).apply{action=null;removeExtra("target")})
     }
     private fun begin() { prefs.edit().putBoolean("welcomed",true).apply(); openBackend() }
     private fun notificationsEnabled() = (Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) && getSystemService(android.app.NotificationManager::class.java).areNotificationsEnabled()
@@ -496,7 +500,8 @@ class MainActivity : ComponentActivity() {
     /** Restore picks made before "연결 후 N개 복원": setup returns with FLAG_ACTIVITY_CLEAR_TOP, which recreates this
      *  activity, so the selection is carried over in memory and shown again. Nothing runs until the user taps restore. */
     private companion object { var pendingRestore:Set<String> = emptySet() }
-    private fun openBackend(){pendingRestore=if(model.page==Page.RESTORE)model.homePicked else emptySet();checkOnResume=true;refreshJob?.cancel();discoveryJob?.cancel();invalidateScan();startActivity(Intent(this,LocalAdbSetupActivity::class.java))}
+    private fun openBackend(){openBackend(false)}
+    private fun openBackend(wirelessSetup:Boolean){pendingRestore=if(model.page==Page.RESTORE)model.homePicked else emptySet();checkOnResume=true;refreshJob?.cancel();discoveryJob?.cancel();invalidateScan();startActivity(Intent(this,LocalAdbSetupActivity::class.java).putExtra(LocalAdbSetupActivity.WIRELESS_SETUP,wirelessSetup))}
     private fun <T> localBatch(userAction:Boolean=true,forceWireless:Boolean=false,block:()->T):T {
         return WirelessWork.run(this,userAction,endpointPort,onCleanup={cleanupNotice=it},hold=true,forceWireless=forceWireless){active->
             backend=active
@@ -504,9 +509,8 @@ class MainActivity : ComponentActivity() {
             block()
         }
     }
-    /** Settings → auto management without a wireless pairing: setup on the Wi-Fi way; the running watch stays on
-     *  (it is no longer the PC choice's to turn off). Owner 2026-10-21. */
-    private fun wifiSetup(){PcStart.choose(this,false);prefs.edit().remove("pcStartWatchOn").apply();openBackend()}
+    /** Trying Wi-Fi keeps the running watch and the PC restart choice until setup succeeds. */
+    private fun wifiSetup(){openBackend(wirelessSetup=true)}
     private fun managementChanged(enabled:Boolean){
         // Turning automatic management off first closes the kept connection and turns off wireless debugging the app
         // turned on itself (still allowed while consent is on), so nothing it opened stays on afterwards.

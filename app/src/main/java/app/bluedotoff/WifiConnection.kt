@@ -12,7 +12,7 @@ object WifiConnection {
         val manager=context.getSystemService(ConnectivityManager::class.java)
         manager.allNetworks.any{wifi(manager.getNetworkCapabilities(it),manager.getLinkProperties(it))}
     }.getOrDefault(false)
-    fun observe(context:Context,changed:()->Unit):AutoCloseable {
+    fun observe(context:Context,changed:(connected:Boolean)->Unit):AutoCloseable {
         val manager=context.getSystemService(ConnectivityManager::class.java)
         // One Wi-Fi connection sends several capability updates (validation, signal): report only a real connect or
         // disconnect, so Home does not start two or three app checks in a row (owner 2026-10-21).
@@ -22,7 +22,7 @@ object WifiConnection {
         val capabilities=HashMap<Network,NetworkCapabilities>();val links=HashMap<Network,LinkProperties>();val lost=HashSet<Network>()
         val report={
             val now=runCatching{(manager.allNetworks.toSet()+capabilities.keys-lost).any{wifi(capabilities[it]?:manager.getNetworkCapabilities(it),links[it]?:manager.getLinkProperties(it))}}.getOrDefault(false)
-            if(now!=last){last=now;changed()}
+            if(now!=last){last=now;changed(now)}
         }
         val callback=object:ConnectivityManager.NetworkCallback(){
             override fun onAvailable(network:Network){lost-=network;report()}

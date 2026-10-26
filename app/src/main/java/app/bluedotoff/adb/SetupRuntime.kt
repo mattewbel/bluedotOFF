@@ -95,7 +95,7 @@ internal class AndroidSetupRuntime(private val context:Context,private var wirel
         }catch(error:Exception){controls.setConsent(false);throw error}
     }
     override val intentionalExit get()=ending
-    override fun observeWifi(changed:()->Unit)=app.bluedotoff.WifiConnection.observe(context,changed)
+    override fun observeWifi(changed:()->Unit)=app.bluedotoff.WifiConnection.observe(context){changed()}
     override val wifiConnected get()=app.bluedotoff.WifiConnection.connected(context)
     // PC start never uses wireless debugging, so setup does not turn it on there (Codex R2).
     override fun foregroundUse(){ending=false;if(busy||pcStart)return;val controls=WirelessControls(context);if(controls.mayStart(app.bluedotoff.ForegroundState.active))controls.enableWirelessDebugging()}

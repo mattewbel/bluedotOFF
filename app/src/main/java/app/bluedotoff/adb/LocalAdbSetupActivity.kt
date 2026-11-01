@@ -22,7 +22,7 @@ import app.bluedotoff.core.*
 
 /** One actual step and one primary action; technical diagnostics are kept in advanced options. */
 class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
-    companion object { const val WIRELESS_SETUP="app.bluedotoff.WIRELESS_SETUP" }
+    companion object { const val WIRELESS_SETUP="app.bluedotoff.WIRELESS_SETUP"; private const val PC_CHOSEN_HERE="app.bluedotoff.PC_CHOSEN_HERE" }
     private lateinit var session:SetupSession
     private lateinit var box:LinearLayout
     private val colors by lazy { BlueDotAppearance.scheme(this) }
@@ -46,6 +46,8 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         advanced=app.bluedotoff.BuildConfig.DEBUG&&intent.getBooleanExtra("diagnostics",false)
         val wirelessSetup=state?.getBoolean(WIRELESS_SETUP,intent.getBooleanExtra(WIRELESS_SETUP,false))?:intent.getBooleanExtra(WIRELESS_SETUP,false)
         intent.putExtra(WIRELESS_SETUP,wirelessSetup)
+        // Local Intent changes are lost when Android restores the task in a new process.
+        state?.let{intent.putExtra(PC_CHOSEN_HERE,it.getBoolean(PC_CHOSEN_HERE,intent.getBooleanExtra(PC_CHOSEN_HERE,false)))}
         session=SetupSession.acquire(this,wirelessSetup)
         val gutter=dp(if(resources.configuration.screenWidthDp>=760)BlueDotAppearance.WIDE_GUTTER else BlueDotAppearance.PAGE_GUTTER)
         val root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setBackgroundColor(colors.surface.toArgb())}
@@ -91,7 +93,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
     override fun onStop(){app.bluedotoff.ForegroundState.stopped();super.onStop()}
     override fun onResume(){super.onResume();foreground=true;PairingNotifications.cancelHint(this);if(notificationSettingsOpened){notificationSettingsOpened=false;session.notificationsResult()};if(!permissionDialog){if(batterySettingsOpened){batterySettingsOpened=false;session.batterySettingsReturned()}else session.resume()};render()}
     override fun onPause(){foreground=false;super.onPause()}
-    override fun onSaveInstanceState(state:Bundle){state.putBoolean("permissionDialog",permissionDialog);state.putBoolean("usbChoicePending",usbChoicePending);state.putBoolean("notificationSettingsOpened",notificationSettingsOpened);state.putBoolean("batterySettingsOpened",batterySettingsOpened);state.putBoolean(WIRELESS_SETUP,intent.getBooleanExtra(WIRELESS_SETUP,false));super.onSaveInstanceState(state)}
+    override fun onSaveInstanceState(state:Bundle){state.putBoolean("permissionDialog",permissionDialog);state.putBoolean("usbChoicePending",usbChoicePending);state.putBoolean("notificationSettingsOpened",notificationSettingsOpened);state.putBoolean("batterySettingsOpened",batterySettingsOpened);state.putBoolean(WIRELESS_SETUP,intent.getBooleanExtra(WIRELESS_SETUP,false));state.putBoolean(PC_CHOSEN_HERE,intent.getBooleanExtra(PC_CHOSEN_HERE,false));super.onSaveInstanceState(state)}
     override fun onDestroy(){notificationReminder?.close();code?.text?.clear();session.detach(changed);if(isFinishing&&!isChangingConfigurations)session.close();super.onDestroy()}
     private fun add(view:View){
         box.addView(view,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(BlueDotAppearance.SECTION_GAP)})
@@ -247,7 +249,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
             if(session.managementError.isNotBlank())text(session.managementError,14f)
             choice(p.button,"무선 디버깅","bluedotOFF를 열 때 풀린 앱을 다시 숨겨요. 앱을 닫으면 무선 디버깅도 꺼져요."){act(p.action)}
             choice("② 백그라운드 자동 감시","USB 디버깅","앱을 열지 않아도 풀린 앱을 알아서 다시 숨겨요. USB 디버깅을 켜 둬야 해서 일부 은행·결제 앱이 안 열릴 수 있어요."){chooseUsbWatch()}
-            text("두 방법 모두 bluedotOFF에 시스템 설정 변경 권한을 줘요.",14f)
+            text("두 방법 모두 bluedotOFF에 시스템 설정 변경 권한을 줘요. 이 권한으로 페어링이 7일 뒤 저절로 풀리지 않게도 해요(이 폰에서 디버깅을 허락한 PC에도 적용).",14f)
             if(usbChoicePending&&app.bluedotoff.adb.WatchClient.usbEnabled(this))box.post{finishUsbChoice()}
             if(usbChoicePending)text("개발자 옵션에서 ‘USB 디버깅’을 켠 뒤 이 화면으로 돌아오세요. 켜져 있으면 자동으로 다음 단계로 넘어가요.",14f)
             link("지금은 사용하지 않기"){usbChoicePending=false;if(app.bluedotoff.BackgroundWatch.enabled(this@LocalAdbSetupActivity))app.bluedotoff.BackgroundWatch.set(this@LocalAdbSetupActivity,false);session.skipManagement()}
@@ -322,7 +324,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         app.bluedotoff.ScopeDialogs.watch(this,"Wi-Fi 없이 PC로 시작할까요?","보통은 Wi-Fi로 시작해요. 다른 휴대폰의 핫스팟에 연결해도 될 수 있어요. Wi-Fi가 전혀 없다면 PC와 USB 케이블로 시작할 수 있어요. PC로 시작하면 백그라운드 감시 방법으로만 동작하고, 휴대폰을 다시 시작하거나 bluedotOFF를 업데이트할 때마다 PC에서 명령을 다시 실행해야 해요.","PC로 시작"){startPc()}
     }
     private fun startPc(){
-        intent.removeExtra(WIRELESS_SETUP)
+        intent.removeExtra(WIRELESS_SETUP);intent.putExtra(PC_CHOSEN_HERE,true)
         val ui=getSharedPreferences("ui-state",0)
         if(!app.bluedotoff.BackgroundWatch.enabled(this)){app.bluedotoff.BackgroundWatch.set(this,true);ui.edit().putBoolean("pcStartWatchOn",true).apply()}
         session.choosePcStart(true)
@@ -337,6 +339,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
     }
     /** Back to Wi-Fi: the watch is turned off again only if "PC로 시작" turned it on. */
     private fun stopPc(){
+        intent.removeExtra(PC_CHOSEN_HERE)
         val ui=getSharedPreferences("ui-state",0)
         if(ui.getBoolean("pcStartWatchOn",false)){app.bluedotoff.BackgroundWatch.set(this,false);ui.edit().remove("pcStartWatchOn").apply()}
         session.choosePcStart(false)
@@ -372,7 +375,10 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
     }
     private fun backFromSetup(){
         if(permissionDialog)return
-        if(SetupFlow.stage(session.facts)==SetupStage.NOTIFICATION_PERMISSION&&!session.notifications)recommendNotifications()
+        val stage=SetupFlow.stage(session.facts)
+        if(stage==SetupStage.NOTIFICATION_PERMISSION&&!session.notifications)recommendNotifications()
+        // PC chosen on this screen from step 4: back returns to the Wi-Fi step, one of the two is needed anyway (owner 2026-11-01).
+        else if(stage==SetupStage.PC_START&&intent.getBooleanExtra(PC_CHOSEN_HERE,false))stopPc()
         else finish()
     }
     private fun recommendNotifications(){

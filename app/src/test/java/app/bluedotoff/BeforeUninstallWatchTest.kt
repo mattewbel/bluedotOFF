@@ -64,16 +64,44 @@ class BeforeUninstallWatchTest {
     }
     @Before fun reset(){batches.value=BatchUiState()}
     @After fun clean(){BackgroundWatch.set(context,false);WatchClient.stopNow(context);batches.value=BatchUiState()}
+    @Test fun completedRestoreClearsDismissalEpisodeWithoutAnActivity(){
+        shadowOf(context).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS)
+        val server=Server(context);attach(server)
+        val issue=entry().copy(state=TargetState.UNSUPPORTED_STATE)
+        val journal=JournalStore(context);assertTrue(journal.commit(issue))
+        ReapplyNotification.show(context,issue,true)
+        val manager=context.getSystemService(android.app.NotificationManager::class.java)
+        val deleted=shadowOf(shadowOf(manager).allNotifications.single().deleteIntent).savedIntent
+        manager.cancelAll();LifecycleReceiver().onReceive(context,deleted)
+        // The durable result is restored; run the real pipeline's completion path without a UI or new writes.
+        assertTrue(journal.commit(issue.copy(enabled=false,state=TargetState.NOT_APPLIED)))
+        BatchPipeline.run(context,emptyList(),emptyMap(),false,false,false,false,emptySet(),ReapplySource.MANUAL,{true},true,{})
+        assertTrue(journal.commit(issue));ReapplyNotification.show(context,issue,true)
+        assertEquals(1,shadowOf(manager).allNotifications.size)
+        assertFalse(server.restoreSessionWithLiveWatch)
+    }
+    @Test fun queuedAutomaticBatchCannotEnrollAnAppThatWasRetiredWhileWaiting(){
+        val server=Server(context);attach(server)
+        val retired=entry().copy(enabled=false,state=TargetState.NOT_APPLIED,locationRetired=true)
+        assertTrue(JournalStore(context).commit(retired))
+        val outcome=BatchPipeline.run(context,listOf("test.map"),emptyMap(),true,false,true,false,setOf("test.map"),ReapplySource.APP_OPEN,{true},true,{})
+        assertEquals("작업을 멈춰서 이 앱은 바꾸지 않았어요.",outcome.error)
+        assertEquals(1,outcome.results.size);assertFalse(outcome.results.single().success);assertEquals(retired,JournalStore(context).entries().single())
+        assertFalse(server.restoreSessionWithLiveWatch)
+    }
     @Test fun offlineUninstallRestoreKeepsTheHelperUntilItsResultAndDoesNotHideFailure(){
         val controller=Robolectric.buildActivity(MainActivity::class.java).create()
         val server=Server(context)
         try {
+            assertTrue(JournalStore(context).commit(entry()))
             attach(server)
             setter.invoke(controller.get(),UiModel(gate=Gate.READY,page=Page.SETTINGS,entries=listOf(entry()),connected=true,backgroundWatch=true))
             ForegroundState.started();ForegroundState.resumed()
             MainActivity::class.java.getDeclaredMethod("beforeUninstall").apply{isAccessible=true}.invoke(controller.get())
             await{server.stopped}
             assertTrue("Restore must use the resident session even with Wi-Fi OFF",server.restoreSessionWithLiveWatch)
+            // The result follows the cleanup (GPT rc14 review).
+            await{(getter.invoke(controller.get()) as UiModel).uninstallCheck!=null}
             val model=getter.invoke(controller.get()) as UiModel
             assertEquals(1,model.uninstallCheck)
             assertFalse(BackgroundWatch.enabled(context));assertFalse(WatchClient.available(context))
@@ -92,8 +120,24 @@ class BeforeUninstallWatchTest {
             val outcome=BatchOutcome(false,listOf(BatchResult("test.map",restored)),listOf(restored),emptyList(),beforeUninstall=true)
             batches.value=BatchUiState(100,BatchProgress(1,1,BatchPhase.FINISHED),outcome,hide=false)
             await{server.stopped}
+            await{(getter.invoke(controller.get()) as UiModel).uninstallCheck!=null}
             assertEquals(0,(getter.invoke(controller.get()) as UiModel).uninstallCheck)
             assertFalse(BackgroundWatch.enabled(context));assertFalse(WatchClient.connected())
         }finally{controller.destroy()}
     }
+    /** Claude review 2026-10-31: a re-hide that failed in the app gets the watch's 10-minute retry timer. */
+    @Test fun aReHideThatFailedInTheAppIsHandedToTheWatch(){
+        val controller=Robolectric.buildActivity(MainActivity::class.java).create()
+        val server=Server(context)
+        try {
+            attach(server)
+            val failed=entry().copy(state=TargetState.FAILED_SAFE,retryHide=true,settlingVerified=false,lastVerifiedTime=System.currentTimeMillis())
+            assertTrue(JournalStore(context).commit(failed))
+            val outcome=BatchOutcome(true,listOf(BatchResult("test.map",failed,"WATCH_FAILED")),listOf(failed),emptyList())
+            batches.value=BatchUiState(101,BatchProgress(1,1,BatchPhase.FINISHED),outcome,hide=true)
+            @Suppress("UNCHECKED_CAST") val timers=WatchClient::class.java.getDeclaredField("retryTimers").apply{isAccessible=true}.get(WatchClient) as Set<String>
+            await{"test.map" in timers}
+        }finally{controller.destroy()}
+    }
 }
+

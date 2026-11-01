@@ -2,11 +2,11 @@
 
 **English** | [한국어](README.ko.md)
 
-**[⬇ Download the latest APK](https://github.com/mattewbel/bluedotOFF/releases/latest)** — get `bluedotOFF-1.2.2-release.apk` under Assets.
+**[⬇ Download the latest APK](https://github.com/mattewbel/bluedotOFF/releases/latest)** — get `bluedotOFF-1.3.0-release.apk` under Assets.
 
 > 🔒 **Open source · No ads, analytics or tracking · No root**  
 > The wireless debugging connection stays inside the phone (127.0.0.1). Location permissions are untouched; only one indicator flag (`0x100`) changes.  
-> To confirm a download is the official file, see `bluedotOFF-1.2.2-checksums.txt` on the release. Signing certificate SHA-256: `61:9F:E1:EC:BD:F5:9D:5D:0B:83:8D:DC:64:20:E5:8B:E9:0F:82:8B:E1:1C:B6:1F:E6:C8:E6:AA:4C:EA:AD:62`
+> To confirm a download is the official file, see `bluedotOFF-1.3.0-checksums.txt` on the release. Signing certificate SHA-256: `61:9F:E1:EC:BD:F5:9D:5D:0B:83:8D:DC:64:20:E5:8B:E9:0F:82:8B:E1:1C:B6:1F:E6:C8:E6:AA:4C:EA:AD:62`
 
 An app for Samsung One UI 9 (Android 17) phones that **hides the blue location indicator (Blue Dot) only for the apps you choose**.
 Location permissions and location history stay as they are. bluedotOFF changes a single setting that controls the status bar indicator, and it records the previous state so you can undo it in the app.
@@ -70,7 +70,7 @@ If you tried another model, please share the result in [Issues](../../issues) us
 
 ## Install
 
-Download the latest APK (`bluedotOFF-1.2.2-release.apk`) from [Releases](../../releases) and install it. You may need to allow "Install unknown apps" the first time.
+Download the latest APK (`bluedotOFF-1.3.0-release.apk`) from [Releases](../../releases) and install it. You may need to allow "Install unknown apps" the first time.
 
 To get new versions without checking GitHub yourself, add `https://github.com/mattewbel/bluedotOFF` to [Obtainium](https://github.com/ImranR98/Obtainium), an open-source app that installs updates from GitHub releases. It installs the same signed APK, and Android refuses an update signed by anyone else.
 
@@ -112,7 +112,9 @@ Pairing is needed only once.
 - **Restore:** Home → **Restore apps** → **Restore all**, or **Choose apps** (also Home → **Edit**) to pick apps with search and Select all like Add apps, then **Restore N**. You can also restore one app from its detail screen with **Restore original display setting**.
 - **Reapply:** After a restart or an app update, Android may turn the indicator back on. When an app update or similar undoes it, a running [background watch](#background-watch) re-applies it as soon as a change is detected, without opening the app. A phone restart stops the watch; with automatic management and **Re-apply automatically when opened** on, it starts again and re-applies them once Wi-Fi connects (otherwise open the app once). With automatic management, opening bluedotOFF re-applies those apps and shows "Re-applied automatically to N apps" (turn it off in Settings → **Re-apply automatically when opened**). After a phone update the apps are re-applied the same way. For apps that need checking or were reinstalled it does not run automatically; re-apply them yourself with **Reapply** next to **Apps to reapply** on Home, or from the app's detail screen.
 - **Check again:** Tap ↻ next to **Last checked N min ago** on Home to recheck your registered apps right away.
-- **Before uninstalling:** Settings → **Restore before uninstalling**. It returns every hidden app to its original state and then tells you whether you can uninstall bluedotOFF.
+- **Widget:** Add the bluedotOFF widget to your home screen (long-press the home screen → Widgets). It shows whether background watch is running, how many apps are kept hidden or need attention, and when they were last checked. While the watch runs, ↻ on the widget checks again. Tap the widget to open the app.
+- **Shortcuts:** Long-press the bluedotOFF icon for **View history** and **Add apps**.
+- **Before uninstalling:** Settings → **Restore before uninstalling**. It returns every hidden app to its original state (and turns off background watch and automatic wireless debugging management) and then tells you whether you can uninstall bluedotOFF. A confirmation waits five seconds before you can start. Once all registered apps are restored, the app also turns USB and wireless debugging off if it has the required settings permission; otherwise, turn them off in Developer options.
 - **Keep the screen open while it works.** If you leave the app during apply or restore, the remaining apps are not changed. Apps already done stay as they are.
 - **Apps left hidden (after reinstalling only):** Only needed if bluedotOFF was removed and installed again. Settings → **Apps left hidden (after reinstalling only)** → pick apps → **Unhide N**. Preinstalled apps may have had the indicator off originally, so Select all skips them; pick them one by one.
 
@@ -128,7 +130,7 @@ Pairing is needed only once.
 
 ### Manage wireless debugging automatically
 
-When on, the app keeps Wireless debugging on only while you use it and turns it off shortly after you leave the app (if the app is force-closed before that, it turns it off the next time you open the app). For this, the app is given permission to change system settings once. The permission is used only to turn Wireless debugging on and off.
+When on, the app keeps Wireless debugging on only while you use it and turns it off shortly after you leave the app (if the app is force-closed before that, it turns it off the next time you open the app). For this, the app is given permission to change system settings once. The permission is used only to turn Wireless debugging on and off and to keep pairings from expiring after 7 days. To do that it turns off Android’s 7-day expiry for debugging authorizations, so computers this phone has allowed to debug it do not expire either. Turning automatic management off or **Restore before uninstalling** puts the original value back.
 To stop, turn off **Settings → Manage wireless debugging automatically** or tap **Settings → Advanced settings → Remove automatic management permission**. Without automatic management, you can turn it off yourself with **Settings → Turn off wireless debugging** after you are done.
 With background watch on, this switch is locked, and wireless debugging is turned on briefly only to start the watch again after a restart or an update.
 
@@ -137,6 +139,7 @@ With background watch on, this switch is locked, and wireless debugging is turne
 In Settings → **Connection** (off by default). The first time you turn it on, read the five-second warning and confirm. Choosing **② Automatic background watch** in setup step 9 turns it on too. The **Disable battery optimization** switch is available to all users. Turning it off opens App info; choose Battery → **Optimized** to remove the exemption. The switch changes only after the app reads the actual setting again. Turning it on opens Android’s confirmation dialog, where you choose whether to allow it. On Samsung phones, allowing the request applies **Unrestricted** battery use. If the dialog cannot open or the exemption is already allowed, you can use Settings → App info → Battery → **Unrestricted**. This may help background watch work after you close the app, but may increase battery use and does not guarantee Android will keep the process alive. You can change the setting at any time. During first-time setup, this offer appears before scope selection only if you chose background watch; **Not now** is available.
 
 - **What it does:** While USB debugging is on, apps that lost hiding (an app changed its own settings or was updated) are hidden again as soon as the change is detected, even without opening bluedotOFF. This usually takes a few seconds but can be slower, for example in power saving. Wi-Fi and wireless debugging can be off meanwhile.
+- **Failed hides:** If hiding an app fails safely (nothing was changed), the watch tries again after 10 minutes, up to 3 times a day. Restoring that app cancels this.
 - **What it needs:** USB debugging has to stay on. The app never turns USB debugging on for you; it opens Developer options for you. If USB debugging is off when you turn the switch on, the app explains this first, and the watch turns on only once you come back with USB debugging on.
 - **Starting and restarting:** Starting the watch briefly needs Wi-Fi and wireless debugging, or a PC ([Start from a PC](#no-wi-fi-start-from-a-pc)). Restarting the phone, updating bluedotOFF or turning USB debugging off stops it. After a restart, with automatic management and **Re-apply automatically when opened** on, it starts again by itself once Wi-Fi connects and re-hides what the restart undid; otherwise a notification tells you. Turn USB debugging back on and open the app while connected to Wi-Fi to start it again (automatically with automatic management on; otherwise turn wireless debugging on yourself first). While it is stopped, Home says so, and a notification tells you when USB debugging is on again.
 - **With automatic management:** While watching, wireless debugging stays off. The **Manage wireless debugging automatically** switch is locked and is used only to start the watch again.
@@ -179,6 +182,8 @@ Off by default. The app asks once (choose **Turn on** or **Turn off**), and you 
 
 - **Before uninstalling, tap Settings → Restore before uninstalling.** It returns every app to its original state and then tells you whether it is safe to uninstall. Uninstalling or clearing app data also removes the record of the original state, so hidden apps stay hidden. After reinstalling, such apps show as "Hidden · no record" and can be unhidden in Settings → **Apps left hidden (after reinstalling only)**. Without a record this turns the indicator setting on rather than restoring an exact original, and apps the system excludes from the indicator may still not show it. However, shared app groups and some internal system apps cannot be unhidden there after their records are lost. Restarting the phone sometimes brings the indicator back, but it depends on the app.
 - Android sometimes turns the indicator back on (restart, app update, OS policy). The app detects this and lists the app under **Apps to reapply** on Home.
+- Reapply reminders share one notification showing how many apps need attention. While background watch is running, it checks updated apps first and notifies you if any still need attention. This refers to **hiding the blue location indicator**, not a problem with the other apps themselves. Tap the notification to see the remaining apps and their reasons on Home.
+- If an app no longer requests location permission after an update, it leaves the managed list automatically (Home briefly says so and History keeps the reason). Its original-state record is kept.
 - With background watch off, there is no real-time monitoring. **When you open the app again**, it rechecks only the apps Android reported as changed (update, install, component change), or all registered apps if 10 minutes have passed. Tap ↻ next to **Last checked** on Home to check at any time. While bluedotOFF is fully closed, reapply notifications cannot report app updates right away, and they may not arrive in power saving mode.
 - If the connection drops or the state cannot be confirmed, the app does not report success and stops changing things. If you see **Restore needs review**, do not clear app data; connect again and recheck.
 - **Reset this app's pairing** only clears this app's connection data. To remove the phone's record, go to Wireless debugging → Paired devices → bluedotOFF → Forget.

@@ -26,6 +26,12 @@ class SharedGroupTest {
     }
     @Test fun companionWithoutLocationDeclarationIsPinnedButNeverGetsAGrant(){val r=Rig();val baseline=r.snapshots.toMap();val hidden=r.run();assertEquals(listOf(0),r.writes);assertTrue(hidden.all{it.originalBit==256&&it.settlingVerified&&it.groupIdentities.size==2});assertFalse(r.snapshots[r.names[1]]!!.fineGranted);assertEquals(1500L,r.clock);r.run(false);assertEquals(listOf(0,256),r.writes);assertEquals(baseline,r.snapshots);assertTrue(r.records.values.none{it.enabled})}
     @Test fun originalOffRemainsOffAfterRestore(){val r=Rig();r.snapshots.replaceAll{_,s->s.copy(fineFlags=0x200)};r.run();r.run(false);assertTrue(r.writes.isEmpty());assertTrue(r.records.values.all{it.originalBit==0&&!it.enabled})}
+    @Test fun restoringOneMemberRecordsIntentForTheWholeGroupAtomically(){
+        val r=Rig();r.run();val before=r.records.toMap();val writes=r.writes.toList();val commits=r.commits
+        SafetyEngine.requestRestore(r.journal,setOf(r.names.first()))
+        assertEquals(commits+1,r.commits);assertEquals(writes,r.writes)
+        assertTrue(r.records.values.all{it.restoreRequested&&!WatchPolicy.eligible(it)&&it.originalBit==before.getValue(it.identity.packageName).originalBit})
+    }
     @Test fun incompleteConsentCannotChangeAnUnlistedPeer(){val r=Rig();try{r.engine().execute(listOf(r.names[0]),true){true};fail()}catch(_:IllegalArgumentException){};assertTrue(r.writes.isEmpty());assertTrue(r.records.isEmpty())}
     @Test fun criticalOrPersistentPeerBlocksTheEntireGroup(){for(change in listOf<(Snapshot)->Snapshot>({it.copy(persistent=true)},{it.copy(criticalPackage=true)},{it.copy(identity=it.identity.copy(uid=1000))},{it.copy(identity=it.identity.copy(signers=emptyList()))})){val r=Rig();val p=r.names[1];r.snapshots[p]=change(r.snapshots[p]!!);assertTrue(runCatching{r.run()}.isFailure);assertTrue(r.records.isEmpty());assertTrue(r.writes.isEmpty())}}
     @Test fun firstDurableFailureIssuesNoSetter(){val r=Rig();r.failAt=1;assertTrue(runCatching{r.run()}.exceptionOrNull() is JournalPersistenceException);assertTrue(r.writes.isEmpty());assertTrue(r.records.isEmpty())}
@@ -87,7 +93,7 @@ class SharedGroupTest {
     }
     /** B-1: an interrupted restore finishes as restored. */
     @Test fun interruptedRestoreFinishesAsRestored(){
-        val r=Rig();r.run();r.failAt=r.commits+2;assertTrue(runCatching{r.run(false)}.exceptionOrNull() is JournalPersistenceException)
+        val r=Rig();r.run();SafetyEngine.requestRestore(r.journal,r.names.toSet());r.failAt=r.commits+2;assertTrue(runCatching{r.run(false)}.exceptionOrNull() is JournalPersistenceException)
         assertTrue(r.records.values.all{it.state==TargetState.PENDING_RESTORE});r.failAt=0
         val settled=r.engine().recover(r.names)
         assertTrue(settled.all{!it.enabled&&it.state==TargetState.NOT_APPLIED});assertTrue(r.snapshots.values.all{it.bit==256})

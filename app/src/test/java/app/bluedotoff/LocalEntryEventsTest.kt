@@ -69,4 +69,36 @@ class LocalEntryEventsTest {
         assertEquals(1,m.lastVerifiedAppliedCount);assertEquals(2,m.reapplyCount);assertEquals(3,m.otherCheckCount);assertFalse(m.allLastVerifiedApplied)
         assertEquals(6,m.visibleEntries.count{it.enabled})
     }
+    @Test fun updateRemovingLocationCannotCycleBetweenLocalCheckAndWatch(){
+        val updated=snapshot.copy(identity=id.copy(versionCode=4,lastUpdateTime=5),fineDeclared=false,fineGranted=false,coarseDeclared=false,coarseGranted=false)
+        val rejected=Reconcile.read(Reconcile.update(entry),updated,"fp|abi","boot"){updated}
+        assertEquals(TargetState.NOT_APPLIED,rejected.state);assertTrue(rejected.locationRetired);assertFalse(rejected.enabled)
+        repeat(5){
+            val local=LocalEntryEvents.read(rejected,"fp","boot"){updated.identity}
+            assertEquals(rejected,local);assertFalse(WatchPolicy.eligible(local))
+            assertEquals(rejected,Reconcile.read(local,updated,"fp|abi","boot"))
+        }
+        assertEquals(entry.identity,rejected.identity);assertEquals(entry.originalBit,rejected.originalBit)
+        assertEquals(0,UiModel(entries=listOf(rejected)).reapplyCount)
+        assertEquals(0,UiModel(entries=listOf(rejected)).otherCheckCount)
+    }
+    @Test fun unsupportedStateAfterBootIsNotPromotedByTheSameLocalBootMarker(){
+        val rejected=entry.copy(state=TargetState.UNSUPPORTED_STATE)
+        assertEquals(rejected,LocalEntryEvents.read(rejected,"fp","new-boot"){id})
+        assertEquals(TargetState.NEEDS_REAPPLY_BOOT,Reconcile.read(rejected,snapshot,"fp|abi","new-boot").state)
+        assertEquals(TargetState.NEEDS_RECHECK_FIRMWARE,Reconcile.read(rejected,snapshot,"new-fp|abi","boot").state)
+    }
+    @Test fun aLaterAuthoritativeReadCanRecoverAnUnsupportedUpdatedApp(){
+        val rejected=entry.copy(state=TargetState.UNSUPPORTED_STATE)
+        val restoredPermission=snapshot.copy(identity=id.copy(versionCode=5,lastUpdateTime=6))
+        assertEquals(TargetState.NEEDS_REAPPLY_UPDATE,Reconcile.read(rejected,restoredPermission,"fp|abi","boot").state)
+        assertEquals(TargetState.NEEDS_REAPPLY_UPDATE,Reconcile.update(rejected).state)
+        assertEquals(TargetState.APPLIED,Reconcile.read(rejected,snapshot,"fp|abi","boot").state)
+    }
+    @Test fun unsupportedReinstalledAppStillCannotInheritTheOldRegistration(){
+        val rejected=entry.copy(state=TargetState.UNSUPPORTED_STATE)
+        val changed=LocalEntryEvents.read(rejected,"fp","boot"){id.copy(firstInstallTime=10)}
+        assertEquals(TargetState.INACTIVE_INSTALL,changed.state);assertFalse(changed.enabled)
+        assertEquals(entry.originalBit,changed.originalBit)
+    }
 }

@@ -81,16 +81,26 @@ class UiTextTest {
     @Test fun internalDiagnosticsBecomePlainErrorGuidance(){
         assertEquals(UiText.GENERIC_ERROR,UiText.error("HELPER_OPERATION_REJECTED"))
         assertEquals(UiText.GENERIC_ERROR,UiText.error("ADB session generation changed"))
-        assertEquals("복원 기록 저장 확인 실패",UiText.error("복원 기록 저장 확인 실패"))
+        assertEquals("원래 상태 기록이 저장됐는지 확인하지 못했어요.",UiText.error("원래 상태 기록이 저장됐는지 확인하지 못했어요."))
         assertEquals("",UiText.error(""))
         assertEquals("The task couldn't be finished. Check the device connection and try again.",UiText.text(language("en"),UiText.error("Helper descriptor mismatch")))
     }
     @Test fun legacyRecoverableErrorsGetUpdatedCopyButRollbackBlockStaysExact(){
         assertEquals("변경 후 상태를 확인하지 못해 원래 표시 상태로 되돌렸어요. 다시 확인해 주세요.",UiText.error("안전성 확인에 실패해 원래 표시 상태로 복원했습니다."))
         assertEquals("표시 상태가 유지되는지 확인하지 못했어요. 다시 확인해 주세요.",UiText.error("현재 상태의 지속성을 확인하지 못했습니다. 다시 확인해 주세요."))
-        assertEquals("숨김 유지 여부를 다시 확인해야 해요. 재적용을 눌러주세요.",UiText.error("이전 빌드의 기록은 지속성 검사가 없어 새 적용 확인이 필요합니다."))
-        val serious="복원을 확인하지 못했습니다. 추가 변경을 차단했습니다."
+        assertEquals("숨김이 유지되는지 다시 확인해야 해요.",UiText.error("이전 빌드의 기록은 지속성 검사가 없어 새 적용 확인이 필요합니다."))
+        assertEquals("숨김이 유지되는지 다시 확인해야 해요.",UiText.error("중단된 적용의 지속성을 확인하지 못했습니다. 직접 다시 확인해 주세요."))
+        assertEquals("숨김이 유지되는지 다시 확인해야 해요.",UiText.error("숨김 유지 여부를 다시 확인해야 해요. 재적용을 눌러주세요."))
+        val serious="원래대로 되돌렸는지 확인하지 못했어요. 안전을 위해 이 앱은 더 바꾸지 않아요."
         assertEquals(serious,UiText.error(serious))
+    }
+    /** 1.3.0 wording review: sentences older builds stored in records and history show in the new words, also in English. */
+    @Test fun storedOldSentencesShowTheNewWords(){
+        assertEquals("작업이 중간에 끊긴 뒤 상태를 확인하지 못해서, 안전을 위해 이 앱은 더 바꾸지 않아요.",UiText.error("중단된 작업의 안전성을 확인하지 못했습니다. 추가 변경을 차단했습니다."))
+        assertEquals("끊긴 묶음 작업을 원래대로 되돌렸는지 확인하지 못했어요. 안전을 위해 더 바꾸지 않아요.",UiText.error("중단된 공유 앱 묶음을 원래대로 되돌렸는지 확인하지 못했습니다. 추가 변경을 차단했습니다."))
+        assertEquals("Android 핵심 시스템 앱이라 숨길 수 없어요. 아무것도 바꾸지 않았어요.",UiText.error("핵심 OS 패키지는 지원하지 않습니다. 변경된 내용은 없습니다."))
+        assertEquals("Only apps in the primary user profile are supported. (Not Secure Folder or other users’ apps.) Nothing was changed.",
+            UiText.text(language("en"),UiText.error("사용자 0의 앱만 지원합니다. 변경된 내용은 없습니다.")))
     }
     @Test fun offlineLastVerifiedCopyDoesNotPromiseCurrentLiveState(){
         val id=app.bluedotoff.core.Identity("test.app",0,10001,listOf("signer"),1,1,1)

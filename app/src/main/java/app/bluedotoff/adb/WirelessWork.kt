@@ -101,6 +101,9 @@ object WirelessWork {
             return selected?:error("연결을 확인하지 못했어요.")
         }
         fun isConnectFailure(error:Throwable)=(error as? LocalAdbStageException)?.state==app.bluedotoff.core.LocalAdbState.ADB_CONNECTION_FAILED
+        // A refused key (e.g. the pairing expired) ends before any session: nothing ran, so turning wireless debugging off is safe
+        // when this app turned it on. One the person turned on stays on: they may be pairing again (Fold7 2026-10-29).
+        fun isAuthFailure(error:Throwable)=(error as? LocalAdbStageException)?.state==app.bluedotoff.core.LocalAdbState.ADB_AUTHENTICATION_FAILED
         return try {
             var port=if(knownPort!=null&&!wasOff)knownPort else discoverPort(null)
             android.util.Log.i("bluedotOFF","lease: ready to connect after ${android.os.SystemClock.elapsedRealtime()-leaseStart}ms (wireless was ${if(wasOff)"off" else "on"})")
@@ -118,7 +121,7 @@ object WirelessWork {
             observers.forEach{runCatching{it.close()}}
             if(controls.consent&&controls.granted) {
                 val safeToDisable=WirelessManagementPolicy.mayDisable(controls.consent,controls.granted,receipt.helperExited,receipt.socketClosed,completed)||
-                    (nothingOpened&&(failure==null||isConnectFailure(failure!!)||failure is IllegalStateException))
+                    (nothingOpened&&(failure==null||isConnectFailure(failure!!)||wasOff&&isAuthFailure(failure!!)||failure is IllegalStateException))
                 // A clean finish on a visible main screen keeps wireless debugging on for the next task; release() turns it off later.
                 if(receipt.kept||safeToDisable&&hold&&completed&&failure==null&&ForegroundState.active)setHeld(context,true)
                 else if(safeToDisable) {
@@ -126,7 +129,7 @@ object WirelessWork {
                     runCatching{beforeDisable()}
                     if(!runCatching{controls.disableWirelessDebugging()}.getOrDefault(false))
                         cleanupNotice="설정은 끝났어요. 무선 디버깅을 직접 꺼주세요."
-                } else cleanupNotice="무선 디버깅을 직접 꺼주세요. 연결이 끝났는지 확인하지 못했어요."
+                } else if(!(nothingOpened&&failure?.let(::isAuthFailure)==true))cleanupNotice="무선 디버깅을 직접 꺼주세요. 연결이 끝났는지 확인하지 못했어요."
             }
             // Diagnostic only (no personal data): why the lease could not confirm an orderly close.
             if(cleanupNotice.isNotEmpty()||failure!=null)android.util.Log.w("bluedotOFF","wireless lease: helperExited=${receipt.helperExited} socketClosed=${receipt.socketClosed} completed=$completed nothingOpened=$nothingOpened failure=${failure?.javaClass?.simpleName}: ${failure?.message?.take(160)} notice=${cleanupNotice.isNotEmpty()}")

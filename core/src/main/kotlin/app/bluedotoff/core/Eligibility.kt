@@ -2,17 +2,17 @@ package app.bluedotoff.core
 
 enum class UidClass { NORMAL, CORE_UID, OTHER_USER, SPECIAL_UID, PERSISTENT_CORE, CRITICAL_PACKAGE, MULTI_PACKAGE_SHARED_UID, SINGLETON_SHARED_USER, UNKNOWN_UID_OWNERSHIP }
 enum class BlockReason(val message:String) {
-    CORE_UID("Android 핵심 시스템 구성 요소는 지원하지 않습니다."),
-    OTHER_USER("사용자 0의 앱만 지원합니다."),
-    SPECIAL_UID("지원하지 않는 특수 시스템 앱입니다."),
-    PERSISTENT_CORE("상시 실행되는 핵심 시스템 구성 요소는 지원하지 않습니다."),
-    CRITICAL_PACKAGE("핵심 OS 패키지는 지원하지 않습니다."),
-    MULTI_PACKAGE_SHARED_UID("이 앱은 다른 앱과 위치 설정을 공유하므로 따로 적용할 수 없습니다."),
-    UNKNOWN_UID_OWNERSHIP("이 앱과 묶인 앱을 모두 확인하지 못했습니다."),
-    SINGLETON_UNVERIFIED("이 앱은 오래된 방식으로 다른 앱과 묶여 있습니다. 이 기기에서는 아직 안전성이 확인되지 않았습니다."),
-    IDENTITY_UNKNOWN("앱 설치 정보 또는 서명을 확인하지 못했습니다."),
-    FINE_PERMISSION("정확한 위치 권한이 허용된 앱만 적용할 수 있습니다."),
-    LOCATION_STATE("현재 위치 사용 상태를 안전하게 확인할 수 없습니다.")
+    CORE_UID("Android 핵심 시스템 앱이라 숨길 수 없어요."),
+    OTHER_USER("기본 사용자 앱만 숨길 수 있어요. (보안 폴더·두 번째 사용자 앱 제외)"),
+    SPECIAL_UID("특수 시스템 앱이라 숨길 수 없어요."),
+    PERSISTENT_CORE("항상 실행되는 핵심 시스템 앱이라 숨길 수 없어요."),
+    CRITICAL_PACKAGE("Android 핵심 시스템 앱이라 숨길 수 없어요."),
+    MULTI_PACKAGE_SHARED_UID("다른 앱과 위치 설정을 함께 써서 이 앱만 숨길 수 없어요."),
+    UNKNOWN_UID_OWNERSHIP("이 앱과 묶인 앱을 모두 확인하지 못했어요."),
+    SINGLETON_UNVERIFIED("다른 앱과 오래된 방식으로 묶여 있어서, 이 휴대폰에서 안전하게 바꿀 수 있는지 아직 확인되지 않았어요."),
+    IDENTITY_UNKNOWN("앱의 설치 정보를 확인하지 못했어요."),
+    FINE_PERMISSION("‘정확한 위치’를 허용한 앱만 숨길 수 있어요."),
+    LOCATION_STATE("이 앱의 위치 사용 상태를 확인하지 못했어요.")
 }
 data class UidOwnership(val packageName:String,val uid:Int,val peers:List<String>?,val sharedUserId:String?=null,val persistent:Boolean=false,val criticalPackage:Boolean=false,val authoritative:Boolean=true) {
     val uidClass:UidClass get()=when {

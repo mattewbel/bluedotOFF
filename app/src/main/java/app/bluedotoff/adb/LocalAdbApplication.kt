@@ -6,6 +6,9 @@ class LocalAdbApplication:android.app.Application(){
         super.onCreate()
         app.bluedotoff.StartupScanHandoff.observePackages(this)
         app.bluedotoff.LegacyTestLog.cleanup(this)
+        // The reapply counter starts with the first run of 1.3.0, not with its first result (the screen names this date).
+        runCatching{app.bluedotoff.ReapplyStats.since(this)}
+        app.bluedotoff.LifecycleEvents.widget={app.bluedotoff.StatusWidget.update(this)}
         app.bluedotoff.BackgroundWatch.observeUsb(this)
         runCatching{WatchClient.initialize(this)}.onFailure{app.bluedotoff.WatchLog.event("state","watchInitFailed=${it.javaClass.simpleName}");app.bluedotoff.WatchNotification.stopped(this,app.bluedotoff.WatchNotification.Reason.STOPPED)}
         // The process may have died while holding wireless debugging on; turn it off unless a screen opens meanwhile.

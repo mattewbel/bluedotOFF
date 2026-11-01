@@ -176,4 +176,26 @@ class SafetyEngineTest {
     @Test fun eventMarkersNeverEraseInterruptedTransaction(){val(s,_,e)=rig();e.userHide(identity.packageName);val pending=s.data.last().copy(state=TargetState.PENDING_RESTORE);assertEquals(pending,Reconcile.boot(pending));assertEquals(pending,Reconcile.update(pending))}
     @Test fun permissionChangeRequiresManualReviewWithoutWrites(){val(s,p,e)=rig();e.userHide(identity.packageName);p.current=p.current.copy(backgroundGranted=true);assertEquals(TargetState.UNSUPPORTED_STATE,Reconcile.read(s.data.last(),p.current,firmware.key,"boot:1").state);assertEquals(listOf(0),p.writes)}
     @Test fun verificationDigestExcludesOnlySensitivityBit(){assertEquals(baseline.invariantDigest(),baseline.copy(fineFlags=baseline.fineFlags and 256.inv()).invariantDigest());assertNotEquals(baseline.invariantDigest(),baseline.copy(coarseFlags=baseline.coarseFlags xor 0x100).invariantDigest())}
+    /** Owner 2026-10-31: a hide of an app bluedotOFF had hidden that fails safely is marked to be hidden again
+     *  automatically; it stays marked over further failures and clears once the hide holds. */
+    @Test fun aFailedHideOfAnAppWeHadHiddenIsRetriedAutomatically(){
+        val(_,p,e)=rig();assertEquals(TargetState.APPLIED,e.userHide(identity.packageName).state)
+        // The fake phone fails only its first write: clear the list before each failing attempt.
+        p.current=baseline;p.failAfterWrite=true;p.writes.clear()
+        val failed=e.userHide(identity.packageName)
+        assertEquals(TargetState.FAILED_SAFE,failed.state);assertTrue(failed.retryHide);assertTrue(WatchPolicy.retrying(failed))
+        p.writes.clear();assertTrue(e.userHide(identity.packageName).retryHide)
+        p.failAfterWrite=false
+        val applied=e.userHide(identity.packageName)
+        assertEquals(TargetState.APPLIED,applied.state);assertFalse(applied.retryHide)
+    }
+    /** A failed restore (the user wants the app back) or a first hide never sets it. */
+    @Test fun aFailedRestoreOrFirstHideIsNeverHiddenAgainAutomatically(){
+        val(_,p,e)=rig();p.failAfterWrite=true
+        assertFalse(e.userHide(identity.packageName).retryHide)
+        p.failAfterWrite=false;e.userHide(identity.packageName)
+        p.failAfterWrite=true;p.writes.clear()
+        val restore=e.userRestore(identity.packageName)
+        assertEquals(TargetState.FAILED_SAFE,restore.state);assertFalse(restore.retryHide);assertFalse(WatchPolicy.eligible(restore))
+    }
 }

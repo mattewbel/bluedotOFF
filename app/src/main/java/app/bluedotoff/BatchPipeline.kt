@@ -14,22 +14,25 @@ internal object BatchPipeline {
         val runtimePrefs=app.getSharedPreferences("ui-state",Context.MODE_PRIVATE)
         val results=mutableListOf<BatchResult>()
         val observed=linkedMapOf<String,Snapshot>()
+        val rewrote=HashSet<String>()
         val runner=TargetBatch.Runner()
         var pipelineStopped=false
         var warning=""
         var failure=""
         var cursor=0
         val rememberResult:(BatchResult)->Unit={result->
-            if(hide&&!show&&(auto||result.packageName in reapplying))ReapplyHistoryStore(app).record(result,if(auto)autoSource else ReapplySource.MANUAL)
+            if(hide&&!show&&(auto||result.packageName in reapplying))ReapplyHistoryStore(app).record(result,if(auto)autoSource else ReapplySource.MANUAL,rewrote=result.packageName in rewrote)
         }
         try {
             WirelessWork.runBatch(app,!background,onCleanup={if(it.isNotBlank())warning=it},hold=!background,background=background) { session ->
+            // This session and restore-intent saves share LocalAdbSession.exclusive; check a queued batch once here.
+            if(auto&&journal.entries().any{(it.restoreRequested||it.locationRetired)&&it.identity.packageName in targets})throw SafetyException("작업을 멈춰서 이 앱은 바꾸지 않았어요.")
             while(cursor<targets.size&&!runner.stopped&&!pipelineStopped) {
                 if(!canStart()){failure="화면을 떠나서 남은 앱은 바꾸지 않았어요. 이미 끝난 적용과 등록 기록은 그대로예요.";break}
                 report(BatchProgress(cursor,targets.size,BatchPhase.CONNECTING))
                 session.run { active ->
                     val engine=SafetyEngine(active,journal,System::currentTimeMillis,{BootSession.current(app)},observe={phase,snapshot,wrote->
-                        active.recordVerification(phase,snapshot,wrote)
+                        active.recordVerification(phase,snapshot,wrote);if(wrote)rewrote+=snapshot.identity.packageName
                         if(phase=="settled_1500ms")observed[snapshot.identity.packageName]=snapshot
                     })
                     if(targets[cursor] in groupMap){
@@ -37,7 +40,7 @@ internal object BatchPipeline {
                         // their checks overlapped (1.1.4).
                         val groups=mutableListOf<List<String>>();var at=cursor
                         while(groups.size<8&&at<targets.size){val g=groupMap[targets[at]]?:break;groups+=g;at+=g.size}
-                        SharedGroupEngine(active,journal,System::currentTimeMillis,{BootSession.current(app)},observe={phase,s,wrote->active.recordVerification(phase,s,wrote);if(phase=="settled_1500ms")observed[s.identity.packageName]=s})
+                        SharedGroupEngine(active,journal,System::currentTimeMillis,{BootSession.current(app)},observe={phase,s,wrote->active.recordVerification(phase,s,wrote);if(wrote)rewrote+=s.identity.packageName;if(phase=="settled_1500ms")observed[s.identity.packageName]=s})
                             .executeWindow(groups,hide,canStart){group,outcome->
                                 val groupResults=outcome.fold({members->members.map{e->BatchResult.of(e.identity.packageName,e)}},{e->
                                     val saved=runCatching{journal.entries()}.getOrDefault(emptyList())
@@ -90,6 +93,8 @@ internal object BatchPipeline {
         val untouched=if(runner.stopped||pipelineStopped)"앞선 작업의 복원이나 연결을 먼저 확인해야 해서 바꾸지 않았어요." else "작업을 멈춰서 이 앱은 바꾸지 않았어요."
         while(cursor<targets.size){results.add(BatchResult(targets[cursor++],error=untouched))}
         val outcome=BatchOutcome(hide,results,journal.entries(),observed.values.toList(),warning,failure,show=show,auto=auto,beforeUninstall=beforeUninstall)
+        // Restore can resolve a dismissed issue too, including when no Activity survives to consume this outcome.
+        runCatching{ReapplyNotification.clear(app)}
         if(!hide&&!show&&ScopePreferences(app).pending!=null&&!ScopePreferences(app).finishRestore(outcome))return outcome.copy(error=outcome.error.ifBlank{"일부 앱의 복원을 확인하지 못해 이전 적용 범위를 유지했어요. 설정에서 다시 확인해주세요."})
         return outcome
     }

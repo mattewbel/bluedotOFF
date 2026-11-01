@@ -175,7 +175,7 @@ object LocalAdbSession {
                 val bootCount=android.provider.Settings.Global.getInt(context.contentResolver,android.provider.Settings.Global.BOOT_COUNT,-1)
                 val entries=journal.entries()
                 val current=entries.associate{it.identity.packageName to backend.read(it.identity.packageName)}
-                val reconciled=entries.map{app.bluedotoff.core.Reconcile.read(it,current[it.identity.packageName],firmware.key,app.bluedotoff.BootSession.current(context),current)}
+                val reconciled=entries.map{app.bluedotoff.core.Reconcile.read(it,current[it.identity.packageName],firmware.key,app.bluedotoff.BootSession.current(context),current){backend.read(it.identity.packageName)}}
                 check(journal.transform{old->reconciled.single{it.identity.packageName==old.identity.packageName}}){"Read-only journal reconcile failed"}
                 val discoveryStart=SystemClock.elapsedRealtime()
                 val discovery=backend.discover()

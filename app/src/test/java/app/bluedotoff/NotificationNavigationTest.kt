@@ -45,6 +45,10 @@ class NotificationNavigationTest {
         val controller=Robolectric.buildActivity(MainActivity::class.java,notification()).create()
         try{assertEquals(Page.REAPPLY,model(controller.get()).page);assertConsumed(controller.get())}finally{controller.destroy()}
     }
+    @Test fun combinedReminderOpensHomeEvenWhenAutomaticReapplyIsOff(){
+        val controller=Robolectric.buildActivity(MainActivity::class.java,notification().putExtra("check",true)).create()
+        try{assertEquals(Page.HOME,model(controller.get()).page);assertNull(model(controller.get()).selected);assertConsumed(controller.get())}finally{controller.destroy()}
+    }
     @Test fun newNotificationsAreHandledButDoNotReplayAfterSavingHome(){
         val controller=Robolectric.buildActivity(MainActivity::class.java).create(saved(Page.SETTINGS))
         val original=notification("test.new")

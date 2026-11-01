@@ -61,4 +61,22 @@ class JournalStoreTest {
     @Test fun repeatedCommitsPublishTheLatestVerifiedState(){val store=JournalStore(context);listOf(TargetState.PENDING_HIDE,TargetState.APPLIED,TargetState.PENDING_RESTORE,TargetState.NOT_APPLIED).forEach{state->assertTrue(store.commit(entry.copy(state=state)));assertEquals(state,JournalStore(context).entries().single().state)}}
     @Test fun interruptedTemporaryFileCannotReplacePublishedJournal(){JournalStore(context).commit(entry);File(file.path+".new").writeText("incomplete");assertEquals(listOf(entry),JournalStore(context).entries())}
     @Test fun verificationDigestRoundTripsWithoutStoredFullFlags(){val e=entry.copy(invariantDigest="a".repeat(64));assertTrue(JournalStore(context).commit(e));assertEquals(e,JournalStore(context).entries().single());assertFalse(file.readText().contains("coarseFlags"))}
+    /** The automatic re-hide mark (owner 2026-10-31) survives a restart and moves the app to the reapply list. */
+    @Test fun theRetryMarkIsStoredAndListedForReapply(){
+        val marked=entry.copy(state=TargetState.FAILED_SAFE,retryHide=true)
+        assertTrue(JournalStore(context).commit(marked))
+        val read=JournalStore(context).entries().single()
+        assertTrue(read.retryHide)
+        assertEquals(listOf(read),UiModel(entries=listOf(read)).reapplyEntries)
+        assertTrue(UiModel(entries=listOf(read.copy(retryHide=false))).reapplyEntries.isEmpty())
+    }
+    @Test fun restoreIntentSurvivesReloadAndExcludesOpenAndRestartAutomaticTargets(){
+        val requested=entry.copy(state=TargetState.NEEDS_REAPPLY_UPDATE,restoreRequested=true,retryHide=false)
+        assertTrue(JournalStore(context).commit(requested));file.appendText(" ")
+        val read=JournalStore(context).entries().single()
+        assertEquals(requested,read)
+        assertFalse(WatchPolicy.eligible(read))
+        assertTrue(UiModel(entries=listOf(read)).reapplyTargetPackages.isEmpty())
+        assertEquals(1,UiModel(entries=listOf(read)).otherCheckCount)
+    }
 }

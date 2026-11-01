@@ -26,5 +26,7 @@ object Perf {
 /** A foreground screen observes a durable journal event without any privileged write. */
 object LifecycleEvents {
     @Volatile var listener:(()->Unit)?=null
-    fun changed(){android.os.Handler(android.os.Looper.getMainLooper()).post{listener?.invoke()}}
+    /** Set by the Application: the home-screen widget redraws on the same events (1.3.0). */
+    @Volatile var widget:(()->Unit)?=null
+    fun changed(){widget?.invoke();android.os.Handler(android.os.Looper.getMainLooper()).post{listener?.invoke()}}
 }

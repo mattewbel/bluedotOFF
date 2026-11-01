@@ -65,7 +65,7 @@ class DiscoveryTest {
     @Test fun multiUserUsesAppIdAndStillBlocksOtherProfile(){assertEquals(10000,UidPolicy.appId(1510000));assertEquals(15,UidPolicy.userId(1510000));assertFalse(app(uid=1510000).canCheck);assertEquals(9999,UidPolicy.appId(1509999))}
     @Test fun negativeUidIsNeverApplication(){assertFalse(UidPolicy.application(-1));assertEquals(-1,UidPolicy.appId(-1))}
     @Test fun independentUidMap(){assertEquals(listOf("test.app"),DiscoveryPolicy.uidMap(listOf("test.app" to 10000))[10000])}
-    @Test fun twoPeersBlockBeforeSelection(){val map=DiscoveryPolicy.uidMap(listOf("a.app" to 10000,"b.app" to 10000));assertTrue(DiscoveryPolicy.block("a.app",10000,map[10000],false,false).contains("공유"))}
+    @Test fun twoPeersBlockBeforeSelection(){val map=DiscoveryPolicy.uidMap(listOf("a.app" to 10000,"b.app" to 10000));assertTrue(DiscoveryPolicy.block("a.app",10000,map[10000],false,false).contains("함께 써서"))}
     @Test fun launcherWithoutHistoryVisible(){assertTrue(app().visibleCandidate)}
     @Test fun noLauncherWithHistoryVisible(){assertTrue(app(launch=false,time=100).visibleCandidate)}
     @Test fun noLauncherNoHistoryHidden(){assertFalse(app(launch=false).visibleCandidate)}
@@ -85,7 +85,7 @@ class DiscoveryTest {
     @Test fun apexIsNotAnApplicationUidPeer(){val r=listOf(CompletePackageScan.Kind("com.android.apex.cts.shim",null,true),CompletePackageScan.Kind("test.app",10000,false));assertEquals(setOf("test.app"),CompletePackageScan.applicationNames(r))}
     @Test fun unknownNormalPackageStillFailsWholeScan(){try{CompletePackageScan.applicationNames(listOf(CompletePackageScan.Kind("test.app",null,false)));fail()}catch(_:IllegalArgumentException){}}
     @Test fun authoritativeUserScopedNullIsUnavailable(){assertEquals(listOf("a.app" to 10000),CompletePackageScan.collectAvailable(listOf("a.app","other.app")){if(it=="a.app")10000 else null})}
-    @Test fun unavailableSiblingCannotCreateFalseIndependentUid(){val peers=CompletePackageScan.confirmedUidMap(setOf("a.app","hidden.app"),listOf("a.app" to 10000)){listOf("hidden.app","a.app")};assertEquals(listOf("a.app","hidden.app"),peers[10000]);assertTrue(DiscoveryPolicy.block("a.app",10000,peers[10000],false,false).contains("공유"))}
+    @Test fun unavailableSiblingCannotCreateFalseIndependentUid(){val peers=CompletePackageScan.confirmedUidMap(setOf("a.app","hidden.app"),listOf("a.app" to 10000)){listOf("hidden.app","a.app")};assertEquals(listOf("a.app","hidden.app"),peers[10000]);assertTrue(DiscoveryPolicy.block("a.app",10000,peers[10000],false,false).contains("함께 써서"))}
     @Test fun confirmedSoleUidProceeds(){val peers=CompletePackageScan.confirmedUidMap(setOf("a.app","other.app"),listOf("a.app" to 10000)){listOf("a.app")};assertEquals("",DiscoveryPolicy.block("a.app",10000,peers[10000],false,false))}
     @Test fun missingKnownUidPeerAborts(){try{CompletePackageScan.confirmedUidMap(setOf("a.app","b.app"),listOf("a.app" to 10000,"b.app" to 10000)){listOf("a.app")};fail()}catch(_:IllegalArgumentException){}}
     @Test fun newPeerOutsideNamePassAborts(){try{CompletePackageScan.confirmedUidMap(setOf("a.app"),listOf("a.app" to 10000)){listOf("a.app","new.app")};fail()}catch(_:IllegalArgumentException){}}

@@ -3,7 +3,7 @@ package app.bluedotoff.core
 /** Same engines/journal/settling checks as foreground work; fresh registration is authoritative on every event. */
 class WatchEngine(private val port:TargetPort,private val journal:Journal,private val now:()->Long,private val boot:()->String,
     private val wait:(Long)->Unit={Thread.sleep(it)},private val observe:(String,Snapshot,Boolean)->Unit={_,_,_->},
-    private val onSkip:(List<String>,String)->Unit={_,_->}) {
+    private val onSkip:(List<String>,String)->Unit={_,_->},private val beforeAttempt:(List<Entry>)->Unit={}) {
     fun reapply(packages:Set<String>,canStart:()->Boolean,onUnhidden:(String)->Unit,onResult:(BatchResult)->Unit)=synchronized(SafetyEngine.writeLock) {
         val firmware=port.compatibleFirmware()
         for(unit in WatchPolicy.units(journal.entries(),packages)) {
@@ -15,7 +15,7 @@ class WatchEngine(private val port:TargetPort,private val journal:Journal,privat
                 val fresh=latest.map{port.read(it.identity.packageName)}
                 val currentBoot=boot()
                 val snapshots=fresh.associateBy{it.identity.packageName}
-                val reconciled=latest.map{Reconcile.read(it,snapshots[it.identity.packageName],firmware.key,currentBoot,snapshots)}
+                val reconciled=latest.map{e->Reconcile.read(e,snapshots[e.identity.packageName],firmware.key,currentBoot,snapshots){port.read(e.identity.packageName)}}
                 if(reconciled!=latest){
                     val saved=if(reconciled.size==1)journal.commit(reconciled.single()) else journal.commitGroup(reconciled)
                     if(!saved)throw JournalPersistenceException()
@@ -23,6 +23,7 @@ class WatchEngine(private val port:TargetPort,private val journal:Journal,privat
                 val skip=WatchPolicy.skipReason(latest,fresh,firmware,currentBoot)
                 if(skip!=null){onSkip(names,skip);continue}
                 if(!canStart())continue
+                beforeAttempt(latest)
                 fresh.filter{it.bit==SENSITIVITY_BIT}.forEach{onUnhidden(it.identity.packageName)}
                 val results=hide(names,fresh,reconciled,firmware,canStart)
                 results.forEach{e->onResult(BatchResult(e.identity.packageName,e,if(e.state==TargetState.APPLIED)"" else e.error.ifBlank{"WATCH_VERIFICATION_FAILED"}))}

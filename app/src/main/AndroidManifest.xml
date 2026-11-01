@@ -22,6 +22,15 @@
             <intent-filter><action android:name="android.intent.action.MY_PACKAGE_REPLACED" /></intent-filter>
             <intent-filter><action android:name="android.intent.action.PACKAGE_FULLY_REMOVED" /><data android:scheme="package" /></intent-filter>
         </receiver>
+        <!-- 1.3.0 home-screen widget. Exported only because the launcher must reach it; any broadcast just redraws it
+             from stored state (it never writes or starts work). Clock, time zone and language are protected broadcasts. -->
+        <receiver android:name="app.bluedotoff.StatusWidgetReceiver" android:exported="true">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <intent-filter><action android:name="android.intent.action.TIMEZONE_CHANGED" /><action android:name="android.intent.action.TIME_SET" /><action android:name="android.intent.action.LOCALE_CHANGED" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_status_info" />
+        </receiver>
+        <!-- The widget's refresh icon: only its own PendingIntent reaches it (not exported, no filter). -->
+        <receiver android:name="app.bluedotoff.WidgetRefreshReceiver" android:exported="false" />
         <!-- B-7: turns a wireless debugging this app held off after leaving, even if the process was killed. Only the system binds it. -->
         <service android:name="app.bluedotoff.adb.WirelessReleaseJob" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE" />
         <!-- Opt-in daily update check for background-watch users (off by default). Only the system binds it. -->

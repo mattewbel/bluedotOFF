@@ -3,26 +3,26 @@ package app.bluedotoff.core
 /** An explicit whole-UID transaction. The individual write gate remains closed. */
 object SharedGroupPolicy {
     /** No member may use precise location: the group never shows the blue indicator, so it is skipped silently. */
-    const val NO_LOCATION="정확한 위치 권한이 허용된 앱이 묶음에 없습니다."
+    const val NO_LOCATION="이 묶음에는 ‘정확한 위치’를 허용한 앱이 없어요."
     const val MAX_MEMBERS=128
     const val STANDARD_MAX_MEMBERS=8
     fun validate(members:List<Snapshot>) {
         val scope=members.firstOrNull()?.applicationScope?:ApplicationScope.GROUPS
         if(scope==ApplicationScope.NORMAL)throw SafetyException("일반 적용에서는 공유 앱 묶음을 선택할 수 없어요.")
-        require(members.size in 2..if(scope==ApplicationScope.ALL)MAX_MEMBERS else STANDARD_MAX_MEMBERS){"공유 앱 묶음의 크기를 확인할 수 없습니다."}
+        require(members.size in 2..if(scope==ApplicationScope.ALL)MAX_MEMBERS else STANDARD_MAX_MEMBERS){"묶음에 든 앱을 모두 확인하지 못했어요."}
         val names=members.map{it.identity.packageName}.sorted()
         val first=members.first()
         if(names.distinct()!=names||first.sharedUserId.isNullOrBlank())throw OwnershipChangedException()
         for(s in members){
             if(!s.peersAuthoritative||s.peers.sorted()!=names||s.identity.uid!=first.identity.uid||s.sharedUserId!=first.sharedUserId)throw OwnershipChangedException()
-            if(s.applicationScope!=scope||!ScopePolicy.includes(s,scope)||s.identity.signers.isEmpty()||s.identity.firstInstallTime<=0||s.identity.versionCode<=0)throw SafetyException("핵심 시스템 또는 설치 정보가 불확실한 앱이 묶음에 포함돼 변경할 수 없습니다.")
-            if(s.fineFlags<0||s.coarseFlags<0||s.fineFlags!=first.fineFlags||s.coarseFlags!=first.coarseFlags)throw SafetyException("공유 앱의 위치 표시 설정이 서로 달라 변경하지 않았습니다.")
+            if(s.applicationScope!=scope||!ScopePolicy.includes(s,scope)||s.identity.signers.isEmpty()||s.identity.firstInstallTime<=0||s.identity.versionCode<=0)throw SafetyException("묶음에 핵심 시스템 앱이나 정보를 확인할 수 없는 앱이 있어서 바꿀 수 없어요.")
+            if(s.fineFlags<0||s.coarseFlags<0||s.fineFlags!=first.fineFlags||s.coarseFlags!=first.coarseFlags)throw SafetyException("묶음 앱끼리 표시 설정이 서로 달라서 바꾸지 않았어요.")
             // A companion that never declares location is retained in the invariant
             // and identity checks; inventing a grant for it would be incorrect.
-            if(s.fineMode !in 0..4||s.coarseMode !in 0..4)throw SafetyException("공유 앱의 위치 사용 상태를 확인하지 못했습니다.")
+            if(s.fineMode !in 0..4||s.coarseMode !in 0..4)throw SafetyException("묶음 앱의 위치 사용 상태를 확인하지 못했어요.")
             // In high scope, a deliberately inactive core companion is pinned,
             // not granted or allowed. One genuinely usable member is mandatory.
-            if(scope!=ApplicationScope.ALL&&s.fineDeclared&&(!s.fineGranted||!s.coarseDeclared||!s.coarseGranted||s.fineMode !in listOf(0,4)||s.coarseMode !in listOf(0,4)))throw SafetyException("공유 앱의 위치 권한 상태를 안전하게 확인하지 못했습니다.")
+            if(scope!=ApplicationScope.ALL&&s.fineDeclared&&(!s.fineGranted||!s.coarseDeclared||!s.coarseGranted||s.fineMode !in listOf(0,4)||s.coarseMode !in listOf(0,4)))throw SafetyException("묶음 앱의 위치 권한 상태를 확인하지 못했어요.")
         }
         if(members.none{it.fineDeclared&&it.fineGranted&&it.coarseDeclared&&it.coarseGranted&&it.fineMode in listOf(0,4)&&it.coarseMode in listOf(0,4)})throw SafetyException(NO_LOCATION)
     }
@@ -89,8 +89,9 @@ class SharedGroupEngine(private val port:TargetPort,private val journal:Journal,
     }
     private fun start(packages:List<String>,hide:Boolean,inFlightUids:Set<Int> = emptySet()):Started {
         require(packages.distinct().size==packages.size)
+        if(!hide)SafetyEngine.requestRestore(journal,packages.toSet())
         val fw=port.compatibleFirmware()
-        if(!fw.osSupported||fw.abiProfile.isBlank())throw SafetyException("기기 호환성을 확인하지 못했습니다.")
+        if(!fw.osSupported||fw.abiProfile.isBlank())throw SafetyException("이 휴대폰에서 쓸 수 있는지 확인하지 못했어요.")
         val names=packages.sorted();val before=names.map(port::read);SharedGroupPolicy.validate(before)
         before.forEach{observe("before",it,false)}
         if(before.first().identity.uid in inFlightUids)throw OwnershipChangedException()
@@ -99,17 +100,17 @@ class SharedGroupEngine(private val port:TargetPort,private val journal:Journal,
             // B-10: same rule as single apps (SafetyEngine.prepare): a restored, unregistered record or an old install's record
             // does not block registering the group again; the fresh read is the original.
             ?.takeUnless{!it.enabled&&(it.state==TargetState.INACTIVE_INSTALL||hide&&it.state==TargetState.NOT_APPLIED)}}
-        if(old.any{it!=null}&&old.any{it==null})throw SafetyException("묶음 일부에만 등록 기록이 있어 변경하지 않았습니다.")
-        if(!hide&&old.any{it==null})throw SafetyException("복원할 공유 앱 묶음 기록이 없습니다.")
+        if(old.any{it!=null}&&old.any{it==null})throw SafetyException("묶음 앱 중 일부만 기록이 있어서 바꾸지 않았어요.")
+        if(!hide&&old.any{it==null})throw SafetyException("되돌릴 묶음 기록이 없어요.")
         old.filterNotNull().forEachIndexed{i,e->
             if(e.groupIdentities.map{it.packageName}!=names||e.groupIdentities.size!=identities.size||e.groupIdentities.zip(identities).any{(a,b)->!a.sameInstall(b)}||!e.identity.sameInstall(identities[i])||e.sharedUserId!=before[i].sharedUserId)throw OwnershipChangedException()
-            if(e.state in setOf(TargetState.FAILED_ROLLBACK,TargetState.NEEDS_REVIEW,TargetState.SHARED_UID_CHANGED,TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE,TargetState.PENDING_SHOW))throw SafetyException("공유 앱 묶음의 복원 확인이 필요합니다.")
+            if(e.state in setOf(TargetState.FAILED_ROLLBACK,TargetState.NEEDS_REVIEW,TargetState.SHARED_UID_CHANGED,TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE,TargetState.PENDING_SHOW))throw SafetyException("먼저 묶음 앱의 상태를 확인해야 해요.")
         }
         val originals=old.filterNotNull().map{it.originalBit}.distinct()
-        if(originals.size>1)throw SafetyException("공유 앱의 원래 표시 기록이 서로 달라 변경하지 않았습니다.")
+        if(originals.size>1)throw SafetyException("묶음 앱끼리 원래 상태 기록이 달라서 바꾸지 않았어요.")
         val original=originals.firstOrNull()?:before.first().bit
         val wanted=if(hide)0 else original
-        val pending=before.mapIndexed{i,s->Entry(s.identity,s.label,original,true,if(hide)TargetState.PENDING_HIDE else TargetState.PENDING_RESTORE,now(),fw.key,boot(),old[i]?.changedByUs?:false,invariantDigest=s.invariantDigest(),sharedUserId=s.sharedUserId,groupIdentities=identities)}
+        val pending=before.mapIndexed{i,s->Entry(s.identity,s.label,original,true,if(hide)TargetState.PENDING_HIDE else TargetState.PENDING_RESTORE,now(),fw.key,boot(),old[i]?.changedByUs?:false,invariantDigest=s.invariantDigest(),sharedUserId=s.sharedUserId,groupIdentities=identities,restoreRequested=!hide)}
         durable(pending)
         return Started(names,before,pending,original,wanted,hide)
     }
@@ -117,15 +118,15 @@ class SharedGroupEngine(private val port:TargetPort,private val journal:Journal,
         val preflight=op.names.map(port::read)
         preflight.forEach{observe("preflight",it,false)}
         if(!SharedGroupPolicy.ownership(op.before,preflight))throw OwnershipChangedException()
-        if(!SharedGroupPolicy.same(op.before,preflight,op.before.first().bit))throw SafetyException("적용 직전 공유 앱 상태가 바뀌었습니다.")
-        if(!canStart())throw SafetyException("화면을 떠나 공유 앱 묶음은 변경하지 않았습니다.")
+        if(!SharedGroupPolicy.same(op.before,preflight,op.before.first().bit))throw SafetyException("바꾸기 직전에 묶음 앱 상태가 바뀌어서 멈췄어요.")
+        if(!canStart())throw SafetyException("화면을 떠나서 묶음 앱은 바꾸지 않았어요.")
         if(op.before.first().bit!=op.wanted){op.attempted=true;port.writeFineGroupChecked(preflight,op.wanted)}
     }
     private fun check(op:Started,phase:String) {
         val current=op.names.map(port::read)
         current.forEach{observe(phase,it,op.attempted)}
         if(!SharedGroupPolicy.ownership(op.before,current))throw OwnershipChangedException()
-        if(!SharedGroupPolicy.same(op.before,current,op.wanted))throw SafetyException("공유 앱 묶음의 지속성 확인에 실패했습니다.")
+        if(!SharedGroupPolicy.same(op.before,current,op.wanted))throw SafetyException("묶음 앱의 표시 설정이 유지되는지 확인하지 못했어요.")
     }
     private fun finish(op:Started):List<Entry> {
         val finished=op.pending.map{it.copy(enabled=op.hide,state=if(op.hide)TargetState.APPLIED else TargetState.NOT_APPLIED,settlingVerified=true,changedByUs=op.hide&&(op.attempted||it.changedByUs),lastVerifiedTime=now())}
@@ -169,7 +170,7 @@ class SharedGroupEngine(private val port:TargetPort,private val journal:Journal,
                 e.invariantDigest.isNotBlank()&&e.invariantDigest==s.invariantDigest()}&&
             originals.size==1&&current.map{it.fineFlags}.distinct().size==1
         if(!same){
-            val locked=pending.map{it.copy(state=TargetState.NEEDS_REVIEW,error="중단된 공유 앱 묶음의 상태가 기록과 달라 변경하지 않았습니다.")}
+            val locked=pending.map{it.copy(state=TargetState.NEEDS_REVIEW,error="끊긴 묶음 작업 뒤 상태가 기록과 달라서 바꾸지 않았어요.")}
             durable(locked);return locked
         }
         val original=originals.single();var wrote=false
@@ -182,7 +183,7 @@ class SharedGroupEngine(private val port:TargetPort,private val journal:Journal,
             }
         }catch(e:Exception){
             if(e is JournalPersistenceException)throw e
-            val failed=pending.map{it.copy(state=if(wrote)TargetState.FAILED_ROLLBACK else TargetState.NEEDS_REVIEW,error="중단된 공유 앱 묶음을 원래대로 되돌렸는지 확인하지 못했습니다. 추가 변경을 차단했습니다.")}
+            val failed=pending.map{it.copy(state=if(wrote)TargetState.FAILED_ROLLBACK else TargetState.NEEDS_REVIEW,error="끊긴 묶음 작업을 원래대로 되돌렸는지 확인하지 못했어요. 안전을 위해 더 바꾸지 않아요.")}
             durable(failed);return failed
         }
         val hide=pending.first().state==TargetState.PENDING_HIDE
@@ -205,8 +206,8 @@ object SharedGroupReconcile {
             e.groupIdentities.any{id->all[id.packageName]?.identity?.let{!id.sameInstall(it)}?:true})
             return e.copy(state=if(all[e.identity.packageName]==null)TargetState.MISSING_TARGET else TargetState.INACTIVE_INSTALL)
         if(e.state in setOf(TargetState.NEEDS_REVIEW,TargetState.FAILED_ROLLBACK,TargetState.SHARED_UID_CHANGED,TargetState.FAILED_SAFE))return e
-        val members=e.groupIdentities.map{all[it.packageName]?:return e.copy(state=TargetState.NEEDS_REVIEW,error="공유 앱 묶음의 전체 설치 정보를 확인하지 못했습니다.")}
-        if(e.groupIdentities.zip(members).any{(id,s)->!id.sameInstall(s.identity)})return e.copy(state=TargetState.NEEDS_REVIEW,error="공유 앱 묶음의 설치 정보가 바뀌었습니다.")
+        val members=e.groupIdentities.map{all[it.packageName]?:return e.copy(state=TargetState.NEEDS_REVIEW,error="묶음 앱의 설치 정보를 모두 확인하지 못했어요.")}
+        if(e.groupIdentities.zip(members).any{(id,s)->!id.sameInstall(s.identity)})return e.copy(state=TargetState.NEEDS_REVIEW,error="묶음 앱 중 새로 설치된 앱이 있어요.")
         if(members.any{it.peers.sorted()!=e.groupIdentities.map{p->p.packageName}||it.sharedUserId!=e.sharedUserId})return e.copy(state=TargetState.NEEDS_REVIEW,error=OwnershipChangedException().message!!)
         // B-1: an interrupted group stays PENDING (not changeable by the watch or a batch) until SharedGroupEngine.recover
         // settles it when the app is opened. Identity/ownership changes above still lock it. Before the firmware check, as

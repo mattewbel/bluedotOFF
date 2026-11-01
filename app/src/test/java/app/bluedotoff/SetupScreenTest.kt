@@ -217,6 +217,47 @@ class SetupScreenTest {
         views().filterIsInstance<TextView>().single{it.text=="Wi-Fi로 연결할게요"}.performClick()
         assertFalse(runtime.pcStart);assertFalse(BackgroundWatch.enabled(context))
         assertEquals(SetupStage.WIFI_NOT_CONNECTED,SetupFlow.stage(session.facts))
+        // Owner 2026-11-01: back on the PC step chosen here returns to the Wi-Fi step instead of leaving setup.
+        views().filterIsInstance<TextView>().single{it.text=="Wi-Fi가 없나요? PC로 시작하기"}.performClick()
+        shadowOf(Looper.getMainLooper()).idle();compose.mainClock.advanceTimeBy(5200)
+        compose.onNodeWithText("PC로 시작").performClick();shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(SetupStage.PC_START,SetupFlow.stage(session.facts))
+        activity.onBackPressedDispatcher.onBackPressed();shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(activity.isFinishing);assertFalse(runtime.pcStart);assertFalse(BackgroundWatch.enabled(context))
+        assertEquals(SetupStage.WIFI_NOT_CONNECTED,SetupFlow.stage(session.facts))
+    }
+    /** A killed process restores the original launch Intent, not the locally changed one. */
+    @Test fun backOnPcChosenHereSurvivesProcessStateRestoration(){
+        android.provider.Settings.Global.putInt(context.contentResolver,android.provider.Settings.Global.ADB_ENABLED,1)
+        BackgroundWatch.set(context,false)
+        runtime.wifiConnected=false;runtime.wireless=false
+        show("05e-pc-before-process-death")
+        val first=controller!!.get()
+        val launch=android.content.Intent(first.intent)
+        descendants(first.findViewById<ViewGroup>(android.R.id.content)).filterIsInstance<TextView>().single{it.text=="Wi-Fi가 없나요? PC로 시작하기"}.performClick()
+        shadowOf(Looper.getMainLooper()).idle();compose.mainClock.advanceTimeBy(5200)
+        compose.onNodeWithText("PC로 시작").performClick();shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(SetupStage.PC_START,SetupFlow.stage(session.facts))
+        val saved=android.os.Bundle()
+        controller!!.pause().saveInstanceState(saved).stop().destroy()
+        controller=Robolectric.buildActivity(LocalAdbSetupActivity::class.java,launch).create(saved).start().resume()
+        shadowOf(Looper.getMainLooper()).idle()
+        val restored=controller!!.get()
+        restored.onBackPressedDispatcher.onBackPressed();shadowOf(Looper.getMainLooper()).idle()
+        assertFalse("Back must return to Wi-Fi after process restoration",restored.isFinishing)
+        assertFalse(runtime.pcStart);assertFalse(BackgroundWatch.enabled(context))
+        assertEquals(SetupStage.WIFI_NOT_CONNECTED,SetupFlow.stage(session.facts))
+    }
+    /** A PC start chosen before (e.g. after a restart): back leaves setup and keeps the PC way. */
+    @Test fun backOnAnEarlierPcStartLeavesSetup(){
+        android.provider.Settings.Global.putInt(context.contentResolver,android.provider.Settings.Global.ADB_ENABLED,1)
+        BackgroundWatch.set(context,true)
+        runtime.wifiConnected=false;runtime.wireless=false;runtime.pcStart=true;runtime.pcHelper=false
+        show("05d-pc-again")
+        val activity=controller!!.get()
+        assertEquals(SetupStage.PC_START,SetupFlow.stage(session.facts))
+        activity.onBackPressedDispatcher.onBackPressed();shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(activity.isFinishing);assertTrue(runtime.pcStart)
     }
     /** Codex U2: finishing setup from the PC leaves Home a note that the cable may go and USB debugging stays on. */
     @Test fun pcStartFinishLeavesTheCableNoteForHome(){

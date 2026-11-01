@@ -1,0 +1,6 @@
+<resources>
+    <!-- Home-screen widget (1.3.0); the night set follows the system dark mode. -->
+    <color name="widget_background">#F5F7FF</color>
+    <color name="widget_text">#1B1C22</color>
+    <color name="widget_muted">#5B5F6E</color>
+</resources>

@@ -115,7 +115,7 @@ class RestartRecoveryJobTest {
             assertEquals(TargetState.PENDING_HIDE,JournalStore(c).entries().single().state)
             assertEquals(0,server.requests)
             val shown=shadowOf(manager).allNotifications.single()
-            assertEquals("Some apps need checking. Open bluedotOFF to check them.",shown.extras.getCharSequence(android.app.Notification.EXTRA_TEXT).toString())
+            assertEquals("Some apps still need their location indicator settings checked. Open the app to see why.",shown.extras.getCharSequence(android.app.Notification.EXTRA_TEXT).toString())
         } finally{c.unregisterReceiver(receiver)}
     }
 }

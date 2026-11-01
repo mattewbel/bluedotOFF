@@ -17,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import app.bluedotoff.core.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import app.bluedotoff.adb.*
 import android.provider.Settings
 
@@ -67,7 +68,7 @@ class MainActivity : ComponentActivity() {
      *  page (owner 2026-10-22). Display only. The card is saved once this run has read the location history, and a read
      *  with no recent app clears it; its time is the real access time, the age is worked out when shown. */
     private fun rememberCheck(){
-        if(model.lastCheckedAt>0L)prefs.edit().putLong("lastCheckedAt",model.lastCheckedAt).apply()
+        if(model.lastCheckedAt>0L){prefs.edit().putLong("lastCheckedAt",model.lastCheckedAt).apply();StatusWidget.update(applicationContext)}
         if(!model.historyAvailable||model.discovered.isEmpty())return
         val a=model.recentHistoryApp;val time=a?.access?.latest
         val saved=if(a==null||time==null)null else SavedRecent(a.packageName,a.label,time)
@@ -130,8 +131,9 @@ class MainActivity : ComponentActivity() {
                         notice=if(first){(if(outcome.auto&&outcome.error.isBlank()&&outcome.results.isNotEmpty()&&outcome.results.all{it.success})outcome.summary() else if(outcome.error.isBlank()&&outcome.results.all{it.success})"" else outcome.error.ifBlank{outcome.summary()}).ifBlank{skipNotice}.also{skipNotice=""}}else model.notice,
                         successToken=if(first&&outcome.hide&&succeeded.isNotEmpty())model.successToken+1 else model.successToken)
                     if(first)loadReapplyHistory()
-                    if(first&&outcome.hide&&succeeded.isNotEmpty())ReapplyNotification.clear(this@MainActivity,succeeded,model.reapplyCount==0)
-                    if(first&&outcome.beforeUninstall){model=model.copy(uninstallCheck=model.entries.count{it.enabled&&it.state!=TargetState.MISSING_TARGET});stopWatchForUninstall()}
+                    // A re-hide that failed here is handed to the watch, which tries it again 10 minutes later (Claude review 2026-10-31).
+                    if(first&&outcome.hide)outcome.entries.filter(WatchPolicy::retrying).map{it.identity.packageName}.toSet().takeIf{it.isNotEmpty()}?.let{WatchClient.signal(applicationContext,it)}
+                    if(first&&outcome.beforeUninstall){val left=model.entries.count{it.enabled&&it.state!=TargetState.MISSING_TARGET};stopWatchForUninstall(left==0){model=model.copy(uninstallCheck=left)}}
                     // Target results update display hints; they do not change package inventory.
                     // Keep the 30-minute/package-event inventory expiry and fresh write preflights.
                     if(scopeChanged){invalidateScan();scopeSelected()}else{
@@ -177,23 +179,39 @@ class MainActivity : ComponentActivity() {
         // Wi-Fi coming on while Home says "open bluedotOFF on Wi-Fi" counts as that opening: a stopped watch starts right
         // away instead of the open screen looking stuck (owner 2026-10-26). Not during a setup screen. The callback's own
         // state decides: a getter read here can still say "not connected" (GPT release review 2026-10-26, Android docs).
-        wifiObserver=WifiConnection.observe(this){connected->runOnUiThread{model=model.copy(automaticReady=automaticReady());if(ForegroundState.active&&!model.busy){
+        // It also counts for "앱을 열 때 자동 재적용": the restart job leaves an open screen to do it (owner reboot 2026-10-29).
+        wifiObserver=WifiConnection.observe(this){connected->runOnUiThread{model=model.copy(automaticReady=automaticReady(),wifiConnected=connected);if(connected)autoReapplyArmed=true;if(ForegroundState.active&&!model.busy){
             if(connected&&BackgroundWatch.enabled(this)&&!WatchClient.available(this)&&SetupSession.current()==null)resumeCheck() else refresh()}}}
         // A recreated screen keeps its saved page, rather than replaying the original notification.
-        if(savedInstanceState==null)navigateNotification(intent)
-        setContent { BlueDotApp(model, ::navigate, ::select, ::requestHide, ::requestRestore, ::batchHide, ::restoreAll, ::openBackend, ::openBackend, ::openBackend, ::refreshFromUser, ::allowNotifications, ::dismissNotificationOffer, ::begin, ::loadApps, ::clearNotice, ::togglePick, ::addSelected, ::changeQuery, ::changeFilter, { model=model.copy(homePicked=emptySet());navigate(Page.RESTORE) }, ::toggleHomePick, ::restoreSelected, ::contentShown, pickerRevision, ::historyViewChanged,pickerViewChanged={model=model.copy(pickerView=it,pickerRows=null);filterPicker()},wirelessExit={if(!model.busy)WirelessDebuggingExit.open(this)},toggleAll=::toggleAll,managementChanged=::managementChanged,removeManagementPermission=::removeManagementPermission,sharedInspect={pickGroups(listOf(it))},sharedAccept=::acceptShared,sharedDismiss={sharedGeneration++;model=model.copy(sharedOffer=null)},scopeChange=::chooseScope,reapplyNeeded={perform(it,true)},notificationChanged=::reapplyNotificationChanged,recheck=::recheck,bigGroupsAccept=::acceptBigGroups,bigGroupsDismiss={model=model.copy(bigGroups=emptyList())},rejectedDismiss={model=model.copy(rejectedGroupList=emptyList())},restorePickAll=::toggleAllRestore,showPick=::toggleShowPick,showPickAll=::toggleAllShow,showSelected=::showSelected,refreshHistory=::refreshHistory,autoReapplyChanged=::autoReapplyChanged,openShow={model=model.copy(showPicked=emptySet());navigate(Page.SHOW)},beforeUninstall=::beforeUninstall,uninstallDismiss={model=model.copy(uninstallCheck=null)},openAppInfo=::openAppInfo,copyDiagnostics=::copyDiagnostics,backgroundWatchChanged=::backgroundWatchChanged,openDeveloperOptions={SettingsEntrypoints.developerOptions(this)},openBattery={enable->if(!model.busy)BatteryOptimization.open(this,enable)},dismissUsNotice=::dismissUsNotice,dismissFirmwareNotice=::dismissFirmwareNotice,updateOfferAnswer=::updateCheckChanged,updateCheckChanged=::updateCheckChanged,checkUpdateNow=::checkUpdateNow,openUpdate={UpdateCheck.open(this,UpdateCheck.Release(it));model=model.copy(updateCard=null)},skipUpdate={UpdateCheck.skip(this,it);model=model.copy(updateCard=null)},pcStart={ScopeDialogs.pcStart(this)},wifiSetup=::wifiSetup,watchAfterUsb=::watchAfterUsb) }
+        if(savedInstanceState==null){navigateNotification(intent);openShortcut(intent)}
+        publishShortcuts()
+        // Day milestones (100, 200, 365 … days with bluedotOFF) are said once, on the first ready screen after reaching one.
+        lifecycleScope.launch{androidx.compose.runtime.snapshotFlow{model.gate}.first{it==Gate.READY}
+            val days=withContext(Dispatchers.IO){ReapplyStats.days(applicationContext)}
+            if(model.notice.isBlank()&&withContext(Dispatchers.IO){ReapplyStats.nextMilestone(applicationContext,days)}!=null)model=model.copy(notice="bluedotOFF와 함께한 지 ${days}일이에요.")}
+        // A shortcut tapped while bluedotOFF was still checking opens its page once the check is done; a setup screen
+        // (welcome, connection, unsupported) drops it, so the connection steps stay exactly as they are.
+        lifecycleScope.launch{androidx.compose.runtime.snapshotFlow{model.gate}.collect{gate->val page=shortcutPage?:return@collect
+            if(gate==Gate.READY){shortcutPage=null;if(!model.busy)navigate(page)}else if(gate!=Gate.CHECKING)shortcutPage=null}}
+        setContent {
+            androidx.compose.runtime.LaunchedEffect(model.entries,model.gate,model.page,model.busy,model.rechecking,model.notice) {
+                if(model.gate==Gate.READY&&model.page==Page.HOME&&!model.busy&&!model.rechecking&&model.notice.isBlank()) {
+                    LocationRetirementNotice.take(this@MainActivity,model.entries)?.let{model=model.copy(notice=it)}
+                }
+            }
+            BlueDotApp(model, ::navigate, ::select, ::requestHide, ::requestRestore, ::batchHide, ::restoreAll, ::openBackend, ::openBackend, ::openBackend, ::refreshFromUser, ::allowNotifications, ::dismissNotificationOffer, ::begin, ::loadApps, ::clearNotice, ::togglePick, ::addSelected, ::changeQuery, ::changeFilter, { model=model.copy(homePicked=emptySet());navigate(Page.RESTORE) }, ::toggleHomePick, ::restoreSelected, ::contentShown, pickerRevision, ::historyViewChanged,pickerViewChanged={model=model.copy(pickerView=it,pickerRows=null);filterPicker()},wirelessExit={if(!model.busy)WirelessDebuggingExit.open(this)},toggleAll=::toggleAll,managementChanged=::managementChanged,removeManagementPermission=::removeManagementPermission,sharedInspect={pickGroups(listOf(it))},sharedAccept=::acceptShared,sharedDismiss={sharedGeneration++;model=model.copy(sharedOffer=null)},scopeChange=::chooseScope,reapplyNeeded={perform(it,true)},notificationChanged=::reapplyNotificationChanged,recheck=::recheck,bigGroupsAccept=::acceptBigGroups,bigGroupsDismiss={model=model.copy(bigGroups=emptyList())},rejectedDismiss={model=model.copy(rejectedGroupList=emptyList())},restorePickAll=::toggleAllRestore,showPick=::toggleShowPick,showPickAll=::toggleAllShow,showSelected=::showSelected,refreshHistory=::refreshHistory,autoReapplyChanged=::autoReapplyChanged,openShow={model=model.copy(showPicked=emptySet());navigate(Page.SHOW)},beforeUninstall=::beforeUninstall,uninstallDismiss={model=model.copy(uninstallCheck=null)},openAppInfo=::openAppInfo,copyDiagnostics=::copyDiagnostics,backgroundWatchChanged=::backgroundWatchChanged,openDeveloperOptions={SettingsEntrypoints.developerOptions(this)},openBattery={enable->if(!model.busy)BatteryOptimization.open(this,enable)},dismissUsNotice=::dismissUsNotice,dismissFirmwareNotice=::dismissFirmwareNotice,updateOfferAnswer=::updateCheckChanged,updateCheckChanged=::updateCheckChanged,checkUpdateNow=::checkUpdateNow,openUpdate={UpdateCheck.open(this,UpdateCheck.Release(it));model=model.copy(updateCard=null)},skipUpdate={UpdateCheck.skip(this,it);model=model.copy(updateCard=null)},pcStart={ScopeDialogs.pcStart(this)},wifiSetup=::wifiSetup,watchAfterUsb=::watchAfterUsb) }
     }
     // Leaving bluedotOFF turns a held wireless debugging off after a short grace (quick switches back keep it on).
     // The system job repeats it if the process is killed first (swiped away from recents, B-7).
     private val releaseHandler=android.os.Handler(android.os.Looper.getMainLooper())
     private val releaseHeld=Runnable{WirelessWork.release(applicationContext)}
     override fun onStart() { super.onStart(); ForegroundState.started(); releaseHandler.removeCallbacks(releaseHeld); WirelessReleaseJob.cancel(applicationContext) }
-    override fun onStop() { interactionOpened=0L;autoReapplyTried=false;ForegroundState.stopped(); releaseHandler.postDelayed(releaseHeld,2000); WirelessReleaseJob.schedule(applicationContext); super.onStop() }
+    override fun onStop() { StatusWidget.update(applicationContext);interactionOpened=0L;autoReapplyTried=false;ForegroundState.stopped(); releaseHandler.postDelayed(releaseHeld,2000); WirelessReleaseJob.schedule(applicationContext); super.onStop() }
     override fun onPause() { ForegroundState.paused();super.onPause() }
-    override fun onResume() { super.onResume();pendingRestore=emptySet();ForegroundState.resumed();autoReapplyArmed=true;model=model.copy(notifications=reapplyNotificationsEnabled(),usbDebugging=WatchClient.usbEnabled(this),watchRunning=WatchClient.available(this),batteryUnrestricted=BatteryOptimization.unrestricted(this))
+    override fun onResume() { super.onResume();runCatching{controls.stopPairingExpiry()};model=model.copy(wifiConnected=WifiConnection.connected(this));pendingRestore=emptySet();ForegroundState.resumed();autoReapplyArmed=true;model=model.copy(notifications=reapplyNotificationsEnabled(),usbDebugging=WatchClient.usbEnabled(this),watchRunning=WatchClient.available(this),batteryUnrestricted=BatteryOptimization.unrestricted(this))
         if(watchAfterUsbPending){watchAfterUsbPending=false;if(WatchClient.usbEnabled(this))backgroundWatchChanged(true) else model=model.copy(notice="USB 디버깅이 꺼져 있어서 백그라운드 감시를 켜지 않았어요.")}
         if (::store.isInitialized) resumeCheck(); updateOnOpen() }
-    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); navigateNotification(intent); refresh() }
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); navigateNotification(intent); openShortcut(intent); refresh() }
     override fun onSaveInstanceState(out: Bundle) { out.putString("page",model.page.name); out.putString("selected",model.selected); out.putStringArrayList("picked",ArrayList(model.picked));out.putString("query",model.query);out.putString("filter",model.filter.name);out.putString("historyView",model.historyView.name);out.putStringArrayList("homePicked",ArrayList(model.homePicked));out.putInt("restoreSkipped",model.restoreSkipped);out.putString("pageBack",model.pageBack.name);out.putInt("batchPid",android.os.Process.myPid());out.putLong("handledBatchId",handledBatchId);out.putBoolean("watchAfterUsb",watchAfterUsbPending);model.uninstallCheck?.let{out.putInt("uninstallCheck",it)};super.onSaveInstanceState(out) }
     override fun onDestroy() { if(LifecycleEvents.listener===journalListener)LifecycleEvents.listener=null;discovery.close();wifiObserver?.close();unregisterReceiver(packageChanges); super.onDestroy() }
     private fun navigateNotification(intent: Intent?) {
@@ -201,8 +219,26 @@ class MainActivity : ComponentActivity() {
         // An external Intent only navigates. No automatic setter is reachable here.
         val target = intent.getStringExtra("target")
         val auto = prefs.getBoolean("autoReapply",true) && automaticReady()
-        model = model.copy(page = if (target != null) Page.DETAIL else if (auto) Page.HOME else Page.REAPPLY, selected = target)
-        setIntent(Intent(intent).apply{action=null;removeExtra("target")})
+        // "check" (widget): the apps to check yourself are on Home, the reapply page would not list them.
+        model = model.copy(page = if (target != null) Page.DETAIL else if (auto||intent.getBooleanExtra("check",false)) Page.HOME else Page.REAPPLY, selected = target)
+        setIntent(Intent(intent).apply{action=null;removeExtra("target");removeExtra("check")})
+    }
+    private var shortcutPage:Page?=null
+    private val SHORTCUT="app.bluedotoff.SHORTCUT"
+    /** Long-press shortcuts (1.3.0, owner 2026-10-28). Labels follow the app language, so they are set at each start. */
+    private fun publishShortcuts()=runCatching{
+        fun item(id:String,label:String,page:Page)=android.content.pm.ShortcutInfo.Builder(this,id).setShortLabel(UiText.text(this,label))
+            .setIcon(android.graphics.drawable.Icon.createWithResource(this,R.mipmap.ic_launcher))
+            .setIntent(Intent(this,MainActivity::class.java).setAction(SHORTCUT).putExtra("page",page.name)).build()
+        getSystemService(android.content.pm.ShortcutManager::class.java).dynamicShortcuts=listOf(item("history","기록 보기",Page.HISTORY),item("add","앱 추가",Page.PICK))
+    }
+    /** Like a notification, a shortcut only navigates, and only on the ready screens (never during setup). */
+    private fun openShortcut(intent:Intent?){
+        if(intent?.action!=SHORTCUT)return
+        val page=when(intent.getStringExtra("page")){Page.HISTORY.name->Page.HISTORY;Page.PICK.name->Page.PICK;else->null}
+        setIntent(Intent(intent).apply{action=null;removeExtra("page")})
+        if(page==null)return
+        if(model.gate==Gate.READY){if(!model.busy)navigate(page)}else if(model.gate==Gate.CHECKING)shortcutPage=page
     }
     private fun begin() { prefs.edit().putBoolean("welcomed",true).apply(); openBackend() }
     private fun notificationsEnabled() = (Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) && getSystemService(android.app.NotificationManager::class.java).areNotificationsEnabled()
@@ -260,7 +296,7 @@ class MainActivity : ComponentActivity() {
                 val wireless=controls.wireless
                 val paired=getSharedPreferences("local-adb",0).getString("pairedGuid",null)!=null&&AdbHostIdentity(this@MainActivity).exists
                 if(!WatchClient.available(this@MainActivity)&&(!dev||!WifiConnection.connected(this@MainActivity)||!paired||(!wireless&&!model.automaticReady))){
-                    model=model.copy(gate=if(entries.any{it.enabled}||model.automaticReady)Gate.READY else Gate.NOT_RUNNING,connected=false,freshPackages=emptySet(),compatibility=when{!dev->"개발자 옵션을 켜주세요.";PcStart.chosen(this@MainActivity)->"PC에서 bluedotOFF를 다시 시작해주세요.";!WifiConnection.connected(this@MainActivity)->"Wi-Fi에 연결해주세요.";!paired->"이 기기를 한 번 페어링해주세요.";model.automaticReady->"필요할 때 자동으로 연결해요.";else->"무선 디버깅을 켜주세요."})
+                    model=model.copy(gate=if(entries.any{it.enabled}||model.automaticReady)Gate.READY else Gate.NOT_RUNNING,connected=false,freshPackages=emptySet(),pairingExpired=false,compatibility=when{!dev->"개발자 옵션을 켜주세요.";PcStart.chosen(this@MainActivity)->"PC에서 bluedotOFF를 다시 시작해주세요.";!WifiConnection.connected(this@MainActivity)->"Wi-Fi에 연결해주세요.";!paired->"이 기기를 한 번 페어링해주세요.";model.automaticReady->"필요할 때 자동으로 연결해요.";else->"무선 디버깅을 켜주세요."})
                     return@launch
                 }
                 if(!scopes.resolved){openBackend();return@launch}
@@ -272,7 +308,7 @@ class MainActivity : ComponentActivity() {
                     scanStamp=ScanStamp(Build.FINGERPRINT,packageEpoch,android.os.SystemClock.elapsedRealtime())
                     model=model.copy(gate=Gate.READY,entries=entries,candidates=prepared.snapshots,discovered=scan.apps,
                         historyAvailable=scan.historyAvailable,metrics=scan.metrics,loadingApps=false,
-                        connected=wireless||WatchClient.available(this@MainActivity),automaticReady=automaticReady(),freshPackages=emptySet(),compatibility="앱 확인 완료",rechecking=false,wirelessConnecting=false,lastCheckFailed=false,lastCheckedAt=System.currentTimeMillis(),firmwareNotice=firmwareNotice(),
+                        connected=wireless||WatchClient.available(this@MainActivity),automaticReady=automaticReady(),freshPackages=emptySet(),compatibility="앱 확인 완료",rechecking=false,wirelessConnecting=false,lastCheckFailed=false,pairingExpired=false,lastCheckedAt=System.currentTimeMillis(),firmwareNotice=firmwareNotice(),
                         notice=cleanupNotice,notificationOffer=!notificationsEnabled()&&!prefs.getBoolean("notificationExplained",false))
                     rememberCheck()
                     filterPicker()
@@ -320,7 +356,7 @@ class MainActivity : ComponentActivity() {
                             pkg to snapshot
                         }.toMap()
                         snapshots.addAll(current.values.filterNotNull())
-                        if(current.isNotEmpty())check(store.transform{e->if(e.identity.packageName in current)Reconcile.read(e,current[e.identity.packageName],firmware.key,boot,current) else e}){"복원 기록을 저장하지 못해서 바꾸지 않았어요."}
+                        if(current.isNotEmpty())check(store.transform{e->if(e.identity.packageName in current)Reconcile.read(e,current[e.identity.packageName],firmware.key,boot,current){backend.read(e.identity.packageName)} else e}){"복원 기록을 저장하지 못해서 바꾸지 않았어요."}
                         if(mode!=Check.HISTORY){if(only.isEmpty())changedPackages.clear() else changedPackages.removeAll(current.keys)}
                         // The connection is open anyway: refresh the display-only location history (about a second)
                         // so apps used since the last full check appear. Inventory and its 30-minute expiry are unchanged.
@@ -330,13 +366,14 @@ class MainActivity : ComponentActivity() {
                         val prepared=StartupScan.read({firmware},store::entries,
                             {capture->backend.discover(checkCancelled={coroutine.ensureActive()},onSnapshot=capture,onProgress=reportScan)},
                             {pkg->try{backend.read(pkg)}catch(_:PackageManager.NameNotFoundException){null}},
-                            {targets,fw->check(store.transform{e->Reconcile.read(e,targets[e.identity.packageName],fw.key,boot,targets)}){"복원 기록을 저장하지 못해서 바꾸지 않았어요."};store.entries()},
+                            {targets,fw->check(store.transform{e->Reconcile.read(e,targets[e.identity.packageName],fw.key,boot,targets){backend.read(e.identity.packageName)}}){"복원 기록을 저장하지 못해서 바꾸지 않았어요."};store.entries()},
                             boot,{coroutine.isActive})
                         snapshots.addAll(prepared.snapshots)
                         prepared.discovery
                     }
                     // B-1: on app open, settle shared groups an interruption left PENDING (checked; never from the watch).
                     recoveredNotice=recoverInterrupted()
+                    runCatching{ReapplyNotification.clear(this@MainActivity)}
                     found
                 }}
                 val checkedNow=android.os.SystemClock.elapsedRealtime();lastHistoryElapsed=checkedNow
@@ -345,7 +382,7 @@ class MainActivity : ComponentActivity() {
                 if(fullCheck)clock.fullChecked(checkedNow)
                 if(scan!=null){changedPackages.clear();scanStamp=ScanStamp(Build.FINGERPRINT,epoch,android.os.SystemClock.elapsedRealtime());model=model.copy(discovered=scan.apps,historyAvailable=scan.historyAvailable,metrics=scan.metrics)}
                 else refreshedHistory?.let{if(epoch==packageEpoch&&model.discovered===knownApps)model=model.copy(discovered=it,historyAvailable=true)}
-                model=model.copy(gate=Gate.READY,scanProgress=null,rechecking=false,wirelessConnecting=false,lastCheckFailed=false,checkingRegistered=false,lastCheckedAt=if(fullCheck)System.currentTimeMillis() else model.lastCheckedAt,entries=store.entries(),candidates=if(mode==Check.HISTORY||only.isNotEmpty())model.candidates.filterNot{c->snapshots.any{it.identity.packageName==c.identity.packageName}}+snapshots else snapshots,loadingApps=false,connected=controls.wireless||WatchClient.available(this@MainActivity),automaticReady=automaticReady(),freshPackages=if(!controls.wireless&&!WatchClient.available(this@MainActivity))emptySet() else if(mode==Check.HISTORY||only.isNotEmpty())model.freshPackages+snapshots.map{it.identity.packageName} else snapshots.map{it.identity.packageName}.toSet(),compatibility="앱 확인 완료",notice=cleanupNotice,notificationOffer=!notificationsEnabled()&&!prefs.getBoolean("notificationExplained",false),firmwareNotice=firmwareNotice())
+                model=model.copy(gate=Gate.READY,scanProgress=null,rechecking=false,wirelessConnecting=false,lastCheckFailed=false,pairingExpired=false,checkingRegistered=false,lastCheckedAt=if(fullCheck)System.currentTimeMillis() else model.lastCheckedAt,entries=store.entries(),candidates=if(mode==Check.HISTORY||only.isNotEmpty())model.candidates.filterNot{c->snapshots.any{it.identity.packageName==c.identity.packageName}}+snapshots else snapshots,loadingApps=false,connected=controls.wireless||WatchClient.available(this@MainActivity),automaticReady=automaticReady(),freshPackages=if(!controls.wireless&&!WatchClient.available(this@MainActivity))emptySet() else if(mode==Check.HISTORY||only.isNotEmpty())model.freshPackages+snapshots.map{it.identity.packageName} else snapshots.map{it.identity.packageName}.toSet(),compatibility="앱 확인 완료",notice=cleanupNotice,notificationOffer=!notificationsEnabled()&&!prefs.getBoolean("notificationExplained",false),firmwareNotice=firmwareNotice())
                 rememberCheck()
                 filterPicker()
                 if(model.page==Page.DETAIL&&model.selected!=null&&snapshots.none{it.identity.packageName==model.selected})select(model.selected!!)
@@ -354,7 +391,7 @@ class MainActivity : ComponentActivity() {
                 // A failed check the user saw spinning says so; it used to end silently (owner 2026-10-22).
                 val visible=model.rechecking;val connecting=model.wirelessConnecting
                 val journalProblem=error.message=="복원 기록을 저장하지 못해서 바꾸지 않았어요."||withContext(Dispatchers.IO){runCatching{store.entries()}.isFailure}
-                model=model.copy(journalProblem=journalProblem,gate=if(journalProblem||model.entries.any{it.enabled}||model.automaticReady)Gate.READY else Gate.NOT_RUNNING,rechecking=false,checkingRegistered=false,scanProgress=null,loadingApps=false,connected=false,freshPackages=emptySet(),compatibility=if(error.message=="COMPATIBILITY_FAILED")SetupFlow.OS_CHANGED else if(error is UnresponsiveHelperException)WatchClient.UNRESPONSIVE else "현재 기기의 변경 작업을 확인할 수 없어요. 연결 준비에서 다시 확인해주세요.",wirelessConnecting=false,lastCheckFailed=!journalProblem,notice=if(error is UnresponsiveHelperException)WatchClient.UNRESPONSIVE else if(visible&&!journalProblem)(if(connecting)"무선 디버깅에 연결하지 못했어요. USB 디버깅을 끄거나 켠 직후에는 잠시 연결이 안 될 수 있어요. 잠시 뒤 ⟳를 눌러 다시 확인해주세요." else "앱 상태를 확인하지 못했어요. 잠시 뒤 ⟳를 눌러 다시 확인해주세요.") else cleanupNotice)}
+                model=model.copy(journalProblem=journalProblem,gate=if(journalProblem||model.entries.any{it.enabled}||model.automaticReady)Gate.READY else Gate.NOT_RUNNING,rechecking=false,checkingRegistered=false,scanProgress=null,loadingApps=false,connected=false,freshPackages=emptySet(),compatibility=if(error.message=="COMPATIBILITY_FAILED")SetupFlow.OS_CHANGED else if(error is UnresponsiveHelperException)WatchClient.UNRESPONSIVE else "현재 기기의 변경 작업을 확인할 수 없어요. 연결 준비에서 다시 확인해주세요.",wirelessConnecting=false,lastCheckFailed=!journalProblem,pairingExpired=(error as? app.bluedotoff.adb.LocalAdbStageException)?.state==app.bluedotoff.core.LocalAdbState.ADB_AUTHENTICATION_FAILED,notice=if(error is UnresponsiveHelperException)WatchClient.UNRESPONSIVE else if(visible&&!journalProblem)(if(connecting)"무선 디버깅에 연결하지 못했어요. USB 디버깅을 끄거나 켠 직후에는 잠시 연결이 안 될 수 있어요. 잠시 뒤 ⟳를 눌러 다시 확인해주세요." else "앱 상태를 확인하지 못했어요. 잠시 뒤 ⟳를 눌러 다시 확인해주세요.") else cleanupNotice)}
         }
         refreshJob=job
         job.invokeOnCompletion{cause->if(cause==null)releaseHandler.post{val armed=autoReapplyArmed;autoReapplyArmed=false;if(armed)maybeAutoReapply()}}
@@ -410,7 +447,10 @@ class MainActivity : ComponentActivity() {
             try{
                 val rows=withContext(Dispatchers.IO){ReapplyHistoryStore(applicationContext).entries()}
                 val labels=(model.entries.map{it.identity.packageName to it.label}+model.discovered.map{it.packageName to it.label}).toMap()
-                model=model.copy(reapplyHistory=rows.map{row->if(row.label==row.packageName)row.copy(label=labels[row.packageName]?:row.label) else row})
+                val named=rows.map{row->if(row.label==row.packageName)row.copy(label=labels[row.packageName]?:row.label) else row}
+                // Summary first: a suspending argument would copy the model as it was before the wait and undo changes made meanwhile.
+                val summary=withContext(Dispatchers.IO){ReapplyStats.summary(applicationContext,named)}
+                model=model.copy(reapplyHistory=named,reapplySummary=summary)
             }catch(_:Exception){model=model.copy(notice="재적용 기록을 읽지 못했어요. 다시 새로고침해 주세요.")}
             finally{model=model.copy(reapplyHistoryLoading=false)}
         }
@@ -424,6 +464,8 @@ class MainActivity : ComponentActivity() {
     private fun maybeAutoReapply(){
         if(autoReapplyTried||!ForegroundState.active||model.busy||BatchRuntime.state.value.busy||model.gate!=Gate.READY)return
         if(!prefs.getBoolean("autoReapply",true)||!automaticReady())return
+        // Opened before Wi-Fi is up (e.g. right after a restart): not this visit's try yet; the Wi-Fi connect re-arms it.
+        if(!WatchClient.available(this)&&!WifiConnection.connected(this))return
         val targets=model.reapplyTargetPackages;if(targets.isEmpty())return
         autoReapplyTried=true;perform(targets,hide=true,auto=true)
     }
@@ -444,11 +486,34 @@ class MainActivity : ComponentActivity() {
     /** Restores first - through a live watch helper when there is one, so Wi-Fi is not needed - and turns watching off afterwards.
      *  Restored entries leave the watch's targets as soon as they are journaled and work is exclusive, so watching cannot re-hide them. */
     private fun beforeUninstall(){if(model.busy)return
-        if(model.entries.none{it.enabled&&it.state!=TargetState.MISSING_TARGET}){stopWatchForUninstall();model=model.copy(uninstallCheck=0);return}
-        perform(model.entries.filter{it.enabled}.map{it.identity.packageName},hide=false,beforeUninstall=true)}
-    private fun stopWatchForUninstall(){if(!BackgroundWatch.enabled(this))return
-        BackgroundWatch.set(this,false);model=model.copy(backgroundWatch=false)
-        lifecycleScope.launch{withContext(Dispatchers.IO){WatchClient.stopNow(applicationContext)};model=model.copy(automaticReady=automaticReady(),connected=controls.wireless||WatchClient.available(this@MainActivity))}}
+        if(model.journalProblem){model=model.copy(uninstallCheck=null,notice="복원 기록을 확인하지 못했어요");return}
+        // An empty screen after a failed read is not proof that the restore journal is empty.
+        val entries=runCatching{store.entries()}.getOrElse{model=model.copy(journalProblem=true,uninstallCheck=null,notice="복원 기록을 확인하지 못했어요");return}
+        model=model.copy(entries=entries)
+        if(entries.none{it.enabled&&it.state!=TargetState.MISSING_TARGET}){stopWatchForUninstall(true){model=model.copy(uninstallCheck=0)};return}
+        perform(entries.filter{it.enabled}.map{it.identity.packageName},hide=false,beforeUninstall=true)}
+    /** Ends the watch and automatic management (the latter puts the pairing expiry back and keeps it so, GPT rc12 review;
+     *  wireless debugging the app turned on itself is turned off first, while that is still allowed). The work runs outside
+     *  the screen, so a fold or rotation cannot cut it short, and [ready] (the "you can uninstall" result) follows only
+     *  once it finished (GPT rc14 review). Recreated meanwhile, the screen shows nothing; pressing again shows the result.
+     *  [allBack]: every app is back, so USB and wireless debugging go off too (owner 2026-11-01). */
+    private fun stopWatchForUninstall(allBack:Boolean,ready:()->Unit){
+        val c=applicationContext;val watch=BackgroundWatch.enabled(this)
+        if(watch){BackgroundWatch.set(this,false);model=model.copy(backgroundWatch=false)}
+        model=model.copy(busy=true)
+        val work=cleanup.async{
+            if(watch)WatchClient.stopNow(c)
+            val management=WirelessControls(c)
+            if(management.consent){runCatching{WirelessWork.releaseNow(c)};management.setConsent(false)} else management.restorePairingExpiry()
+            if(allBack&&!management.expiryPending)management.disableDebugging()
+        }
+        lifecycleScope.launch{
+            val done=runCatching{work.await()}.isSuccess
+            model=model.copy(busy=false,autoManagement=controls.consent,automaticReady=automaticReady(),connected=controls.wireless||WatchClient.available(this@MainActivity),usbDebugging=WatchClient.usbEnabled(this@MainActivity))
+            // Not 'you can uninstall' while the saved original expiry is still to be put back (GPT rc15 review).
+            if(done&&!controls.expiryPending)ready() else model=model.copy(notice=if(done)"디버깅 인증 만료 설정을 원래대로 되돌리지 못했어요. 삭제하기 전에 개발자 옵션에서 ‘adb 권한 타임아웃 해제’를 끈 뒤 다시 눌러주세요." else UiText.GENERIC_ERROR)
+        }
+    }
     private fun openAppInfo()=startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,android.net.Uri.fromParts("package",packageName,null)))
     /** Device facts for a GitHub issue; no app list, location history or account data. */
     private val SUPPORT_EMAIL="yundeokhee92@gmail.com"
@@ -482,11 +547,11 @@ class MainActivity : ComponentActivity() {
     /** [auto]: started by [maybeAutoReapply] when the user opened the app; shown as a small line instead of the full overlay. */
     private fun perform(requested: List<String>, hide: Boolean, show: Boolean = false, auto: Boolean = false, beforeUninstall: Boolean = false) {
         val (packages,needsCheck)=if(hide||show)requested to 0 else model.restorePlan(requested)
-        if(packages.isEmpty()&&requested.isNotEmpty()&&!model.busy){model=model.copy(notice=if(needsCheck==0)"삭제된 앱은 복원할 필요가 없어요. 앱을 지우면 위치 표시 설정도 함께 사라져요." else "선택한 앱은 지금 복원할 수 없어요. 홈의 ‘등록한 앱’에서 앱을 하나씩 눌러 상태를 확인해주세요.");return}
-        if(model.busy||BatchRuntime.state.value.busy||packages.isEmpty())return
+        if(model.busy||BatchRuntime.state.value.busy||requested.isEmpty())return
         refreshJob?.cancel()
         if(!BuildConfig.LOCAL_WRITES_ENABLED){model=model.copy(notice="읽기 전용 검증 빌드예요. 설정은 바꾸지 않아요.");return}
-        if(!model.canOperate||model.gate!=Gate.READY){model=model.copy(notice="연결 설정에서 기기를 연결한 뒤 다시 눌러 주세요.");return}
+        val ready=model.canOperate&&model.gate==Gate.READY
+        if((hide||show)&&!ready){model=model.copy(notice="연결 설정에서 기기를 연결한 뒤 다시 눌러 주세요.");return}
         refreshJob?.cancel();discoveryJob?.cancel();discoveryGeneration++
         StartupScanHandoff.cache.invalidate()
         val groups=if(show)emptyList() else (model.approvedGroups+model.entries.map{it.groupIdentities.map{p->p.packageName}}.filter{it.isNotEmpty()}).distinct()
@@ -495,15 +560,30 @@ class MainActivity : ComponentActivity() {
         val groupMap=groups.flatMap{g->g.map{it to g}}.toMap()
         val app=applicationContext
         val reapplying=if(hide&&!show)model.entries.filter{it.enabled}.map{it.identity.packageName}.toSet() else emptySet()
-        val started=BatchRuntime.start(targets.size,hide,show,auto,beforeUninstall) { report ->
+        val total=if(targets.isEmpty())requested.size else targets.size
+        val started=BatchRuntime.start(total,hide,show,auto,beforeUninstall) { report ->
+            if(!hide&&!show){
+                val journal=JournalStore(app)
+                // Own preparation in BatchRuntime too: rotation must not discard a restore after saving its intent.
+                try{LocalAdbSession.exclusive{SafetyEngine.requestRestore(journal,requested.toSet())}}
+                catch(_:Exception){return@start BatchOutcome(false,emptyList(),runCatching{journal.entries()}.getOrDefault(emptyList()),emptyList(),error="원래 상태 기록이 저장됐는지 확인하지 못해서 더 바꾸지 않았어요.")}
+                val unavailable=when{
+                    packages.isEmpty()->if(needsCheck==0)"삭제된 앱은 복원할 필요가 없어요. 앱을 지우면 위치 표시 설정도 함께 사라져요." else "선택한 앱은 지금 복원할 수 없어요. 홈의 ‘등록한 앱’에서 앱을 하나씩 눌러 상태를 확인해주세요."
+                    !ready->"연결 설정에서 기기를 연결한 뒤 다시 눌러 주세요."
+                    else->""
+                }
+                if(unavailable.isNotEmpty())return@start BatchOutcome(false,emptyList(),journal.entries(),emptyList(),error=unavailable)
+            }
             BatchPipeline.run(app,targets,groupMap,hide,show,auto,beforeUninstall,reapplying,ReapplySource.APP_OPEN,{ForegroundState.canStartTargets},background=false,report=report)
         }
         if(started)skipNotice=if(needsCheck>0)"확인이 필요한 ${needsCheck}개 앱은 건너뛰었어요. 홈 목록에서 상태를 확인해주세요." else ""
-        if(started)model=model.copy(busy=true,operationHide=hide,operationShow=show,autoReapplying=auto,progress=BatchProgress(0,targets.size),completion=null,restoreSkipped=needsCheck,loadingApps=false,notice="",wirelessWarning="",batchResults=emptyList())
+        if(started)model=model.copy(busy=true,operationHide=hide,operationShow=show,autoReapplying=auto,progress=BatchProgress(0,total),completion=null,restoreSkipped=needsCheck,loadingApps=false,notice="",wirelessWarning="",batchResults=emptyList())
     }
     /** Restore picks made before "연결 후 N개 복원": setup returns with FLAG_ACTIVITY_CLEAR_TOP, which recreates this
      *  activity, so the selection is carried over in memory and shown again. Nothing runs until the user taps restore. */
-    private companion object { var pendingRestore:Set<String> = emptySet() }
+    private companion object { var pendingRestore:Set<String> = emptySet()
+        /** Work that must finish even when the screen is recreated (uninstall cleanup). */
+        val cleanup=CoroutineScope(SupervisorJob()+Dispatchers.IO) }
     private fun openBackend(){openBackend(false)}
     private fun openBackend(wirelessSetup:Boolean){pendingRestore=if(model.page==Page.RESTORE)model.homePicked else emptySet();checkOnResume=true;refreshJob?.cancel();discoveryJob?.cancel();invalidateScan();startActivity(Intent(this,LocalAdbSetupActivity::class.java).putExtra(LocalAdbSetupActivity.WIRELESS_SETUP,wirelessSetup))}
     private fun <T> localBatch(userAction:Boolean=true,forceWireless:Boolean=false,block:()->T):T {

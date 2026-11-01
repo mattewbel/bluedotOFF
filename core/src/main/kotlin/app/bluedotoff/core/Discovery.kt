@@ -62,7 +62,7 @@ object CompletePackageScan {
      * Exceptions still abort the whole pass. Independence then requires confirmedUidMap.
      */
     fun <T:Any> collectAvailable(names:List<String>, load:(String)->T?):List<Pair<String,T>> {
-        require(names.size<=25000 && names.distinct().size==names.size) { "앱 목록 크기 또는 형식 확인 실패" }
+        require(names.size<=25000 && names.distinct().size==names.size) { "앱 목록을 읽지 못했어요. 잠시 뒤 다시 확인해 주세요." }
         return names.mapNotNull{pkg->load(pkg)?.let{pkg to it}}
     }
     /** Never infer sole ownership from a filtered PackageInfo list. Query each UID using
@@ -72,18 +72,18 @@ object CompletePackageScan {
         require(items.map{it.first}.distinct().size==items.size && items.all{it.first in names && it.second>=0})
         return DiscoveryPolicy.uidMap(items).mapValues{(uid,known)->
             val peers=load(uid)
-            require(peers.isNotEmpty() && peers.size<=25000 && peers.distinct().size==peers.size && peers.containsAll(known) && peers.all{it in names}) { "앱 목록이 바뀌었습니다. 다시 확인해 주세요." }
+            require(peers.isNotEmpty() && peers.size<=25000 && peers.distinct().size==peers.size && peers.containsAll(known) && peers.all{it in names}) { "앱 목록이 바뀌었어요. 다시 확인해 주세요." }
             peers.sorted()
         }
     }
     data class Kind(val packageName:String,val uid:Int?,val apex:Boolean)
     fun applicationNames(records:List<Kind>):Set<String> {
         require(records.map{it.packageName}.distinct().size==records.size)
-        return records.filterNot{it.apex}.map{require(it.uid!=null&&it.uid>=0){"앱 정보 확인 불가"};it.packageName}.toSet()
+        return records.filterNot{it.apex}.map{require(it.uid!=null&&it.uid>=0){"앱 정보를 읽지 못했어요."};it.packageName}.toSet()
     }
     fun <T> collect(names:List<String>, load:(String)->T?):List<Pair<String,T>> {
-        require(names.size<=25000 && names.distinct().size==names.size) { "앱 목록 크기 또는 형식 확인 실패" }
-        return names.map{pkg->pkg to (load(pkg)?:throw SafetyException("앱 목록이 변경되었습니다. 다시 확인해 주세요."))}
+        require(names.size<=25000 && names.distinct().size==names.size) { "앱 목록을 읽지 못했어요. 잠시 뒤 다시 확인해 주세요." }
+        return names.map{pkg->pkg to (load(pkg)?:throw SafetyException("앱 목록이 바뀌었어요. 다시 확인해 주세요."))}
     }
 }
 
@@ -110,7 +110,7 @@ object TargetBatch {
     class Runner {
         var stopped=false; private set
         fun run(pkg:String,action:(String)->Entry):BatchResult =
-            if(stopped)BatchResult(pkg,error="앞선 작업의 복원 또는 연결 확인이 필요해 변경하지 않았습니다.")
+            if(stopped)BatchResult(pkg,error="앞선 작업의 복원이나 연결을 먼저 확인해야 해서 바꾸지 않았어요.")
             else try {
                 val e=action(pkg)
                 if(e.state in listOf(TargetState.FAILED_ROLLBACK,TargetState.SHARED_UID_CHANGED,TargetState.NEEDS_REVIEW))stopped=true

@@ -25,16 +25,16 @@ class JournalStore(context: Context) : Journal {
         val stored=base.readBytes()
         cached?.let{list->if(cachedBytes?.contentEquals(stored)==true)return list}
         val root = JSONObject(String(stored,Charsets.UTF_8))
-        check(root.getInt("schema") == 1) { "복원 기록 형식을 확인할 수 없습니다. 변경을 차단했습니다." }
+        check(root.getInt("schema") == 1) { "원래 상태 기록을 읽지 못해서, 안전을 위해 바꾸지 않아요." }
         val payload = root.getString("payload")
-        check(BinderBackend.digest(payload.toByteArray()) == root.getString("checksum")) { "복원 기록이 손상되어 변경을 차단했습니다." }
+        check(BinderBackend.digest(payload.toByteArray()) == root.getString("checksum")) { "원래 상태 기록이 망가져서, 안전을 위해 바꾸지 않아요." }
         val items = JSONArray(payload)
         return parse(items).also{cached=it;cachedBytes=stored}
     }
     private fun parse(items:JSONArray):List<Entry> {
         return (0 until items.length()).map { index ->
             val o = items.getJSONObject(index); val signers = o.getJSONArray("signers")
-            Entry(Identity(o.getString("packageName"), o.getInt("userId"), o.getInt("uid"), (0 until signers.length()).map { signers.getString(it) }, o.getLong("firstInstallTime"), o.getLong("versionCode"), o.getLong("lastUpdateTime")), o.getString("label"), o.getInt("originalBit"), o.getBoolean("enabled"), TargetState.valueOf(o.getString("state")), o.getLong("verifiedAt"), o.getString("firmware"), o.getString("boot"), o.getBoolean("changedByUs"), o.optString("error"), o.optString("invariantDigest"), o.optBoolean("settlingVerified",false),if(o.isNull("sharedUserId"))null else o.optString("sharedUserId").takeIf{it.isNotBlank()},o.optJSONArray("groupIdentities")?.let{group->(0 until group.length()).map{n->val g=group.getJSONObject(n);val ss=g.getJSONArray("signers");Identity(g.getString("packageName"),g.getInt("userId"),g.getInt("uid"),(0 until ss.length()).map{ss.getString(it)},g.getLong("firstInstallTime"),g.getLong("versionCode"),g.getLong("lastUpdateTime"))}}?:emptyList())
+            Entry(Identity(o.getString("packageName"), o.getInt("userId"), o.getInt("uid"), (0 until signers.length()).map { signers.getString(it) }, o.getLong("firstInstallTime"), o.getLong("versionCode"), o.getLong("lastUpdateTime")), o.getString("label"), o.getInt("originalBit"), o.getBoolean("enabled"), TargetState.valueOf(o.getString("state")), o.getLong("verifiedAt"), o.getString("firmware"), o.getString("boot"), o.getBoolean("changedByUs"), o.optString("error"), o.optString("invariantDigest"), o.optBoolean("settlingVerified",false),if(o.isNull("sharedUserId"))null else o.optString("sharedUserId").takeIf{it.isNotBlank()},o.optJSONArray("groupIdentities")?.let{group->(0 until group.length()).map{n->val g=group.getJSONObject(n);val ss=g.getJSONArray("signers");Identity(g.getString("packageName"),g.getInt("userId"),g.getInt("uid"),(0 until ss.length()).map{ss.getString(it)},g.getLong("firstInstallTime"),g.getLong("versionCode"),g.getLong("lastUpdateTime"))}}?:emptyList(),o.optBoolean("retryHide",false),o.optBoolean("restoreRequested",false),o.optBoolean("locationRetired",false))
         }
     }
     override fun commit(entry: Entry): Boolean = synchronized(lock) {
@@ -63,7 +63,7 @@ class JournalStore(context: Context) : Journal {
             put("label", e.label); put("originalBit", e.originalBit); put("enabled", e.enabled); put("state", e.state.name); put("verifiedAt", e.lastVerifiedTime); put("firmware", e.firmware); put("boot", e.bootSession); put("changedByUs", e.changedByUs); put("error", e.error)
             put("invariantDigest",e.invariantDigest)
             if(e.groupIdentities.isNotEmpty())put("groupIdentities",JSONArray(e.groupIdentities.map{id->JSONObject().put("packageName",id.packageName).put("userId",id.userId).put("uid",id.uid).put("signers",JSONArray(id.signers)).put("firstInstallTime",id.firstInstallTime).put("versionCode",id.versionCode).put("lastUpdateTime",id.lastUpdateTime)}))
-            put("settlingVerified",e.settlingVerified);put("sharedUserId",e.sharedUserId?:JSONObject.NULL)
+            put("settlingVerified",e.settlingVerified);put("retryHide",e.retryHide);put("restoreRequested",e.restoreRequested);put("locationRetired",e.locationRetired);put("sharedUserId",e.sharedUserId?:JSONObject.NULL)
         }
     private fun publish(items:List<Entry>,payload:String): Boolean {
         val root = JSONObject().put("schema", 1).put("payload", payload).put("checksum", BinderBackend.digest(payload.toByteArray())).toString()
@@ -81,7 +81,7 @@ class JournalStore(context: Context) : Journal {
         }catch(e:Exception){android.util.Log.w("bluedotOFF","journal directory sync skipped: ${e.javaClass.simpleName}")}
         // Exact reread: the stored bytes must be exactly the bytes serialized from [items] (the parser round-trip is
         // covered by JournalStoreTest), which is cheaper than parsing the whole journal again.
-        check(base.readBytes().contentEquals(bytes)) { "복원 기록 저장 확인 실패" }
+        check(base.readBytes().contentEquals(bytes)) { "원래 상태 기록이 저장됐는지 확인하지 못했어요." }
         cached=items.toList();cachedBytes=bytes
         return true
     }

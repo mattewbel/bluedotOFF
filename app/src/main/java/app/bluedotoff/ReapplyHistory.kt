@@ -11,7 +11,9 @@ import java.util.UUID
 enum class ReapplySource(val label:String) {
     BACKGROUND("백그라운드 감시"), APP_OPEN("앱을 열 때"), MANUAL("직접 재적용"), RESTART("재시작 후")
 }
-data class ReapplyHistoryItem(val id:String,val packageName:String,val label:String,val at:Long,val success:Boolean,val source:ReapplySource)
+/** [rewrote]: this result wrote the hide again (it was undone); false for a check that found it still hidden, and for
+ *  rows saved before 1.3.0, which did not keep it. */
+data class ReapplyHistoryItem(val id:String,val packageName:String,val label:String,val at:Long,val success:Boolean,val source:ReapplySource,val rewrote:Boolean=false)
 
 /** Display-only recent results, separate from the durable restore journal. Never controls a permission write.
  * Logging faults cannot turn a verified operation into a failure or trigger a rollback. */
@@ -27,10 +29,10 @@ class ReapplyHistoryStore(private val context:Context) {
             }}.distinctBy{it.id}.sortedByDescending{it.at}.take(MAX_ITEMS)
         }
         private fun encode(row:ReapplyHistoryItem)=JSONObject().put("id",row.id).put("package",row.packageName).put("label",row.label)
-            .put("at",row.at).put("success",row.success).put("source",row.source.name).toString()
+            .put("at",row.at).put("success",row.success).put("source",row.source.name).put("rewrote",row.rewrote).toString()
         private fun decode(text:String):ReapplyHistoryItem?=runCatching {
             val json=JSONObject(text)
-            val row=ReapplyHistoryItem(json.getString("id"),json.getString("package"),json.getString("label"),json.getLong("at"),json.getBoolean("success"),ReapplySource.valueOf(json.getString("source")))
+            val row=ReapplyHistoryItem(json.getString("id"),json.getString("package"),json.getString("label"),json.getLong("at"),json.getBoolean("success"),ReapplySource.valueOf(json.getString("source")),json.optBoolean("rewrote",false))
             require(row.id.isNotBlank()&&row.packageName.matches(Regex("[A-Za-z0-9_.]+"))&&row.at>0)
             row
         }.getOrNull()
@@ -48,10 +50,11 @@ class ReapplyHistoryStore(private val context:Context) {
         return file.useLines{lines->lines.mapNotNull(::decode).toList()}.distinctBy{it.id}.sortedByDescending{it.at}.take(MAX_ITEMS)
     }
     fun entries():List<ReapplyHistoryItem> = synchronized(lock){read()}
-    fun record(result:BatchResult,source:ReapplySource,at:Long=System.currentTimeMillis()) {
-        synchronized(lock){runCatching {
+    fun record(result:BatchResult,source:ReapplySource,at:Long=System.currentTimeMillis(),rewrote:Boolean=false) {
+        synchronized(lock){runCatching{if(ReapplyStats.counts(source,result.success,rewrote))ReapplyStats.add(context)}
+            runCatching {
             val previous=read()
-            val row=ReapplyHistoryItem(UUID.randomUUID().toString(),result.packageName,result.entry?.label?:result.packageName,at,result.success,source)
+            val row=ReapplyHistoryItem(UUID.randomUUID().toString(),result.packageName,result.entry?.label?:result.packageName,at,result.success,source,rewrote)
             if(previous.size>=MAX_ITEMS||file.length()>256_000) {
                 val retained=(listOf(row)+previous).take(MAX_ITEMS)
                 file.writeText(retained.joinToString("\n",postfix="\n"){encode(it)})

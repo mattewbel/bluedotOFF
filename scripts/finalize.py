@@ -27,6 +27,12 @@ for variant,suffix,expected in [('localDebug','','3b3b208f92d3d437acf30c333d9a7b
     assert next(e for e in application.findall('activity') if e.attrib[android+'name'].endswith('LocalAdbSetupActivity')).attrib[android+'exported']=='false'
     assert next(e for e in application.findall('receiver') if e.attrib[android+'name'].endswith('PairingReplyReceiver')).attrib[android+'exported']=='false'
     assert next(e for e in application.findall('receiver') if e.attrib[android+'name'].endswith('LifecycleReceiver')).attrib[android+'exported']=='false'
+    # 1.3.0 widget: exported for the launcher, but it only redraws from stored state on these broadcasts.
+    widget=next(e for e in application.findall('receiver') if e.attrib[android+'name'].endswith('StatusWidgetReceiver'))
+    assert {a.attrib[android+'name'] for f in widget.findall('intent-filter') for a in f.findall('action')}=={'android.appwidget.action.APPWIDGET_UPDATE','android.intent.action.TIMEZONE_CHANGED','android.intent.action.TIME_SET','android.intent.action.LOCALE_CHANGED'}
+    # The widget's refresh icon starts a watch check: only its own PendingIntent may reach it.
+    refresh=next(e for e in application.findall('receiver') if e.attrib[android+'name'].endswith('WidgetRefreshReceiver'))
+    assert refresh.attrib[android+'exported']=='false' and not refresh.findall('intent-filter')
     providers={p.attrib[android+'name']:p for p in application.findall('provider')}
     assert set(providers)=={'app.bluedotoff.adb.WatchBridgeProvider','androidx.startup.InitializationProvider'}
     watch=providers['app.bluedotoff.adb.WatchBridgeProvider']
@@ -65,9 +71,19 @@ helper=(root/'app/src/main/java/app/bluedotoff/adb/MinimalPrivilegedHelper.kt').
 assert helper.count('parcelRead("permissionmgr","updatePermissionFlags"')==1
 assert 'it.writeString("android.permission.ACCESS_FINE_LOCATION");it.writeInt(256);it.writeInt(wanted);it.writeInt(1);it.writeString("default:0");it.writeInt(0)' in helper
 controls=(root/'app/src/main/java/app/bluedotoff/adb/WirelessControls.kt').read_text(encoding='utf-8')
-assert controls.count('Settings.Global.putInt(')==2
+assert controls.count('Settings.Global.putInt(')==3
 assert 'Settings.Global.putInt(context.contentResolver,"adb_wifi_enabled",1)' in controls
 assert 'Settings.Global.putInt(context.contentResolver,"adb_wifi_enabled",0)' in controls
+# Before uninstalling: the additional write is OFF only, for these two fixed debugging keys, with permission.
+debug_off=controls.split('fun disableDebugging(){',1)[1].split('// Diagnostics only:',1)[0]
+assert 'if(!granted)return' in debug_off
+assert 'for(key in listOf("adb_wifi_enabled",Settings.Global.ADB_ENABLED))' in debug_off
+assert 'Settings.Global.putInt(context.contentResolver,key,0)' in debug_off
+# 1.3.0: the pairing expiry (owner 2026-10-29): off, and back to the value it had before.
+assert controls.count('Settings.Global.putString(')==2 and 'const val TIMEOUT="adb_allowed_connection_time"' in controls
+assert 'Settings.Global.putString(context.contentResolver,TIMEOUT,"0")' in controls
+assert 'Settings.Global.putString(context.contentResolver,TIMEOUT,before.ifEmpty{null})' in controls
+assert all(f'Settings.{kind}.put' not in controls for kind in ['Secure','System'])
 assert helper.count('ProcessBuilder(')==2
 for operation in ['grant','revoke']:
     assert 'ProcessBuilder("/system/bin/pm","'+operation+'","--user","0","app.bluedotoff","android.permission.WRITE_SECURE_SETTINGS")' in helper

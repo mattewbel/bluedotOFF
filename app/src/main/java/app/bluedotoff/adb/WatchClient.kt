@@ -29,6 +29,13 @@ object WatchClient {
     private var app:Context?=null
     private var queued=false
     private val cooldown=WatchCooldown()
+    private var retryPolicy:WatchRetry?=null
+    private fun retry(c:Context)=retryPolicy?:WatchRetry(object:WatchRetry.Store{
+        private val prefs=c.applicationContext.getSharedPreferences("watch-retry",Context.MODE_PRIVATE)
+        override fun load(pkg:String)=prefs.getString(pkg,null)?.split(',')?.mapNotNull{it.toLongOrNull()}?:emptyList()
+        override fun save(pkg:String,times:List<Long>){check(prefs.edit().apply{if(times.isEmpty())remove(pkg) else putString(pkg,times.joinToString(","))}.commit()){"RETRY_RECORD_SAVE_FAILED"}}
+    }).also{retryPolicy=it}
+    private val retryTimers=HashSet<String>()
     private var initialized=false
     private var states=""
     private var wifiObserver:AutoCloseable?=null
@@ -80,9 +87,14 @@ object WatchClient {
         return true
     }
     private fun lost(c:Context){
-        c.getSharedPreferences("ui-state",0).edit().putBoolean("watchRunning",false).apply()
-        state(c)
-        WatchNotification.stopped(c,if(!usbEnabled(c))WatchNotification.Reason.USB_DEBUGGING_OFF else WatchNotification.Reason.STOPPED)
+        synchronized(queueLock){
+            // A wireless start can fail just after a PC-launched helper attached. Its late failure is not a stop.
+            if(available(c))BackgroundWatch.running(c) else {
+                c.getSharedPreferences("ui-state",0).edit().putBoolean("watchRunning",false).apply()
+                state(c)
+                WatchNotification.stopped(c,if(!usbEnabled(c))WatchNotification.Reason.USB_DEBUGGING_OFF else WatchNotification.Reason.STOPPED)
+            }
+        }
         LifecycleEvents.changed()
     }
     internal fun config(c:Context)=JSONArray(JournalStore(c).entries().filter(WatchPolicy::eligible).map{e->JSONObject().put("package",e.identity.packageName).put("uid",e.identity.uid)})
@@ -137,11 +149,15 @@ object WatchClient {
         try{
             if(attaching.await(500,TimeUnit.MILLISECONDS)&&available(c))return true
             // A start blocked before any connection is not a try: Wi-Fi turned on seconds later must not wait 30 s (owner 2026-10-26).
-            if(!(ForegroundState.active||afterRestart)||!WifiConnection.connected(c)){WatchLog.event("state","watchStartBlocked foreground=${ForegroundState.active} wifiConnected=${WifiConnection.connected(c)}");synchronized(queueLock){lastStart=0};lost(c);return false}
+            if(!(ForegroundState.active||afterRestart)||!WifiConnection.connected(c)){WatchLog.event("state","watchStartBlocked foreground=${ForegroundState.active} wifiConnected=${WifiConnection.connected(c)}");synchronized(queueLock){lastStart=0};lost(c);return available(c)}
             WirelessWork.run(c,true,hold=false,forceWireless=true,afterRestart=afterRestart){it.startWatch()}
             check(attaching.await(10,TimeUnit.SECONDS)&&available(c)){"Watch helper handshake failed"}
             return true
-        }catch(e:Exception){WatchLog.event("state","watchStartFailed=${e.javaClass.simpleName}");lost(c);return false}
+        }catch(e:Exception){
+            WatchLog.event("state","watchStartFailed=${e.javaClass.simpleName}")
+            // A refused key (the pairing expired) is not a try either: pairing again seconds later starts at once (Fold7 2026-10-29).
+            if((e as? LocalAdbStageException)?.state==LocalAdbState.ADB_AUTHENTICATION_FAILED)synchronized(queueLock){lastStart=0}
+            lost(c);return available(c)}
         finally{starting=false}
     }
     /** Invalidate pending automatic work immediately; drain an already-started operation before ending its helper. */
@@ -159,35 +175,74 @@ object WatchClient {
     /** Receiver/provider merely enqueue names. No Binder thread holds a client lock while calling back into the helper. */
     /** First change signal of the current queue (elapsedRealtime), for the B-4 timing line. */
     @Volatile private var firstSignalAt=0L
-    internal fun signal(c:Context,packages:Set<String>){
-        if(!available(c))return
-        synchronized(queueLock){if(pending.isEmpty())firstSignalAt=SystemClock.elapsedRealtime();pending+=packages;if(queued)return;queued=true}
+    @Volatile private var workFailures=0
+    /** Apps a watch run read to an end (still hidden, hidden again, or left for a reason); guarded by [queueLock]. An app
+     *  skipped by the retry pause, put off for the app's own work or not reached is not here (GPT rc11 review). */
+    private val checked=HashSet<String>()
+    /** Widget "지금 확인" (owner 2026-10-29): every app the watch guards goes through the same check as after a change
+     *  event (an app still hidden is only read). [done] gets true only when every one of them was read to an end. */
+    fun checkNow(c:Context,done:(Boolean)->Unit){
+        val names=JournalStore(c).entries().filter{WatchPolicy.eligible(it)&&!WatchPolicy.retrying(it)}.map{it.identity.packageName}.toSet()
+        if(!available(c)){done(false);return}
+        val failures=workFailures
+        synchronized(queueLock){checked-=names}
+        signal(c,names)
+        // The single worker runs this after the queue that holds [names].
+        worker.execute{done(available(c)&&workFailures==failures&&synchronized(queueLock){checked.containsAll(names)})}
+    }
+    internal fun signal(c:Context,packages:Set<String>):Boolean {
+        if(!available(c))return false
+        synchronized(queueLock){if(pending.isEmpty())firstSignalAt=SystemClock.elapsedRealtime();pending+=packages;if(queued)return true;queued=true}
         worker.execute{
             try{
                 while(true){
                     val signalAt=synchronized(queueLock){firstSignalAt};val workerAt=SystemClock.elapsedRealtime()
                     val names=synchronized(queueLock){pending.toSet().also{pending.clear()}}
-                    if(names.isEmpty()||!available(c))break
+                    if(names.isEmpty())break
+                    if(!available(c)){runCatching{ReapplyNotification.watchFinished(c,names)};break}
                     exclusive(c){session->
                         val lockAt=SystemClock.elapsedRealtime()
                         if(BatchRuntime.state.value.busy){synchronized(queueLock){deferred+=names};return@exclusive}
                         session.run{active->
-                            val readyAt=SystemClock.elapsedRealtime();val firstRead=HashMap<String,Long>()
-                            val allowed=names.filter{cooldown.allowed(it,SystemClock.elapsedRealtime())}.toSet()
-                            WatchEngine(active,JournalStore(c),System::currentTimeMillis,{BootSession.current(c)},observe={phase,s,wrote->firstRead.putIfAbsent(s.identity.packageName,SystemClock.elapsedRealtime());active.recordVerification(phase,s,wrote)},
-                                onSkip={pkgs,reason->WatchLog.event("skip","pkg=${pkgs.joinToString(",")} reason=$reason")})
+                            val readyAt=SystemClock.elapsedRealtime();val firstRead=HashMap<String,Long>();val rewrote=HashSet<String>()
+                            val started=SystemClock.elapsedRealtime()
+                            val wall=System.currentTimeMillis()
+                            val retrying=JournalStore(c).entries().filter(WatchPolicy::retrying).associateBy{it.identity.packageName}
+                            val allowed=names.filter{p->cooldown.allowed(p,started)&&retrying[p]?.let{retry(c).allowed(it,wall)}!=false}.toSet()
+                            (names-retrying.keys).forEach{retry(c).succeeded(it)}
+                            WatchEngine(active,JournalStore(c),System::currentTimeMillis,{BootSession.current(c)},observe={phase,s,wrote->firstRead.putIfAbsent(s.identity.packageName,SystemClock.elapsedRealtime());if(wrote)rewrote+=s.identity.packageName;active.recordVerification(phase,s,wrote)},
+                                onSkip={pkgs,reason->synchronized(queueLock){checked+=pkgs};WatchLog.event("skip","pkg=${pkgs.joinToString(",")} reason=$reason")},
+                                beforeAttempt={entries->entries.filter(WatchPolicy::retrying).forEach{retry(c).tried(it.identity.packageName,System.currentTimeMillis())}})
                                 .reapply(allowed,{available(c)&&!BatchRuntime.state.value.busy},
                                     {_->},
                                     {result->val doneAt=SystemClock.elapsedRealtime();cooldown.result(result.packageName,doneAt,result.success)
+                                        if(result.success)retry(c).succeeded(result.packageName)
+                                        synchronized(queueLock){if(result.success)checked+=result.packageName else checked-=result.packageName}
                                         WatchLog.event("timing","pkg=${result.packageName} ok=${result.success} toWorker=${workerAt-signalAt}ms lockWait=${lockAt-workerAt}ms connect=${readyAt-lockAt}ms checks=${doneAt-(firstRead[result.packageName]?:readyAt)}ms total=${doneAt-signalAt}ms")
-                                        ReapplyHistoryStore(c).record(result,ReapplySource.BACKGROUND)
-                                        if(result.success)c.getSystemService(android.app.NotificationManager::class.java).cancel(result.packageName.hashCode())})
+                                        ReapplyHistoryStore(c).record(result,ReapplySource.BACKGROUND,rewrote=result.packageName in rewrote)})
+                            // Every app of this round, not only those with a result: the watch passes over some without one
+                            // (an old record it cannot take, the retry delay, a check cut short; Claude review 2026-10-31).
+                            runCatching{ReapplyNotification.watchFinished(c,names)}
+                            retryLater(c,names)
                         }
                     }
                     LifecycleEvents.changed()
                 }
-            }catch(e:Exception){WatchLog.event("state","watchWorkFailed=${e.javaClass.simpleName}");if(current?.binder?.isBinderAlive!=true)lost(c)}
-            finally{synchronized(queueLock){queued=false};val remaining=synchronized(queueLock){pending.toSet()};if(remaining.isNotEmpty())signal(c,remaining)}
+            }catch(e:Exception){workFailures++;WatchLog.event("state","watchWorkFailed=${e.javaClass.simpleName}");runCatching{ReapplyNotification.show(c,null,checkInApp=true)};if(current?.binder?.isBinderAlive!=true)lost(c)}
+            finally{synchronized(queueLock){queued=false};val remaining=synchronized(queueLock){pending.toSet()};if(remaining.isNotEmpty()&&!signal(c,remaining))runCatching{ReapplyNotification.watchFinished(c,remaining)}}
+        }
+        return true
+    }
+    /** A hide that failed safely is tried again later even without a new event (owner 2026-10-31). A killed app process
+     *  drops the timer; the next event, watch start or app visit tries again. */
+    private fun retryLater(c:Context,names:Set<String>){
+        val now=System.currentTimeMillis()
+        JournalStore(c).entries().filter{WatchPolicy.retrying(it)&&it.identity.packageName in names}.forEach{e->
+            val pkg=e.identity.packageName;val delay=retry(c).wait(e,now)?:return@forEach
+            if(!synchronized(queueLock){retryTimers.add(pkg)})return@forEach
+            // A due retry skipped before an attempt spends no quota, but must not become a 30-second polling loop.
+            val next=if(delay==0L)10*60_000L else maxOf(delay,30_000L)
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({synchronized(queueLock){retryTimers-=pkg};signal(c,setOf(pkg))},next)
         }
     }
     internal fun reportState(c:Context){state(c)}

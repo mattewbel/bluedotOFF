@@ -163,7 +163,7 @@ class Review112RoundTwoTest {
     }
     @Test fun mixedSuccessAndLockedGroupDoesNotClaimOverallSuccess(){
         recovery(listOf(Spec(TargetState.PENDING_HIDE),Spec(TargetState.PENDING_RESTORE)),{f->f.current.replaceAll{p,s->if(p.contains("g0"))s.copy(fineFlags=0x210) else s}}){notice,entries,_->
-            assertEquals("중단된 공유 앱 묶음의 상태가 기록과 달라 변경하지 않았습니다.",notice)
+            assertEquals("끊긴 묶음 작업 뒤 상태가 기록과 달라서 바꾸지 않았어요.",notice)
             assertEquals(2,entries.count{it.state==TargetState.NEEDS_REVIEW});assertEquals(2,entries.count{it.state==TargetState.NOT_APPLIED})
         }
     }
@@ -171,7 +171,7 @@ class Review112RoundTwoTest {
         recovery(listOf(Spec(TargetState.PENDING_HIDE)),{it.failAfterWrite=true}){notice,entries,_->
             assertTrue(entries.all{it.state==TargetState.FAILED_ROLLBACK&&it.enabled})
             assertNotEquals(SharedGroupEngine.INTERRUPTED,notice)
-            assertEquals("중단된 공유 앱 묶음을 원래대로 되돌렸는지 확인하지 못했습니다. 추가 변경을 차단했습니다.",notice)
+            assertEquals("끊긴 묶음 작업을 원래대로 되돌렸는지 확인하지 못했어요. 안전을 위해 더 바꾸지 않아요.",notice)
         }
     }
     @Test fun originalOffRecoveryNeverTurnsItOn(){

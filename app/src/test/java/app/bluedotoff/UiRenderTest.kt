@@ -33,6 +33,14 @@ import androidx.test.espresso.IdlingPolicies
 @Config(sdk=[34],qualifiers="ko-rKR-w412dp-h915dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class UiRenderTest {
+    @Test fun retiredLocationExplanationRemainsInHistoryWithoutAReapplyAction(){
+        val m=model(applied=true,page=Page.HISTORY)
+        val retired=m.entries.single().copy(label="Bose",enabled=false,state=TargetState.NOT_APPLIED,locationRetired=true)
+        render("130-location-retired-history",m.copy(entries=listOf(retired),historyView=HistoryView.REAPPLY))
+        compose.onNodeWithText("관리 목록에서 제외한 앱").assertExists()
+        compose.onNodeWithText("Bose").assertExists()
+        compose.onNodeWithText("업데이트 후 위치 권한 요청이 없어졌어요.").assertExists()
+    }
     @Test fun batterySettingIsAvailableForWirelessUsers(){batterySetting(false)}
     @Test fun batterySettingIsAvailableForUsbUsers(){batterySetting(true)}
     private fun batterySetting(watching:Boolean){
@@ -58,10 +66,10 @@ class UiRenderTest {
         org.junit.Assert.assertEquals(false,requested)
     }
     @Test fun rejectedGroupsAreListedWithReasonsUntilConfirmed(){
-        controller.get().setContent { BlueDotApp(model(page=Page.PICK).copy(rejectedGroupList=listOf(RejectedGroup("삼성 계정",6,"공유 앱의 위치 표시 설정이 서로 달라 변경하지 않았습니다."))),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}) }
+        controller.get().setContent { BlueDotApp(model(page=Page.PICK).copy(rejectedGroupList=listOf(RejectedGroup("삼성 계정",6,"묶음 앱끼리 표시 설정이 서로 달라서 바꾸지 않았어요."))),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}) }
         compose.waitForIdle()
         compose.onNodeWithText("선택하지 않은 앱 묶음").assertExists();compose.onNodeWithText("삼성 계정 외 5개 앱").assertExists()
-        compose.onNodeWithText("공유 앱의 위치 표시 설정이 서로 달라 변경하지 않았습니다.").assertExists();compose.onNodeWithText("확인").assertExists()
+        compose.onNodeWithText("묶음 앱끼리 표시 설정이 서로 달라서 바꾸지 않았어요.").assertExists();compose.onNodeWithText("확인").assertExists()
     }
     @Test fun largeGroupAsksBeforeSelecting(){
         controller.get().setContent { BlueDotApp(model(page=Page.PICK).copy(bigGroups=listOf(BigGroup("디바이스 찾기",(1..93).map{"demo.sys$it"},true))),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}) }
@@ -267,6 +275,14 @@ class UiRenderTest {
         org.junit.Assert.assertEquals(listOf(Page.HISTORY),pages);org.junit.Assert.assertEquals(1,hidden.size)
         render("97-recent-hide",m)
     }
+    /** Squeezed beside "Verlauf ansehen", German split "Standortnutzu-ng" mid-word; the link now moves below the title. */
+    @Test @Config(qualifiers="de-rDE-w360dp-h780dp-xxhdpi",fontScale=1.3f) fun germanRecentCardLinkMovesBelowTheTitle(){
+        val app=app.bluedotoff.core.DiscoveredApp("com.example.map","Map",10500,launcher=true,access=LocationAccess(fine=System.currentTimeMillis()-60_000L))
+        render("97-recent-de-large",model(applied=true).copy(historyAvailable=true,discovered=listOf(app),connected=true))
+        val title=compose.onNodeWithText("Apps mit kürzlicher Standortnutzung",useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
+        val link=compose.onNodeWithText("Verlauf ansehen",useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
+        assertTrue("$title / $link",link.top>=title.bottom)
+    }
     @Test fun failedBatchShowsTheSameErrorOnCardAndSnackbar(){
         // Screenshot for the owner: a partly failed apply shows its error on the result card and as a snackbar.
         val base=model(applied=true);val error="화면을 떠나서 남은 앱은 바꾸지 않았어요. 이미 끝난 적용과 등록 기록은 그대로예요."
@@ -453,6 +469,38 @@ class UiRenderTest {
         compose.runOnIdle{current.value=current.value.copy(watchRunning=true)}
         compose.onNodeWithText("백그라운드 감시가 멈춰 있어요").assertDoesNotExist()
     }
+    /** Fold7 2026-10-29: a refused key (the pairing expired) asks for pairing again instead of Wi-Fi advice. */
+    @Test fun anExpiredPairingAsksToPairAgain(){
+        var opened=0
+        controller.get().setContent{BlueDotApp(model(applied=true).copy(backgroundWatch=true,usbDebugging=true,watchRunning=false,pairingExpired=true),{}, {}, {}, {}, {}, {}, {opened++}, {}, {}, {}, {}, {}, {}, {}, {})}
+        compose.onNodeWithText("저장된 페어링으로 연결하지 못했어요").assertExists()
+        compose.onNodeWithText("백그라운드 감시가 멈춰 있어요").assertDoesNotExist()
+        compose.onNodeWithText("다시 페어링").performClick()
+        compose.runOnIdle{org.junit.Assert.assertEquals(1,opened)}
+    }
+    /** GPT rc12 review: the card has its own retry, also with no registered apps and without automatic management
+     *  (the check line's ⟳ is missing or off there). */
+    @Test fun theConnectionCardRetriesWithoutTheCheckLine(){
+        var retried=0
+        val app=Entry(Identity("test.map",0,10123,listOf("signer"),100,1,100),"Map",256,true,TargetState.APPLIED,200,"fixture","boot",true,settlingVerified=true)
+        val current=androidx.compose.runtime.mutableStateOf(UiModel(gate=Gate.READY,page=Page.HOME,connected=false,automaticReady=true,autoManagement=true,pairingExpired=true,lastCheckFailed=true,notifications=true))
+        controller.get().setContent{BlueDotApp(current.value,{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},recheck={retried++})}
+        compose.onNodeWithText("저장된 페어링으로 연결하지 못했어요").assertExists()
+        compose.onNodeWithText("다시 시도").assertIsEnabled().performClick()
+        compose.runOnIdle{org.junit.Assert.assertEquals(1,retried);current.value=current.value.copy(entries=listOf(app),automaticReady=false,autoManagement=false)}
+        compose.onNodeWithText("다시 시도").assertIsEnabled().performClick()
+        compose.runOnIdle{org.junit.Assert.assertEquals(2,retried);current.value=current.value.copy(rechecking=true)}
+        compose.onNodeWithText("다시 시도").assertIsNotEnabled()
+    }
+    /** Owner 2026-10-29: already open on Wi-Fi, "open bluedotOFF on Wi-Fi" is no advice; the card starts the watch itself. */
+    @Test fun aStoppedWatchOnWifiOffersToStartItAgain(){
+        var started=0
+        controller.get().setContent{BlueDotApp(model(applied=true).copy(backgroundWatch=true,usbDebugging=true,watchRunning=false,autoManagement=true,wifiConnected=true),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},backgroundWatchChanged={if(it)started++})}
+        compose.onNodeWithText("감시를 다시 켜지 못했어요.").assertExists()
+        compose.onNodeWithText("다시 켜려면 Wi-Fi에 연결된 상태에서 bluedotOFF를 열어주세요.").assertDoesNotExist()
+        compose.onNodeWithText("감시 다시 켜기").performClick()
+        compose.runOnIdle{org.junit.Assert.assertEquals(1,started)}
+    }
     /** No connection: restore buttons lead to setup instead of sitting grey. */
     @Test fun restoreWithoutConnectionLeadsToSetup(){
         var opened=false
@@ -463,11 +511,11 @@ class UiRenderTest {
     }
     /** While searching, a matching app that cannot be hidden is listed with its reason; it cannot be selected. */
     @Test fun searchShowsAppsThatCannotBeHiddenWithReason(){
-        val blocked=DiscoveredApp("demo.blocked","차단 지도",10795,launcher=true,hasLocationDeclaration=true,block="정확한 위치 권한이 허용된 앱만 적용할 수 있습니다.",indicator=IndicatorAssessment(IndicatorEligibility.STRONG_CANDIDATE))
+        val blocked=DiscoveredApp("demo.blocked","차단 지도",10795,launcher=true,hasLocationDeclaration=true,block="‘정확한 위치’를 허용한 앱만 숨길 수 있어요.",indicator=IndicatorAssessment(IndicatorEligibility.STRONG_CANDIDATE))
         val m=model(page=Page.PICK).copy(entries=emptyList(),discovered=listOf(blocked),historyAvailable=true,query="차단",filter=AppFilter.ALL)
         render("93-picker-search-unavailable",m)
         compose.onNodeWithText("숨길 수 없는 앱").assertExists()
-        compose.onNodeWithText("정확한 위치 권한이 허용된 앱만 적용할 수 있습니다.").assertExists()
+        compose.onNodeWithText("‘정확한 위치’를 허용한 앱만 숨길 수 있어요.").assertExists()
         compose.onAllNodes(isToggleable() and isEnabled() and hasAnyAncestor(hasScrollAction())).assertCountEquals(0)
         render("93b-picker-no-search",m.copy(query=""))
         compose.onNodeWithText("숨길 수 없는 앱").assertDoesNotExist()
@@ -695,6 +743,40 @@ class UiRenderTest {
         compose.onNodeWithText("bluedotOFF를 지우기 전에 눌러주세요. 숨긴 앱을 모두 원래 상태로 되돌려요. 앱 삭제나 데이터 초기화만으로는 숨김이 풀리지 않아요.").performScrollTo().assertExists()
         compose.onNodeWithText("진단 정보 복사 및 보내기").performScrollTo().assertExists()
     }
+    /** Owner 2026-11-01: "앱 삭제 전 복원" always warns first (also with no apps) and its start button waits 5 seconds. */
+    @Test fun restoreBeforeUninstallWarnsAndWaitsFiveSeconds(){
+        var started=0
+        controller.get().setContent{BlueDotApp(model(applied=true,page=Page.SETTINGS).copy(autoPermission=true),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},beforeUninstall={started++})}
+        compose.onNodeWithText("앱 삭제 전 복원").performScrollTo()
+        // The countdown runs on the test clock from here.
+        compose.mainClock.autoAdvance=false
+        compose.onNodeWithText("앱 삭제 전 복원").performClick()
+        compose.mainClock.advanceTimeBy(100)
+        compose.onNodeWithText("등록한 1개 앱을 모두 원래 표시 상태로 되돌리고, 백그라운드 감시와 무선 디버깅 자동 관리를 꺼요.").assertExists()
+        compose.onNodeWithText("모두 되돌리면 USB 디버깅과 무선 디버깅도 꺼요.",substring=true).assertExists()
+        compose.onNodeWithText("취소").assertIsEnabled()
+        compose.onNodeWithText("복원 시작 (5)").assertIsNotEnabled()
+        compose.mainClock.advanceTimeBy(5100)
+        compose.onNodeWithText("복원 시작").assertIsEnabled().performClick()
+        org.junit.Assert.assertEquals(1,started)
+    }
+    @Test fun restoreBeforeUninstallBlocksKnownJournalProblems(){
+        var started=0
+        controller.get().setContent{BlueDotApp(model(applied=true,page=Page.SETTINGS).copy(entries=emptyList(),journalProblem=true),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},beforeUninstall={started++})}
+        compose.onNodeWithText("앱 삭제 전 복원").performScrollTo().performClick()
+        compose.onNodeWithText("복원 기록을 확인하지 못했어요").assertExists()
+        compose.onNodeWithText("앱 데이터를 지우거나 앱을 삭제하지 마세요.",substring=true).assertExists()
+        compose.mainClock.advanceTimeBy(6000)
+        compose.onNodeWithText("복원 시작").assertDoesNotExist()
+        compose.onNodeWithText("취소").assertDoesNotExist()
+        compose.onNodeWithText("확인").assertIsEnabled().performClick()
+        compose.onNodeWithText("복원 기록을 확인하지 못했어요").assertDoesNotExist()
+        org.junit.Assert.assertEquals(0,started)
+    }
+    @Test fun restoreBeforeUninstallSaysWhenDebuggingIsOff(){
+        render("93-uninstall-debugging-off",model(applied=true).copy(entries=emptyList(),uninstallCheck=0,connected=false,usbDebugging=false))
+        compose.onNodeWithText("USB 디버깅과 무선 디버깅도 꺼져 있어요.",substring=true).assertExists()
+    }
     @Test fun restoreBeforeUninstallSaysWhenUninstallingIsSafe(){
         render("93-uninstall-ready",model(applied=true).copy(entries=emptyList(),uninstallCheck=0))
         compose.onNodeWithText("숨긴 앱을 모두 원래 상태로 되돌렸어요. 이제 bluedotOFF를 삭제해도 돼요.",substring=true).assertExists()
@@ -722,6 +804,42 @@ class UiRenderTest {
         render("75-welcome",model(gate=Gate.WELCOME));compose.onNodeWithText("연결 준비 · 1 / 11").assertExists()
         render("75-connection",model(gate=Gate.NOT_RUNNING));compose.onNodeWithText("연결 준비 · 6 / 11").assertExists()
         render("75-verifying",model(gate=Gate.CHECKING));compose.onNodeWithText("연결 준비 · 11 / 11").assertExists()
+    }
+    /** 1.3.0: three answers for the way this person connects, only after setup. */
+    @Test fun helpStartsWithTheShortGuideForTheChosenWay(){
+        render("79-help-guide-wifi",model(applied=true,page=Page.HELP))
+        compose.onNodeWithText("짧은 안내").assertExists();compose.onNodeWithText(UsageGuide.caption(false)).assertExists()
+        compose.onNodeWithText(UsageGuide.items(false)[1].second).assertExists();compose.onNodeWithText("이 안내 보내기").assertExists()
+        render("79-help-guide-pc",model(applied=true,page=Page.HELP).copy(pcOnly=true))
+        compose.onNodeWithText(UsageGuide.items(true)[1].second).assertExists()
+        render("79-help-setup-no-guide",model(gate=Gate.NOT_RUNNING,page=Page.HELP));compose.onNodeWithText("짧은 안내").assertDoesNotExist()
+    }
+    @Test @Config(qualifiers="en-rUS-w412dp-h915dp-xxhdpi") fun englishShortGuideIsTranslated(){
+        render("79-help-guide-en",model(applied=true,page=Page.HELP))
+        compose.onNodeWithText("Quick guide").assertExists();compose.onNodeWithText("What do I do after a restart?").assertExists()
+    }
+    /** 1.3.0: the reapply tab names only confirmed automatic results and the date counting started. */
+    @Test fun reapplyTabStartsWithWhatBluedotoffDid(){
+        val since=java.time.ZonedDateTime.of(2026,11,1,9,0,0,0,java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val m=model(applied=true,page=Page.HISTORY).copy(historyView=HistoryView.REAPPLY,reapplySummary=ReapplySummary(since,128,"날씨",100))
+        render("28-reapply-summary",m)
+        compose.onNodeWithText("bluedotOFF와 함께한 지 100일").assertExists()
+        compose.onNodeWithText("자동 재적용 128회 완료",substring=true).assertExists()
+        compose.onNodeWithText("최근 기록에서 가장 자주 다시 적용한 앱: 날씨").assertExists()
+        render("28-reapply-summary-no-top",m.copy(reapplySummary=ReapplySummary(since,0,null,1)));compose.onNodeWithText("가장 자주",substring=true).assertDoesNotExist()
+    }
+    @Test fun settingsCanTellAFriend(){
+        render("24-settings-share",model(applied=true,page=Page.SETTINGS))
+        compose.onNodeWithText("친구에게 bluedotOFF 알려주기").performScrollTo().assertExists()
+    }
+    @Test fun welcomeLanguageLinkOpensTheLanguageChoice(){
+        render("75-welcome-language",model(gate=Gate.WELCOME))
+        compose.onNodeWithText("Language · 한국어 ›").performClick()
+        compose.onNodeWithText("Deutsch").assertExists()
+        render("75-connection-no-language",model(gate=Gate.NOT_RUNNING));compose.onNodeWithText("Language · 한국어 ›").assertDoesNotExist()
+    }
+    @Test @Config(qualifiers="de-rDE-w360dp-h780dp-xxhdpi",fontScale=1.3f) fun germanWelcomeNamesTheShownLanguage(){
+        render("75-welcome-language-de",model(gate=Gate.WELCOME));compose.onNodeWithText("Language · Deutsch ›").assertExists()
     }
     @Test @Config(qualifiers="en-rUS-w412dp-h915dp-xxhdpi") fun englishStartupKeepsActionAndProgress(){
         render("75-welcome-en",model(gate=Gate.WELCOME))
@@ -888,6 +1006,14 @@ class UiRenderTest {
     @Test fun scopeChoiceDoesNotRewindProgressDuringFinalRead(){render("81-scope-final-read",model(gate=Gate.CHECKING).copy(scopeResolved=true));compose.onNodeWithText("연결 준비 · 11 / 11").assertExists();compose.onNodeWithText("연결 준비 · 10 / 11").assertDoesNotExist()}
     @Test fun applying(){render("06-applying",model().copy(busy=true));compose.onNodeWithText("적용하고 안전하게 확인하고 있어요").assertExists();compose.onNodeWithText("끝날 때까지 이 화면을 열어 두세요. 앱을 나가면 남은 앱은 바꾸지 않아요.").assertExists()}
     @Test fun appliedHome(){render("07-applied-system-theme",model(applied=true));compose.onNodeWithText("적용 완료").assertExists()}
+    @Test fun interruptedRestoreIsNotPresentedAsAutomaticallyApplied(){
+        val base=model(applied=true);val entry=base.entries.single().copy(restoreRequested=true)
+        val message="복원을 완료하지 못했어요. 이 앱의 자동 재적용은 중지했어요."
+        render("restore-requested-home",base.copy(entries=listOf(entry)))
+        compose.onNodeWithText("적용 완료").assertDoesNotExist();compose.onNodeWithText("직접 확인할 앱",substring=true).assertExists()
+        render("restore-requested-detail",base.copy(page=Page.DETAIL,selected=entry.identity.packageName,entries=listOf(entry)))
+        compose.onNodeWithText(message).assertExists();compose.onNodeWithText("적용 중").assertDoesNotExist()
+    }
     @Test fun successfulHideUsesHomeSummaryAndRetainsClosureWarnings(){
         val base=model(applied=true)
         val done=BatchOutcome(true,listOf(BatchResult("demo.weather",base.entries.single())),base.entries,emptyList())
@@ -1030,7 +1156,7 @@ class UiRenderTest {
     @Test fun pickerClassificationAndNoDaemon(){val apps=listOf(DiscoveredApp("user.app","사용자 앱",10000,launcher=true,indicator=IndicatorAssessment(IndicatorEligibility.STRONG_CANDIDATE)),DiscoveredApp("system.app","기본 지도",10001,true,true,indicator=IndicatorAssessment(IndicatorEligibility.STRONG_CANDIDATE)),DiscoveredApp("daemon.app","보이지 않을 서비스",10002));render("26-picker-filters",model(page=Page.PICK).copy(discovered=apps,filter=AppFilter.PREINSTALLED));compose.onNodeWithText("기본 지도").assertExists();compose.onNodeWithText("사용자 앱").assertDoesNotExist();compose.onNodeWithText("보이지 않을 서비스").assertDoesNotExist();render("73-picker-compact",densePicker())}
     @Test fun scopeLevelControlsInvisibleSystemAppsAndSettingsShortcut(){
         val regular=DiscoveredApp("test.map","기본 지도",10001,true,true,hasLocationDeclaration=true)
-        val core=DiscoveredApp("test.core","내부 서비스",1000,uidClass=UidClass.CORE_UID,block="정확한 위치 권한이 허용된 앱만 적용할 수 있습니다.")
+        val core=DiscoveredApp("test.core","내부 서비스",1000,uidClass=UidClass.CORE_UID,block="‘정확한 위치’를 허용한 앱만 숨길 수 있어요.")
         val system=DiscoveredApp("test.system","시스템 위치 도우미",10002,true,false,check=CandidateCheck.AVAILABLE)
         render("81-picker-normal",model(page=Page.PICK).copy(entries=emptyList(),applicationScope=ApplicationScope.NORMAL,discovered=listOf(regular,core,system)))
         compose.onNodeWithText("기본 지도").assertExists();compose.onNodeWithText("내부 서비스").assertDoesNotExist()

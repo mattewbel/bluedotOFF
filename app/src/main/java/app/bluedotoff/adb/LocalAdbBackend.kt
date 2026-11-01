@@ -68,7 +68,7 @@ class LocalAdbBackend private constructor(private val context:Context,private va
         app.bluedotoff.core.SharedGroupPolicy.validate(expected)
         val fresh=expected.map{read(it.identity.packageName)}
         if(!app.bluedotoff.core.SharedGroupPolicy.ownership(expected,fresh))throw app.bluedotoff.core.OwnershipChangedException()
-        if(!app.bluedotoff.core.SharedGroupPolicy.same(expected,fresh,expected.first().bit))throw app.bluedotoff.core.SafetyException("공유 앱의 쓰기 직전 상태가 바뀌었습니다.")
+        if(!app.bluedotoff.core.SharedGroupPolicy.same(expected,fresh,expected.first().bit))throw app.bluedotoff.core.SafetyException("바꾸기 직전에 묶음 앱 상태가 바뀌어서 멈췄어요.")
         val members=org.json.JSONArray(expected.map{s->JSONObject().put("package",s.identity.packageName).put("identityDigest",app.bluedotoff.core.LocalWriteGuard.identityDigest(s.identity)).put("invariantDigest",s.invariantDigest()).put("fineFlags",s.fineFlags)})
         val request=JSONObject().put("op","UPDATE_SHARED_FINE_SENSITIVITY_BIT").put("members",members).put("value",wanted).put("scope",expected.first().applicationScope.level)
         val representative=app.bluedotoff.core.SharedGroupPolicy.representative(expected).identity.packageName

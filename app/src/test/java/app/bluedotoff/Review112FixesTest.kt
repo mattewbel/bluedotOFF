@@ -85,7 +85,7 @@ class Review112FixesTest {
         val (notice,entries)=recoverWith(TargetState.PENDING_HIDE,0x210)
         assertTrue(entries.all{it.state==TargetState.NEEDS_REVIEW})
         assertNotEquals(SharedGroupEngine.INTERRUPTED,notice)
-        assertEquals("중단된 공유 앱 묶음의 상태가 기록과 달라 변경하지 않았습니다.",notice)
+        assertEquals("끊긴 묶음 작업 뒤 상태가 기록과 달라서 바꾸지 않았어요.",notice)
     }
     @Test fun restoredInterruptedHideAsksToApplyAgain(){
         val (notice,entries)=recoverWith(TargetState.PENDING_HIDE,0x200)

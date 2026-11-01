@@ -72,7 +72,7 @@ abstract class BinderBackend(private val context: Context) : TargetPort {
         val infos=allInfo.filter{it.first in applications && it.second.applicationInfo!!.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED!=0}
         val scanMs=SystemClock.elapsedRealtime()-begin
         val mapStart=SystemClock.elapsedRealtime()
-        val uidMap=CompletePackageScan.confirmedUidMap(names.toSet(),infos.map{(pkg,info)->pkg to (info.applicationInfo?.uid?:error("앱 정보를 확인하지 못했습니다."))}) { uid -> checkCancelled();packagesForUid(uid) }
+        val uidMap=CompletePackageScan.confirmedUidMap(names.toSet(),infos.map{(pkg,info)->pkg to (info.applicationInfo?.uid?:error("앱 정보를 확인하지 못했어요."))}) { uid -> checkCancelled();packagesForUid(uid) }
         val mapMs=SystemClock.elapsedRealtime()-mapStart
         // Launcher visibility affects display only, never the UID map or write authorization.
         val launcher=try { context.packageManager.queryIntentActivities(android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_LAUNCHER),0).map{it.activityInfo.packageName}.toSet() } catch(_:Exception) { emptySet() }
@@ -134,14 +134,14 @@ abstract class BinderBackend(private val context: Context) : TargetPort {
     private fun verifyHistory() {
         val expected=sortedMapOf<String,String>();var code:Int?=null
         context.assets.open("reference-history.tsv").bufferedReader().useLines{lines->lines.forEach{line->val p=line.removePrefix("\uFEFF").split('\t');if(p.size==3&&p[0]=="M")expected[p[1]]=p[2];if(p.size==3&&p[0]=="T")code=p[2].toInt()}}
-        check(expected.size==7 && code!=null){"사용 기록 형식을 확인하지 못했습니다."}
+        check(expected.size==7 && code!=null){"위치 사용 기록을 읽지 못했어요."}
         val classes=expected.keys.map{it.substringBefore("->")}.toSet()+"Lcom/android/internal/app/IAppOpsService\$Stub;"
         val observed=DexAbi.inspect(File("/system/framework/framework.jar"),classes)
         check(expected.all{(k,v)->observed.methods[k]==v} && observed.transactions["Lcom/android/internal/app/IAppOpsService\$Stub;->TRANSACTION_getOpsForPackage:I"]==code){"사용 기록 형식 변경"}
         codes["$OPS:getOpsForPackage"]=code!!
     }
     private fun packageInfo(pkg: String, requestFlags: Long = (PackageManager.GET_PERMISSIONS or PackageManager.GET_SIGNING_CERTIFICATES).toLong()): PackageInfo? = transact("package", PM, "getPackageInfo", { it.writeString(pkg); it.writeLong(requestFlags); it.writeInt(0) }, { it.readTypedObject(PackageInfo.CREATOR) })
-    private fun packagesForUid(uid: Int): List<String> = transact("package", PM, "getPackagesForUid", { it.writeInt(uid) }, { it.createStringArray()?.sorted()?.toList() ?: error("앱 묶음 정보를 확인하지 못했습니다.") })
+    private fun packagesForUid(uid: Int): List<String> = transact("package", PM, "getPackagesForUid", { it.writeInt(uid) }, { it.createStringArray()?.sorted()?.toList() ?: error("묶음 앱 정보를 확인하지 못했어요.") })
     private fun flags(pkg: String, permission: String): Int = transact("permissionmgr", PERMISSION, "getPermissionFlags", { it.writeString(pkg); it.writeString(permission); it.writeString("default:0"); it.writeInt(0) }, { it.readInt() })
     private fun mode(pkg: String, uid: Int, op: Int): Int = transact("appops", OPS, "checkOperationRaw", { it.writeInt(op); it.writeInt(uid); it.writeString(pkg); it.writeString(null) }, { it.readInt() })
     override fun read(packageName: String): Snapshot = app.bluedotoff.Perf.time("read"){readOnce(packageName)}
@@ -150,7 +150,7 @@ abstract class BinderBackend(private val context: Context) : TargetPort {
         require(packageName.matches(Regex("[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*")))
         val info = packageInfo(packageName) ?: throw PackageManager.NameNotFoundException(packageName)
         val app = info.applicationInfo ?: error("앱 정보 없음")
-        val signers = info.signingInfo?.apkContentsSigners?.map { digest(it.toByteArray()) }?.sorted() ?: error("서명 조회 불가")
+        val signers = info.signingInfo?.apkContentsSigners?.map { digest(it.toByteArray()) }?.sorted() ?: error("앱 정보를 읽지 못했어요.")
         check(signers.isNotEmpty())
         fun declared(p: String) = info.requestedPermissions?.contains(p) == true
         fun grant(p: String): Boolean { val i = info.requestedPermissions?.indexOf(p) ?: -1; return i >= 0 && (info.requestedPermissionsFlags!![i] and PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0 }

@@ -44,4 +44,47 @@ class WirelessControlsTest {
         val event=org.json.JSONObject(java.io.File(context.noBackupFilesDir,"system-setting-events.jsonl").readLines().last())
         assertEquals("SYSTEM_SETTING",event.getString("category"));assertEquals(android.os.Process.myUid(),event.getInt("uid"))
     }
+    /** Owner 2026-11-01: before uninstalling, wireless and USB debugging both go off, but only with the permission. */
+    @Test fun debuggingGoesOffBeforeUninstallOnlyWithThePermission(){
+        val c=WirelessControls(context)
+        Settings.Global.putInt(context.contentResolver,Settings.Global.ADB_ENABLED,1)
+        c.disableDebugging()
+        assertTrue(c.wireless);assertEquals(1,Settings.Global.getInt(context.contentResolver,Settings.Global.ADB_ENABLED))
+        shadowOf(context).grantPermissions(WirelessControls.PERMISSION)
+        c.disableDebugging()
+        assertFalse(c.wireless);assertEquals(0,Settings.Global.getInt(context.contentResolver,Settings.Global.ADB_ENABLED))
+    }
+    private fun timeout()=Settings.Global.getString(context.contentResolver,WirelessControls.TIMEOUT)
+    /** Owner 2026-10-29: with automatic management the 7-day pairing expiry is turned off, and put back when it ends. */
+    @Test fun pairingExpiryIsTurnedOffOnlyWithManagementAndPutBack(){
+        val c=WirelessControls(context)
+        Settings.Global.putString(context.contentResolver,WirelessControls.TIMEOUT,"604800000")
+        c.stopPairingExpiry();assertEquals("604800000",timeout()) // no consent, no permission
+        c.setConsent(true);c.stopPairingExpiry();assertEquals("604800000",timeout()) // no permission
+        shadowOf(context).grantPermissions(WirelessControls.PERMISSION)
+        c.stopPairingExpiry();assertEquals("0",timeout())
+        c.stopPairingExpiry();assertEquals("0",timeout())
+        c.setConsent(false);assertEquals("604800000",timeout())
+        val event=org.json.JSONObject(java.io.File(context.noBackupFilesDir,"system-setting-events.jsonl").readLines().last())
+        assertEquals(WirelessControls.TIMEOUT,event.getString("key"));assertEquals("pairing_timeout_restore",event.getString("operation"))
+    }
+    @Test fun aValueChangedSinceStaysAndAnUnsetOneIsUnsetAgain(){
+        val c=WirelessControls(context);shadowOf(context).grantPermissions(WirelessControls.PERMISSION);c.setConsent(true)
+        Settings.Global.putString(context.contentResolver,WirelessControls.TIMEOUT,null)
+        c.stopPairingExpiry();assertEquals("0",timeout())
+        c.restorePairingExpiry();assertNull(timeout())
+        c.stopPairingExpiry();Settings.Global.putString(context.contentResolver,WirelessControls.TIMEOUT,"86400000")
+        c.restorePairingExpiry();assertEquals("86400000",timeout())
+        c.stopPairingExpiry();assertEquals("0",timeout())
+        c.restorePairingExpiry();assertEquals("86400000",timeout())
+    }
+    /** GPT rc11 review: 7 days -> 0, another tool sets 1 day, the app is opened again -> turning management off puts back 1 day. */
+    @Test fun theLatestValueIsTheOneRestored(){
+        val c=WirelessControls(context);shadowOf(context).grantPermissions(WirelessControls.PERMISSION);c.setConsent(true)
+        Settings.Global.putString(context.contentResolver,WirelessControls.TIMEOUT,"604800000")
+        c.stopPairingExpiry();assertEquals("0",timeout())
+        Settings.Global.putString(context.contentResolver,WirelessControls.TIMEOUT,"86400000")
+        c.stopPairingExpiry();assertEquals("0",timeout())
+        c.setConsent(false);assertEquals("86400000",timeout())
+    }
 }

@@ -4,6 +4,55 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class WatchEngineTest {
+    @Test fun unstartedAndSkippedUnitsDoNotConsumeRetries(){
+        for(stop in listOf(false,true)){
+            val r=Rig();var attempts=0;r.snapshot=base.copy(fineFlags=0x200)
+            WatchEngine(r.port,r.store,{300},{"boot"},wait={},beforeAttempt={attempts++}).reapply(setOf(id.packageName),{!stop},{},{})
+            assertEquals(0,attempts);assertTrue(r.writes.isEmpty())
+        }
+        val r=Rig();var attempts=0;var checks=0
+        WatchEngine(r.port,r.store,{300},{"boot"},wait={},beforeAttempt={attempts++}).reapply(setOf(id.packageName),{++checks<2},{},{})
+        assertEquals(0,attempts);assertTrue(r.writes.isEmpty())
+    }
+    @Test fun retryQuotaIsSavedBeforeAttemptAndNotChargedForLaterUnreachedApps(){
+        val second=id.copy(packageName="test.second")
+        val entries=listOf(id,second).map{entry().copy(identity=it,state=TargetState.FAILED_SAFE,retryHide=true)}
+        val store=Store(entries);val savedTimes=mutableMapOf<String,List<Long>>()
+        val retries=object:WatchRetry.Store{override fun load(pkg:String)=savedTimes[pkg].orEmpty();override fun save(pkg:String,times:List<Long>){savedTimes[pkg]=times}}
+        val policy=WatchRetry(retries);var writes=0
+        val port=object:TargetPort {
+            override fun compatibleFirmware()=fw
+            override fun read(packageName:String)=base.copy(identity=entries.single{it.identity.packageName==packageName}.identity)
+            override fun writeFineBit(packageName:String,originalBit:Int){assertEquals(listOf(700_000L),savedTimes[packageName]);writes++;throw SafetyException("write refused")}
+        }
+        WatchEngine(port,store,{700_000},{"boot"},wait={},beforeAttempt={unit->unit.filter(WatchPolicy::retrying).forEach{policy.tried(it.identity.packageName,700_000)}})
+            .reapply(entries.map{it.identity.packageName}.toSet(),{true},{},{})
+        assertEquals(1,writes);assertEquals(listOf(700_000L),savedTimes[id.packageName]);assertNull(savedTimes[second.packageName])
+        assertFalse(WatchRetry(retries).allowed(entries.first(),700_001))
+    }
+    @Test fun quotaSaveFailureStopsBeforeAnyPermissionWrite(){
+        val r=Rig(listOf(entry().copy(state=TargetState.FAILED_SAFE,retryHide=true)))
+        WatchEngine(r.port,r.store,{700_000},{"boot"},wait={},beforeAttempt={throw IllegalStateException("quota storage failed")})
+            .reapply(setOf(id.packageName),{true},{},r.results::add)
+        assertTrue(r.writes.isEmpty());assertFalse(r.results.single().success)
+    }
+    @Test fun failedSecondReadPreservesRegistrationWithoutPermissionWrites(){
+        val r=Rig();var reads=0
+        val removed=base.copy(identity=id.copy(versionCode=2),fineDeclared=false,coarseDeclared=false,fineGranted=false,coarseGranted=false)
+        val port=object:TargetPort by r.port {override fun read(packageName:String):Snapshot{if(++reads==1)return removed;throw SafetyException("read failed")}}
+        WatchEngine(port,r.store,{300},{"boot"},wait={}).reapply(setOf(id.packageName),{true},{},r.results::add)
+        assertEquals(2,reads);assertEquals(entry(),r.store.values.single());assertTrue(r.writes.isEmpty());assertFalse(r.results.single().success)
+    }
+    @Test fun removedLocationDeclarationsRetireWithoutAnyPermissionWrite(){
+        val r=Rig();r.snapshot=base.copy(identity=id.copy(versionCode=2,lastUpdateTime=300),fineDeclared=false,coarseDeclared=false,fineGranted=false,coarseGranted=false,fineFlags=0,coarseFlags=0)
+        r.run();assertTrue(r.store.values.single().locationRetired);assertFalse(r.store.values.single().enabled)
+        assertTrue(r.writes.isEmpty());assertTrue(r.results.isEmpty())
+        r.run();assertTrue(r.writes.isEmpty())
+    }
+    @Test fun failedRetirementSaveLeavesRegistrationAndDoesNotWritePermissions(){
+        val r=Rig();r.store.durable=false;r.snapshot=base.copy(identity=id.copy(versionCode=2,lastUpdateTime=300),fineDeclared=false,coarseDeclared=false,fineGranted=false,coarseGranted=false,fineFlags=0,coarseFlags=0)
+        r.run();assertEquals(entry(),r.store.values.single());assertTrue(r.writes.isEmpty());assertFalse(r.results.single().success)
+    }
     private val fw=Firmware("samsung",37,"90000","fixture","b","m","abi")
     private val id=Identity("test.map",0,10123,listOf("signer"),100,1,100)
     private val base=Snapshot(id,"Map",listOf(id.packageName),true,true,true,false,0x300,0x300,0,0,0,false)

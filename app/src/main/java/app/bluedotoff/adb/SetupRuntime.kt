@@ -134,7 +134,8 @@ internal class AndroidSetupRuntime(private val context:Context,private var wirel
                 {capture->backend.discover(checkCancelled={if(!valid())throw java.util.concurrent.CancellationException()},onSnapshot=capture,onProgress={done,total->progress(app.bluedotoff.core.ScanProgress(done,total))})},
                 // An uninstalled registered app reads as absent (MISSING_TARGET), as on Home; it must not fail setup (Fold7 2026-10-20).
                 {pkg->try{backend.read(pkg)}catch(_:android.content.pm.PackageManager.NameNotFoundException){null}},{snapshots,firmware->
-                    check(store.transform{e->if(!valid())throw java.util.concurrent.CancellationException();Reconcile.read(e,snapshots[e.identity.packageName],firmware.key,boot,snapshots)})
+                    check(store.transform{e->if(!valid())throw java.util.concurrent.CancellationException();Reconcile.read(e,snapshots[e.identity.packageName],firmware.key,boot,snapshots){if(!valid())throw java.util.concurrent.CancellationException();backend.read(e.identity.packageName)}})
+                    runCatching{app.bluedotoff.ReapplyNotification.clear(context)}
                     store.entries()
                 },boot,valid)
         }

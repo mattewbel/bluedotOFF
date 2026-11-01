@@ -6,6 +6,11 @@ import app.bluedotoff.core.*
 object LocalEntryEvents {
     fun read(e:Entry,fingerprint:String,boot:String,localIdentity:()->Identity?):Entry {
         if(!e.enabled || e.state in listOf(TargetState.FAILED_ROLLBACK,TargetState.SHARED_UID_CHANGED,TargetState.NEEDS_REVIEW,TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE,TargetState.PENDING_SHOW,TargetState.MISSING_TARGET))return e
+        // Package metadata cannot overturn a backend permission rejection; the next full read can.
+        if(e.state==TargetState.UNSUPPORTED_STATE){
+            val identity=localIdentity()?:return e
+            return if(!e.identity.sameInstall(identity))e.copy(state=TargetState.INACTIVE_INSTALL,enabled=false) else e
+        }
         if(e.firmware.substringBefore('|')!=fingerprint)return e.copy(state=TargetState.NEEDS_RECHECK_FIRMWARE)
         if(e.bootSession!=boot)return Reconcile.boot(e)
         val identity=localIdentity()?:return e

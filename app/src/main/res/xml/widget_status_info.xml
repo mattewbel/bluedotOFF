@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- No timer (updatePeriodMillis=0): StatusWidget redraws only when something already happened. A 4x1 bar (owner 2026-10-29). -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:initialLayout="@layout/widget_status" android:previewLayout="@layout/widget_status"
+    android:minWidth="250dp" android:minHeight="56dp" android:targetCellWidth="4" android:targetCellHeight="1"
+    android:minResizeWidth="180dp" android:minResizeHeight="56dp" android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="0" android:widgetCategory="home_screen" />

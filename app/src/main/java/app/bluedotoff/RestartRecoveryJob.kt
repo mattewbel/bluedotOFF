@@ -103,7 +103,7 @@ class RestartRecoveryJob:JobService() {
         done.await(9,TimeUnit.MINUTES)
         val remaining=left(JournalStore(c).entries())
         WatchLog.event("state","restartRecovery targets=${targets.size} succeeded=${succeeded.size} left=$remaining")
-        if(succeeded.isNotEmpty())ReapplyNotification.clear(c,succeeded,remaining==0)
+        if(succeeded.isNotEmpty())ReapplyNotification.clear(c)
         // A stopped run leaves the rest to the next run, which tells the user if anything is still left (Fold7 reboot 7).
         if(remaining>0&&canStart())ReapplyNotification.show(c,null,checkInApp=true)
         LifecycleEvents.changed()

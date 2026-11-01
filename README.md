@@ -27,6 +27,8 @@ Location permissions and location history stay as they are. bluedotOFF changes a
 | <img src="docs/screenshots/en/home.png" width="240" alt="Home screen"> | <img src="docs/screenshots/en/add-apps.png" width="240" alt="Add apps screen"> | <img src="docs/screenshots/en/settings.png" width="240" alt="Settings screen"> |
 | Applied apps and apps to reapply at a glance | Pick apps to hide and apply at once | Scope, automatic management, background watch, reapply notifications, apps left hidden |
 
+<p align="center"><img src="docs/screenshots/en/widget.png" width="360" alt="Home screen widget: 213 apps kept hidden, watching, with a refresh button"><br><sub>Home screen widget</sub></p>
+
 <sub>Screenshots from a real device (Galaxy Z Fold7). Installed app names and icons are blurred. The app follows the phone's language (10 languages); any other language shows English.</sub>
 
 1. Pair the app with your phone once through Wireless debugging (on the phone itself, no computer).

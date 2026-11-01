@@ -27,6 +27,8 @@ Samsung One UI 9 (Android 17) 휴대폰에서 **내가 고른 앱의 파란 위�
 | <img src="docs/screenshots/home.png" width="240" alt="홈 화면"> | <img src="docs/screenshots/add-apps.png" width="240" alt="앱 추가 화면"> | <img src="docs/screenshots/settings.png" width="240" alt="설정 화면"> |
 | 적용 현황과 다시 적용할 앱을 한눈에 | 숨길 앱을 골라 한 번에 적용 | 적용 범위, 자동 관리, 백그라운드 감시, 재적용 알림, 숨김이 남은 앱 |
 
+<p align="center"><img src="docs/screenshots/widget.png" width="360" alt="홈 화면 위젯: 213개 앱 숨김 유지, 감시 중, 새로고침 버튼"><br><sub>홈 화면 위젯</sub></p>
+
 <sub>실제 기기(Galaxy Z Fold7) 화면입니다. 설치된 앱 이름과 아이콘은 흐리게 가렸습니다.</sub>
 
 1. 무선 디버깅으로 휴대폰과 한 번 연결합니다 (컴퓨터 없이 휴대폰 안에서만).

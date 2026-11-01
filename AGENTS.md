@@ -21,8 +21,8 @@ The owner is not a professional developer and is happy with the current behavior
 .\gradlew.bat :core:test :app:testLocalDebugUnitTest :app:testLocalReleaseUnitTest :app:assembleLocalDebug :app:assembleLocalRelease :app:lintLocalDebug :app:lintLocalRelease
 ```
 
-Expected for 1.2.2 (2026-10-26): core 381 tests, app debug 521, app release 521, all passing; lint 0 errors,
-91 warnings per variant. `scripts/finalize.py` and `scripts/package_source.py` write into `artifacts/`, which holds the
+Expected for 1.3.0 (2026-11-01): core 402 tests, app debug 606, app release 606, all passing; lint 0 errors,
+109 warnings per variant. `scripts/finalize.py` and `scripts/package_source.py` write into `artifacts/`, which holds the
 current release files. Do not run them for a build you do not intend to deliver, or they overwrite
 those files; bump `versionName`/`versionCode` in `app/build.gradle.kts` first.
 
@@ -50,7 +50,7 @@ those files; bump `versionName`/`versionCode` in `app/build.gradle.kts` first.
 
 ## Work log
 
-This log covers the work up to 1.1.0 (2026-10-14). Later releases (1.1.1 to 1.2.2) are described in
+This log covers the work up to 1.1.0 (2026-10-14). Later releases (1.1.1 to 1.3.0) are described in
 `docs/CHANGELOG.md` and the `docs/<version>-validation.md` reports.
 
 ### 2026-10-09 — Claude Code review cleanup (in the private repository, before this public repository existed)

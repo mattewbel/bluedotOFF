@@ -65,6 +65,8 @@ bluedotOFF has one goal:
 | Galaxy Z Fold8 | SM-F971N | 9.0 | Korea (KOO) | ✅ User report | ✅ User report (KakaoMap, Naver Map) | ✅ User report | Not reported |
 | Galaxy S25 | Not reported | Not reported | US | ✅ User report | ✅ User report | Not reported | Not reported |
 | Galaxy S25 Ultra | SM-S938Z | 9.0 | Japan | ✅ User report | ✅ User report | Not reported | Not reported |
+| Galaxy S26 | SC-51G | 9.0 | Japan | ✅ [User report](https://github.com/mattewbel/bluedotOFF/issues/2) | ✅ User report | Not reported | ✅ User report |
+| Galaxy Z Flip6 | Not reported | Not reported | Europe (reporter's location) | ✅ [User report](https://github.com/mattewbel/bluedotOFF/issues/3) | ✅ User report | Not reported | Not reported |
 
 The Fold7 was verified on firmware F966NKSUCCZIH. On later firmware the app keeps running and shows the unverified system notice until a newer version confirms it.
 

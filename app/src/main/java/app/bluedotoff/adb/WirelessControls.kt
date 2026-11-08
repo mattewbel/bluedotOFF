@@ -46,9 +46,9 @@ class WirelessControls(private val context:Context) {
         Settings.Global.getInt(context.contentResolver,Settings.Global.DEVELOPMENT_SETTINGS_ENABLED,0)==1,
         WifiConnection.connected(context),consent,granted,
         context.getSharedPreferences("local-adb",0).getString("pairedGuid",null)!=null&&AdbHostIdentity(context).exists,wireless))
-    /** [afterRestart]: the after-restart job (R-1) is the only caller allowed without a visible screen. */
-    fun enableWirelessDebugging(afterRestart:Boolean=false):Boolean {
-        check(mayStart(app.bluedotoff.ForegroundState.active||afterRestart))
+    /** [noScreen]: the after-restart job (R-1) and the widget's refresh tap are the only callers allowed without a visible screen. */
+    fun enableWirelessDebugging(noScreen:Boolean=false):Boolean {
+        check(mayStart(app.bluedotoff.ForegroundState.active||noScreen))
         runCatching{stopPairingExpiry()}
         val before=wireless
         val written=runCatching{Settings.Global.putInt(context.contentResolver,"adb_wifi_enabled",1)}.getOrDefault(false)

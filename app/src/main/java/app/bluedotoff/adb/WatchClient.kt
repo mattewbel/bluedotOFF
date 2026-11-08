@@ -150,7 +150,7 @@ object WatchClient {
             if(attaching.await(500,TimeUnit.MILLISECONDS)&&available(c))return true
             // A start blocked before any connection is not a try: Wi-Fi turned on seconds later must not wait 30 s (owner 2026-10-26).
             if(!(ForegroundState.active||afterRestart)||!WifiConnection.connected(c)){WatchLog.event("state","watchStartBlocked foreground=${ForegroundState.active} wifiConnected=${WifiConnection.connected(c)}");synchronized(queueLock){lastStart=0};lost(c);return available(c)}
-            WirelessWork.run(c,true,hold=false,forceWireless=true,afterRestart=afterRestart){it.startWatch()}
+            WirelessWork.run(c,true,hold=false,forceWireless=true,noScreen=afterRestart){it.startWatch()}
             check(attaching.await(10,TimeUnit.SECONDS)&&available(c)){"Watch helper handshake failed"}
             return true
         }catch(e:Exception){
@@ -180,15 +180,18 @@ object WatchClient {
      *  skipped by the retry pause, put off for the app's own work or not reached is not here (GPT rc11 review). */
     private val checked=HashSet<String>()
     /** Widget "지금 확인" (owner 2026-10-29): every app the watch guards goes through the same check as after a change
-     *  event (an app still hidden is only read). [done] gets true only when every one of them was read to an end. */
+     *  event (an app still hidden is only read). [done] gets true only when every one of them was read to an end; an app
+     *  waiting for its retry is not read here, so it keeps [done] false (Codex review 2026-11-06). */
     fun checkNow(c:Context,done:(Boolean)->Unit){
-        val names=JournalStore(c).entries().filter{WatchPolicy.eligible(it)&&!WatchPolicy.retrying(it)}.map{it.identity.packageName}.toSet()
+        val eligible=JournalStore(c).entries().filter(WatchPolicy::eligible)
+        val names=eligible.filterNot(WatchPolicy::retrying).map{it.identity.packageName}.toSet()
+        val waiting=eligible.any(WatchPolicy::retrying)
         if(!available(c)){done(false);return}
         val failures=workFailures
         synchronized(queueLock){checked-=names}
         signal(c,names)
         // The single worker runs this after the queue that holds [names].
-        worker.execute{done(available(c)&&workFailures==failures&&synchronized(queueLock){checked.containsAll(names)})}
+        worker.execute{done(!waiting&&available(c)&&workFailures==failures&&synchronized(queueLock){checked.containsAll(names)})}
     }
     internal fun signal(c:Context,packages:Set<String>):Boolean {
         if(!available(c))return false

@@ -3,7 +3,8 @@ from pathlib import Path
 import subprocess,os,re,json,hashlib,shutil,zipfile,struct,xml.etree.ElementTree as ET
 root=Path(__file__).resolve().parents[1];art=root/'artifacts';art.mkdir(exist_ok=True)
 android='{http://schemas.android.com/apk/res/android}'
-env=dict(os.environ,JAVA_HOME='C:/Program Files/Eclipse Adoptium/jdk-17.0.20.101-hotspot')
+# The installed JDK 17 (Eclipse Adoptium updates itself: 17.0.20 -> 17.0.21 on 2026-11-08).
+env=dict(os.environ,JAVA_HOME=str(max(Path('C:/Program Files/Eclipse Adoptium').glob('jdk-17*'))))
 sdk=Path(os.environ.get('ANDROID_HOME') or os.environ.get('ANDROID_SDK_ROOT') or Path.home()/'AppData/Local/Android/Sdk')
 tools=sdk/'build-tools/36.0.0'
 permissions={'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS','android.permission.FOREGROUND_SERVICE','android.permission.WRITE_SECURE_SETTINGS','android.permission.ACCESS_NETWORK_STATE','android.permission.INTERNET','android.permission.ACCESS_LOCAL_NETWORK','android.permission.POST_NOTIFICATIONS','android.permission.RECEIVE_BOOT_COMPLETED','android.permission.USE_FULL_SCREEN_INTENT','app.bluedotoff.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'}
@@ -18,7 +19,9 @@ for variant,suffix,expected in [('localDebug','','3b3b208f92d3d437acf30c333d9a7b
     assert {e.attrib[android+'name'] for e in manifest.findall('uses-permission')}==permissions
     application=manifest.find('application');assert application.attrib[android+'allowBackup']=='false'
     services={s.attrib[android+'name']:s for s in application.findall('service')}
-    assert set(services)=={'app.bluedotoff.adb.PairingLifetimeService','app.bluedotoff.adb.WirelessReleaseJob','app.bluedotoff.UpdateCheckJob','app.bluedotoff.RestartRecoveryJob'}
+    assert set(services)=={'app.bluedotoff.adb.PairingLifetimeService','app.bluedotoff.adb.WirelessReleaseJob','app.bluedotoff.UpdateCheckJob','app.bluedotoff.RestartRecoveryJob','app.bluedotoff.WidgetCheckService'}
+    # Widget refresh without the watch: not exported (only the app's own widget tap starts it), short foreground service.
+    check=services['app.bluedotoff.WidgetCheckService'];assert check.attrib[android+'exported']=='false' and check.attrib[android+'foregroundServiceType']=='shortService' and not check.findall('intent-filter')
     pairing=services['app.bluedotoff.adb.PairingLifetimeService']
     assert pairing.attrib[android+'exported']=='false' and pairing.attrib[android+'foregroundServiceType']=='shortService' and pairing.attrib[android+'stopWithTask']=='true'
     for name in ['app.bluedotoff.adb.WirelessReleaseJob','app.bluedotoff.UpdateCheckJob','app.bluedotoff.RestartRecoveryJob']:

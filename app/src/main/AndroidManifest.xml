@@ -31,6 +31,8 @@
         </receiver>
         <!-- The widget's refresh icon: only its own PendingIntent reaches it (not exported, no filter). -->
         <receiver android:name="app.bluedotoff.WidgetRefreshReceiver" android:exported="false" />
+        <!-- Widget refresh without the watch: started only by the widget tap, ends after the check (shortService). -->
+        <service android:name="app.bluedotoff.WidgetCheckService" android:exported="false" android:foregroundServiceType="shortService" />
         <!-- B-7: turns a wireless debugging this app held off after leaving, even if the process was killed. Only the system binds it. -->
         <service android:name="app.bluedotoff.adb.WirelessReleaseJob" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE" />
         <!-- Opt-in daily update check for background-watch users (off by default). Only the system binds it. -->

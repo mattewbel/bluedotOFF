@@ -891,7 +891,7 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
     var advancedSettings by rememberSaveable{mutableStateOf(false)}
     var showLicenses by rememberSaveable{mutableStateOf(false)}
     if(showLicenses)OpenSourceLicenses{showLicenses=false}
-    if(autoConsent)PanelAlert(onDismissRequest={autoConsent=false},title={Text("무선 디버깅 자동 관리")},text={Text("bluedotOFF를 쓰는 동안만 무선 디버깅을 켜 두고, 앱을 나가면 잠시 후 꺼요. 이를 위해 시스템 설정 변경 권한을 처음 한 번 받고, 무선 디버깅을 켜고 끄는 데와 페어링이 7일 뒤 저절로 풀리지 않게 하는 데만 써요. 이 7일 만료 설정은 이 폰에서 디버깅을 허락한 PC에도 똑같이 적용되고, 자동 관리를 끄면 원래대로 돌아가요. 다른 무선 디버깅 연결도 함께 끊길 수 있어요.")},confirmButton={DialogAction(onClick={autoConsent=false;managementChanged(true)}){Text("자동 관리 사용")}},dismissButton={DialogCancel(onClick={autoConsent=false}){Text("취소")}})
+    if(autoConsent)PanelAlert(onDismissRequest={autoConsent=false},title={Text("무선 디버깅 자동 관리")},text={Text("bluedotOFF를 쓰는 동안만 무선 디버깅을 켜 두고, 앱을 나가면 잠시 후 꺼요. 이를 위해 시스템 설정 변경 권한을 처음 한 번 받고, 무선 디버깅을 켜고 끄는 데, 페어링이 7일 뒤 저절로 풀리지 않게 하는 데, ‘앱 삭제 전 복원’으로 모든 앱을 되돌린 뒤 USB·무선 디버깅을 끄는 데만 써요. 이 7일 만료 설정은 이 폰에서 디버깅을 허락한 PC에도 똑같이 적용되고, 자동 관리를 끄면 원래대로 돌아가요. 다른 무선 디버깅 연결도 함께 끊길 수 있어요.")},confirmButton={DialogAction(onClick={autoConsent=false;managementChanged(true)}){Text("자동 관리 사용")}},dismissButton={DialogCancel(onClick={autoConsent=false}){Text("취소")}})
     @Composable fun LinkRow(label:String,detail:String="",onClick:()->Unit){
         Row(Modifier.fillMaxWidth().heightIn(min=52.dp).clip(RoundedCornerShape(12.dp)).clickable(onClick=onClick).padding(vertical=8.dp),verticalAlignment=Alignment.CenterVertically){
             Text(label,Modifier.weight(1f),style=MaterialTheme.typography.bodyLarge)
@@ -1026,7 +1026,7 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
         Topic("연결이 안 될 때")
         Text("보안 위험 자동 차단이 켜져 있으면 Android가 무선 디버깅을 막아 연결할 수 없어요. 작업할 때는 설정 → 보안 및 개인정보 보호에서 꺼주세요. ‘자동으로 켜기’를 켜두면 30분 뒤 다시 켜져요. 이때는 USB 디버깅도 꺼져서 백그라운드 감시도 멈춰요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         Topic("은행·결제 앱이 안 열릴 때")
-        Text("설정에서 켜면 USB 디버깅으로 연결을 유지해서, bluedotOFF를 열지 않아도 숨김이 풀린 앱을 감지하는 대로 다시 숨겨요. USB 디버깅을 계속 켜 둬야 하고, 일부 은행·결제 앱은 이때 실행되지 않을 수 있어요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("백그라운드 감시를 설정에서 켜면 USB 디버깅으로 연결을 유지해서, bluedotOFF를 열지 않아도 숨김이 풀린 앱을 감지하는 대로 다시 숨겨요. USB 디버깅을 계속 켜 둬야 하고, 일부 은행·결제 앱은 이때 실행되지 않을 수 있어요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         Text("은행 앱이 개발자 옵션 자체를 검사하면 USB 디버깅만 꺼서는 안 될 수 있어요. 그럴 때는 개발자 옵션을 잠시 끄고, 다시 쓸 때 개발자 옵션과 USB 디버깅을 켠 뒤 Wi-Fi에서 bluedotOFF를 열어주세요. PC로 시작했다면 Wi-Fi 대신 PC에서 시작 명령을 다시 실행하세요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         Topic("적용이 안 될 때")
         Text("기기 연결과 정확한 위치 권한을 확인하세요. 다른 앱과 위치 설정을 공유하는 앱과 핵심 시스템 앱은 따로 숨길 수 없어요. 기본 설치 앱도 조건을 통과하면 선택할 수 있어요. 휴대폰마다 쓸 수 있는지 확인하며, 일부 지역이나 소프트웨어 버전에서는 쓸 수 없을 수 있어요. 업데이트 후에는 다시 확인해요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1040,7 +1040,7 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
         Topic("위치 사용 기록")
         Text("앱 기록은 최근 위치를 쓴 앱 목록이에요. ‘전체 위치 사용’에서는 시스템 서비스도 볼 수 있어요. 삼성 설정의 권한 사용 기록과는 출처가 달라요. 숨김을 적용해도 위치 사용 기록은 남고, 기록이 있다고 파란 위치 표시가 떴다는 뜻은 아니에요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         Text("재적용 알림은 bluedotOFF가 완전히 종료돼 있는 동안 업데이트된 앱은 바로 알려드리지 못해요. 다음에 앱을 열면 확인해서 보여드려요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("루팅이나 부트로더 해제는 필요 없어요. 휴대폰의 무선 디버깅 기능(백그라운드 감시를 켜면 USB 디버깅도)만 쓰고, 앱의 위치 권한과 보안 설정은 바꾸지 않아요. 네트워크 권한은 휴대폰 안의 무선 디버깅 연결과, 직접 켠 경우의 업데이트 확인(GitHub)에만 써요. 광고·분석·추적 기능은 없어요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("루팅이나 부트로더 해제는 필요 없어요. 휴대폰의 무선 디버깅 기능(백그라운드 감시를 켜면 USB 디버깅도)만 쓰고, 앱의 위치 권한 자체는 바꾸지 않아요. 자동 관리를 켜면 무선 디버깅을 켜고 끄고, 페어링이 7일 뒤 저절로 풀리지 않게 해요. 네트워크 권한은 휴대폰 안의 무선 디버깅 연결과, 직접 켠 경우의 업데이트 확인(GitHub)에만 써요. 광고·분석·추적 기능은 없어요.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         if(!setupFirst){HorizontalDivider();Setup()}
     }
 }

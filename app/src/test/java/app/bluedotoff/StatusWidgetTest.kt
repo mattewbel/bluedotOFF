@@ -49,6 +49,15 @@ class StatusWidgetTest {
         assertEquals("눌러서 bluedotOFF 열기",v.text(R.id.widget_status))
         assertFalse(v.shown(R.id.widget_refresh))
     }
+    @Test fun withoutTheWatchButWithAutomaticManagementTheRefreshChecksOverWirelessDebugging(){
+        val v=render(state(false).copy(wireless=true))
+        assertEquals("2개 앱 숨김 유지",v.text(R.id.widget_title))
+        assertEquals(StatusWidget.time(context,1_000_000L),v.text(R.id.widget_status))
+        assertTrue(v.shown(R.id.widget_refresh))
+        assertEquals("확인 중…",render(state(false).copy(wireless=true,refreshing=true)).text(R.id.widget_status))
+        // Not eligible here (no automatic management, no pairing): the stored state never offers the refresh.
+        assertFalse(state(false).wireless)
+    }
     @Test fun watchingItSaysHowManyStayHiddenAndWhenTheyWereChecked(){
         val v=render(state(true))
         assertEquals("2개 앱 숨김 유지",v.text(R.id.widget_title))

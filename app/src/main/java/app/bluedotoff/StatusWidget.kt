@@ -12,6 +12,7 @@ import android.util.SizeF
 import android.view.View
 import android.widget.RemoteViews
 import app.bluedotoff.adb.WatchClient
+import app.bluedotoff.adb.WirelessControls
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -19,10 +20,11 @@ import java.util.concurrent.Executors
 
 /** Home-screen widget (1.3.0): one 4x1 bar with only what matters (owner 2026-10-29): the watch, the hidden apps or the
  *  apps that need the person, and when the registered apps were last checked. A tap opens bluedotOFF the way a
- *  notification does; the refresh icon (only while the watch runs) asks the watch to check every registered app now, the
- *  same check it runs after a change event. It is redrawn when something already happens (watch event, watch
+ *  notification does; the refresh icon asks the watch to check every registered app now (the same check it runs after a
+ *  change event) or, for automatic management without the background watch, reads them over wireless debugging
+ *  ([WidgetCheckService], 1.3.1). It is redrawn when something already happens (watch event, watch
  *  start/stop, a finished check, leaving the app, resize, time zone or language change), never on a timer. The printed
- *  time is a real check of the registered apps (Home's full check or the watch's), never the redraw time, and "감시 중"
+ *  time is a real check of the registered apps (Home's, the watch's or the widget's), never the redraw time, and "감시 중"
  *  is the live connection at the redraw (GPT review 2026-10-29). Dates are absolute ("Oct 28, 21:40"), so a date change
  *  cannot make a line wrong ("today" would be). */
 class StatusWidgetReceiver:AppWidgetProvider(){
@@ -40,8 +42,10 @@ class WidgetRefreshReceiver:android.content.BroadcastReceiver(){
 }
 
 object StatusWidget {
-    /** Everything the widget prints: stored state plus whether this process holds the watch (no device read). */
-    data class State(val watching:Boolean,val checkedAt:Long,val applied:Int,val reapply:Int,val check:Int,val refreshing:Boolean=false)
+    /** Everything the widget prints: stored state plus whether this process holds the watch (no device read).
+     *  [wireless]: no watch, but ↻ can check through wireless debugging ([WidgetCheckService]); [notice]: its last check
+     *  could not confirm the connection closed, so the person turns wireless debugging off (shown only while it is on). */
+    data class State(val watching:Boolean,val checkedAt:Long,val applied:Int,val reapply:Int,val check:Int,val refreshing:Boolean=false,val wireless:Boolean=false,val notice:String="")
 
     private val worker=Executors.newSingleThreadExecutor()
     @Volatile private var refreshing=false
@@ -55,18 +59,28 @@ object StatusWidget {
             if(ids.isNotEmpty()){val s=state(c);ids.forEach{manager.updateAppWidget(it,views(c,s,heightDp(manager.getAppWidgetOptions(it))))}}
         }.onFailure{android.util.Log.w("bluedotOFF","Widget could not be updated")}}finally{done()}}
     }
-    /** The refresh icon: the watch checks every registered app (re-hiding what lost it, as after a change event). The time
-     *  moves only when every app was checked; without the watch it only redraws (the icon is not shown then). */
+    /** The refresh icon: the watch checks every registered app (re-hiding what lost it, as after a change event); without
+     *  the watch [WidgetCheckService] reads them through wireless debugging. The time moves only when every app was checked. */
     fun refresh(context:Context){
         val c=context.applicationContext
         if(refreshing)return
-        if(!WatchClient.available(c)){update(c);return}
-        refreshing=true;update(c)
-        WatchClient.checkNow(c){checked->
-            if(checked)prefs(c).edit().putLong("checkedAt",System.currentTimeMillis()).apply()
-            refreshing=false;update(c)
+        if(!WatchClient.available(c)){
+            // Without Wi-Fi the wireless check cannot run: say so instead of a silent tap (owner 2026-11-08).
+            if(WidgetCheckService.eligible(c)){if(!WifiConnection.connected(c))toast(c,"Wi-Fi에 연결해주세요.") else if(WidgetCheckService.start(c))refreshing=true}
+            update(c);return
         }
+        refreshing=true;update(c)
+        // An unreadable restore journal must not crash the receiver; the time stays, Home shows the journal problem.
+        runCatching{WatchClient.checkNow(c){checked->finished(c,checked)}}.onFailure{finished(c,false)}
     }
+    /** [notice]: the cleanup result of a wireless check that really opened its lease ("" = closed in order); null = no
+     *  lease ran (refused, no Wi-Fi, expired, the watch's check), so an earlier notice stays (Codex follow-up 2). */
+    fun finished(c:Context,checked:Boolean,notice:String?=null){
+        prefs(c).edit().apply{if(checked)putLong("checkedAt",System.currentTimeMillis());if(notice!=null)putString("notice",notice)}.apply()
+        refreshing=false;update(c)
+    }
+    /** A short answer to a refresh tap that could not check (main thread). */
+    fun toast(c:Context,text:String)=android.widget.Toast.makeText(c,UiText.text(c,text),android.widget.Toast.LENGTH_SHORT).show()
     /** The smallest height the launcher gives this widget, in dp; 0 when it has not said. */
     private fun heightDp(o:Bundle):Int{
         @Suppress("DEPRECATION") val sizes=if(Build.VERSION.SDK_INT>=31)o.getParcelableArrayList<SizeF>(AppWidgetManager.OPTION_APPWIDGET_SIZES) else null
@@ -75,7 +89,13 @@ object StatusWidget {
     fun state(c:Context,watching:Boolean=WatchClient.available(c)):State{
         val model=UiModel(entries=JournalStore(c).entries())
         val checkedAt=maxOf(c.getSharedPreferences("ui-state",0).getLong("lastCheckedAt",0L),prefs(c).getLong("checkedAt",0L))
-        return State(watching,checkedAt,model.lastVerifiedAppliedCount,model.reapplyCount,model.otherCheckCount,refreshing)
+        return State(watching,checkedAt,model.lastVerifiedAppliedCount,model.reapplyCount,model.otherCheckCount,refreshing,!watching&&WidgetCheckService.eligible(c),notice(c))
+    }
+    /** Wireless debugging seen off settles the cleanup notice for good: turning it on later must not bring it back. */
+    private fun notice(c:Context):String{
+        val saved=prefs(c).getString("notice","").orEmpty()
+        if(saved.isNotEmpty()&&!WirelessControls(c).wireless){prefs(c).edit().remove("notice").apply();return ""}
+        return saved
     }
     fun time(c:Context,at:Long):String{
         val locale=c.resources.configuration.locales[0]
@@ -93,26 +113,33 @@ object StatusWidget {
     fun views(c:Context,s:State,heightDp:Int=0):RemoteViews{
         fun t(value:String)=UiText.text(c,value)
         val v=RemoteViews(c.packageName,R.layout.widget_status)
-        val attention=s.watching&&(s.reapply>0||s.check>0)
+        val live=s.watching||s.wireless
+        val attention=live&&(s.reapply>0||s.check>0)
+        val cleanup=s.notice.isNotEmpty()
         v.setOnClickPendingIntent(R.id.widget_root,open(c,attention,s.reapply==0))
-        v.setImageViewResource(R.id.widget_dot,when{!s.watching->R.drawable.widget_dot_off;attention->R.drawable.widget_dot_attention;else->R.drawable.widget_dot})
+        v.setImageViewResource(R.id.widget_dot,when{cleanup->R.drawable.widget_dot_attention;!live->R.drawable.widget_dot_off;attention->R.drawable.widget_dot_attention;else->R.drawable.widget_dot})
         val fs=c.resources.configuration.fontScale
         fun line(sp:Int)=sp*fs*1.5f // one line of text, with room for Korean and other fallback fonts (about 1.47 sp in tests)
         val two=heightDp<=0||heightDp-8>=line(16)+2+line(13) // padding 4 + 4, status padding 2
         v.setTextViewText(R.id.widget_title,t(when{
-            !s.watching->"감시 꺼짐"
+            // A cleanup left to do comes first when the second line (the full notice) is not shown or not the live one.
+            cleanup&&(!two||!live)->"무선 디버깅 끄기"
+            !live->"감시 꺼짐"
             s.reapply>0->"다시 적용할 앱 ${s.reapply}개"
             s.check>0->"직접 확인할 앱 ${s.check}개"
             two->"${s.applied}개 앱 숨김 유지"
-            else->"감시 중"}))
+            s.watching->"감시 중"
+            else->"${s.applied}개 앱 숨김 유지"}))
         v.setViewVisibility(R.id.widget_status,if(two)View.VISIBLE else View.GONE)
         v.setTextViewText(R.id.widget_status,t(when{
-            !s.watching->"눌러서 bluedotOFF 열기"
-            s.refreshing->"확인 중…"
+            live&&s.refreshing->"확인 중…"
+            cleanup->s.notice
+            !live->"눌러서 bluedotOFF 열기"
+            !s.watching->if(s.checkedAt<=0L)"눌러서 bluedotOFF 열기" else time(c,s.checkedAt)
             s.checkedAt<=0L->"감시 중"
             else->"감시 중 · ${time(c,s.checkedAt)}"}))
-        v.setViewVisibility(R.id.widget_refresh,if(s.watching)View.VISIBLE else View.GONE)
-        if(s.watching){
+        v.setViewVisibility(R.id.widget_refresh,if(live)View.VISIBLE else View.GONE)
+        if(live){
             v.setContentDescription(R.id.widget_refresh,t("지금 확인"))
             v.setOnClickPendingIntent(R.id.widget_refresh,PendingIntent.getBroadcast(c,1,Intent(c,WidgetRefreshReceiver::class.java),PendingIntent.FLAG_IMMUTABLE))
         }

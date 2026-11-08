@@ -40,7 +40,8 @@ object WirelessWork {
     fun releaseNow(context:Context)=synchronized(lock){releaseLocked(context,onlyIfHidden=false)}
     private fun releaseLocked(context:Context,onlyIfHidden:Boolean){
         // The kept ADB connection is closed for every user (with or without automatic management); OFF follows only
-        // after that physical close, and only for wireless debugging this app turned on itself.
+        // after that physical close, and only with automatic management, whose consent says wireless debugging stays on
+        // only while bluedotOFF is used and other connections may end (also when the person had turned it on).
         // Closing can wait for another session; if a screen opened meanwhile, the release is cancelled (review 2026-10-17).
         val stillHidden={!onlyIfHidden||!ForegroundState.active}
         runCatching{LocalAdbSession.closeHeld(stillHidden)}
@@ -50,12 +51,14 @@ object WirelessWork {
         setHeld(context,false)
         android.util.Log.i("bluedotOFF","lease: released held wireless debugging")
     }
-    /** [afterRestart]: only [RestartRecoveryJob] starting the watch (R-1): it may turn wireless debugging on with no screen. */
-    fun <T> run(context:Context,userAction:Boolean,knownPort:Int?=null,beforeDisable:()->Unit={},onCleanup:(String)->Unit={},hold:Boolean=false,forceWireless:Boolean=false,afterRestart:Boolean=false,block:(LocalAdbBackend)->T):T =
-        lease(context,userAction,knownPort,beforeDisable,onCleanup,hold,forceWireless,afterRestart){it.single(block)}
+    /** [noScreen]: wireless debugging may be turned on with no visible screen: [RestartRecoveryJob] starting the watch (R-1)
+     *  and the widget's refresh tap ([WidgetCheckService]). [stillWanted] is asked again once the lease lock is held: a
+     *  widget request that waited for another task may have expired or been cancelled meanwhile (Codex review 2026-11-06). */
+    fun <T> run(context:Context,userAction:Boolean,knownPort:Int?=null,beforeDisable:()->Unit={},onCleanup:(String)->Unit={},hold:Boolean=false,forceWireless:Boolean=false,noScreen:Boolean=false,stillWanted:()->Boolean={true},block:(LocalAdbBackend)->T):T =
+        lease(context,userAction,knownPort,beforeDisable,onCleanup,hold,forceWireless,noScreen,stillWanted=stillWanted){it.single(block)}
     /** [background]: the after-restart batch, which runs on the watch's connection without a visible screen. */
     fun <T> runBatch(context:Context,userAction:Boolean,onCleanup:(String)->Unit={},hold:Boolean=false,background:Boolean=false,block:(BatchSession)->T):T =
-        lease(context,userAction,null,{},onCleanup,hold,false,false,background,block)
+        lease(context,userAction,null,{},onCleanup,hold,false,false,background,block=block)
     class BatchSession internal constructor(private val connection:LocalAdbSession.HelperConnection?,private val resident:WatchClient.Session?=null,private val background:Boolean=false) {
         private val chain=OrderlyHelperChain()
         internal fun <T> single(block:(LocalAdbBackend)->T):T =
@@ -65,23 +68,24 @@ object WirelessWork {
             return single(block)
         }
     }
-    private fun <T> lease(context:Context,userAction:Boolean,knownPort:Int?,beforeDisable:()->Unit,onCleanup:(String)->Unit,hold:Boolean,forceWireless:Boolean,afterRestart:Boolean=false,background:Boolean=false,block:(BatchSession)->T):T=synchronized(lock) {
+    private fun <T> lease(context:Context,userAction:Boolean,knownPort:Int?,beforeDisable:()->Unit,onCleanup:(String)->Unit,hold:Boolean,forceWireless:Boolean,noScreen:Boolean=false,background:Boolean=false,stillWanted:()->Boolean={true},block:(BatchSession)->T):T=synchronized(lock) {
+        check(stillWanted()){"요청이 오래되어 실행하지 않았어요."}
         if(!forceWireless&&WatchClient.available(context)){onCleanup("");return@synchronized WatchClient.exclusive(context){block(BatchSession(null,it,background))}}
         // A background batch never opens its own wireless lease: without the watch it stops here.
         check(!background){"백그라운드 감시가 실행 중이 아니에요."}
         // Cleared on every exit, including a refused start before the connection try block (GPT review 2026-10-11).
         leasing=true
-        try{leaseLocked(context,userAction,knownPort,beforeDisable,onCleanup,hold,afterRestart,block)}finally{leasing=false}
+        try{leaseLocked(context,userAction,knownPort,beforeDisable,onCleanup,hold,noScreen,block)}finally{leasing=false}
     }
-    private fun <T> leaseLocked(context:Context,userAction:Boolean,knownPort:Int?,beforeDisable:()->Unit,onCleanup:(String)->Unit,hold:Boolean,afterRestart:Boolean,block:(BatchSession)->T):T {
+    private fun <T> leaseLocked(context:Context,userAction:Boolean,knownPort:Int?,beforeDisable:()->Unit,onCleanup:(String)->Unit,hold:Boolean,noScreen:Boolean,block:(BatchSession)->T):T {
         val controls=WirelessControls(context)
         var cleanupNotice=""
         val receipt=LocalAdbSession.CloseReceipt()
         val leaseStart=android.os.SystemClock.elapsedRealtime()
         val wasOff=!controls.wireless
         if(wasOff) {
-            check(controls.mayStart(userAction&&ForegroundState.active||afterRestart)){"무선 디버깅을 켜주세요."}
-            check(controls.enableWirelessDebugging(afterRestart)){if(AutoBlocker.suspected)AutoBlocker.MESSAGE else "무선 디버깅을 켜지 못했어요. 설정에서 직접 켜주세요."}
+            check(controls.mayStart(userAction&&ForegroundState.active||noScreen)){"무선 디버깅을 켜주세요."}
+            check(controls.enableWirelessDebugging(noScreen)){if(AutoBlocker.suspected)AutoBlocker.MESSAGE else "무선 디버깅을 켜지 못했어요. 설정에서 직접 켜주세요."}
         }
         val observers=mutableListOf<LocalAdbDiscovery>()
         var completed=false

@@ -572,7 +572,9 @@ class MainActivity : ComponentActivity() {
                     !ready->"연결 설정에서 기기를 연결한 뒤 다시 눌러 주세요."
                     else->""
                 }
-                if(unavailable.isNotEmpty())return@start BatchOutcome(false,emptyList(),journal.entries(),emptyList(),error=unavailable)
+                // "앱 삭제 전 복원" with nothing restorable now ends like a failed restore: the uninstall result names what is
+                // left and says not to uninstall yet (full review 2026-11-07). Not connected: nothing changes, press again.
+                if(unavailable.isNotEmpty())return@start BatchOutcome(false,emptyList(),journal.entries(),emptyList(),error=unavailable,beforeUninstall=beforeUninstall&&packages.isEmpty())
             }
             BatchPipeline.run(app,targets,groupMap,hide,show,auto,beforeUninstall,reapplying,ReapplySource.APP_OPEN,{ForegroundState.canStartTargets},background=false,report=report)
         }

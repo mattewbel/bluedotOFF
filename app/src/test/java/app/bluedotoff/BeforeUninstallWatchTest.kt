@@ -108,6 +108,25 @@ class BeforeUninstallWatchTest {
             assertEquals(0,Settings.Global.getInt(context.contentResolver,"adb_wifi_enabled",0))
         }finally{ForegroundState.paused();ForegroundState.stopped();controller.destroy()}
     }
+    /** Full review 2026-11-07: pressed again when every app left needs a check (nothing restorable now), the uninstall
+     *  result still names them and says not to uninstall, as after the first press, instead of only a notice. */
+    @Test fun uninstallRestoreWithOnlyAppsToCheckStillWarnsNotToUninstall(){
+        val controller=Robolectric.buildActivity(MainActivity::class.java).create()
+        val server=Server(context)
+        try {
+            val first=entry().copy(state=TargetState.FAILED_ROLLBACK)
+            val second=entry().copy(identity=Identity("test.bank",0,12346,listOf("signer"),1,1,1),label="은행",state=TargetState.NEEDS_REVIEW)
+            val journal=JournalStore(context);assertTrue(journal.commit(first));assertTrue(journal.commit(second))
+            attach(server)
+            setter.invoke(controller.get(),UiModel(gate=Gate.READY,page=Page.SETTINGS,entries=journal.entries(),connected=true,backgroundWatch=true))
+            ForegroundState.started();ForegroundState.resumed()
+            MainActivity::class.java.getDeclaredMethod("beforeUninstall").apply{isAccessible=true}.invoke(controller.get())
+            await{(getter.invoke(controller.get()) as UiModel).uninstallCheck!=null}
+            assertEquals(2,(getter.invoke(controller.get()) as UiModel).uninstallCheck)
+            assertTrue(server.stopped)
+            assertEquals(2,journal.entries().count{it.enabled})
+        }finally{ForegroundState.paused();ForegroundState.stopped();controller.destroy()}
+    }
     @Test fun verifiedUninstallRestoreCompletionThenStopsWatchingAndAllowsUninstall(){
         val controller=Robolectric.buildActivity(MainActivity::class.java).create()
         val server=Server(context)

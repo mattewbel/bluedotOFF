@@ -96,7 +96,7 @@ class WidgetCheckWaitTest {
         }
         assertTrue("the expired check must end",await{checkThread?.isAlive==false})
         shadowOf(Looper.getMainLooper()).idle()
-        assertEquals(UiText.text(c,"확인하지 못했어요. bluedotOFF를 열어 이유를 확인해주세요."),org.robolectric.shadows.ShadowToast.getTextOfLatestToast())
+        assertEquals(UiText.text(c,"확인하지 못했어요. bluedotOFF를 열어 다시 확인해주세요."),org.robolectric.shadows.ShadowToast.getTextOfLatestToast())
         assertEquals(0,Settings.Global.getInt(c.contentResolver,"adb_wifi_enabled",0))
         controller.destroy()
     }

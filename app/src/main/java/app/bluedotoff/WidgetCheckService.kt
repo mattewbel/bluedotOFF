@@ -78,8 +78,8 @@ class WidgetCheckService:Service() {
             main.post{
                 try{
                     StatusWidget.finished(c,checked&&!cancelled.get(),notice)
-                    // A failed check (Auto Blocker, an expired pairing, no connection) is not a silent tap; Home shows why.
-                    if(failed&&!cancelled.get()&&!ForegroundState.active)StatusWidget.toast(c,"확인하지 못했어요. bluedotOFF를 열어 이유를 확인해주세요.")
+                    // A failed check (Auto Blocker, an expired pairing, no connection) is not a silent tap; the reason is only logged, so it asks to check again in the app.
+                    if(failed&&!cancelled.get()&&!ForegroundState.active)StatusWidget.toast(c,"확인하지 못했어요. bluedotOFF를 열어 다시 확인해주세요.")
                     cancelled.set(true);stop()
                 }
                 finally{running.set(false)}

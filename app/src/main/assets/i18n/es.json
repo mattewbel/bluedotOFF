@@ -1001,5 +1001,5 @@
   "관리 목록에서 제외한 앱": "Aplicaciones eliminadas de la lista de gestión",
   "업데이트 후 위치 권한 요청이 없어졌어요.": "La aplicación ya no solicita permiso de ubicación después de la actualización.",
   "위젯 확인": "Comprobación del widget",
-  "확인하지 못했어요. bluedotOFF를 열어 이유를 확인해주세요.": "No se pudo comprobar. Abre bluedotOFF para ver el motivo."
+  "확인하지 못했어요. bluedotOFF를 열어 다시 확인해주세요.": "No se pudo comprobar. Abre bluedotOFF para comprobarlo de nuevo."
 }

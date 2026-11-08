@@ -1001,5 +1001,5 @@
   "관리 목록에서 제외한 앱": "Apps removed from the managed list",
   "업데이트 후 위치 권한 요청이 없어졌어요.": "This app no longer requests location permission after the update.",
   "위젯 확인": "Widget check",
-  "확인하지 못했어요. bluedotOFF를 열어 이유를 확인해주세요.": "Couldn't check. Open bluedotOFF to see why."
+  "확인하지 못했어요. bluedotOFF를 열어 다시 확인해주세요.": "Couldn't check. Open bluedotOFF to check again."
 }

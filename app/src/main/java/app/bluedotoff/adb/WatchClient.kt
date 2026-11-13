@@ -36,6 +36,9 @@ object WatchClient {
         override fun save(pkg:String,times:List<Long>){check(prefs.edit().apply{if(times.isEmpty())remove(pkg) else putString(pkg,times.joinToString(","))}.commit()){"RETRY_RECORD_SAVE_FAILED"}}
     }).also{retryPolicy=it}
     private val retryTimers=HashSet<String>()
+    // Interrupted hides settled in this round: their next round skips the 10-minute retry wait once (Fold7 2026-11-13:
+    // Toss settled at 01:31 waited until 01:46 with the notice up).
+    private val settledNow=HashSet<String>()
     private var initialized=false
     private var states=""
     private var wifiObserver:AutoCloseable?=null
@@ -53,7 +56,8 @@ object WatchClient {
         c.contentResolver.registerContentObserver(Settings.Global.getUriFor("adb_wifi_enabled"),false,observer)
         wifiObserver=WifiConnection.observe(c){state(c)}
         state(c)
-        handler.postDelayed({if(BackgroundWatch.enabled(c)&&current==null&&!starting&&c.getSharedPreferences("ui-state",0).getBoolean("watchRunning",false))lost(c)},5000)
+        initializedAt=SystemClock.elapsedRealtime()
+        handler.postDelayed({if(BackgroundWatch.enabled(c)&&current==null&&!starting&&c.getSharedPreferences("ui-state",0).getBoolean("watchRunning",false))lost(c)},LOST_AFTER_MS)
     }
     private fun state(c:Context){
         val next="usbDebugging=${if(usbEnabled(c))1 else 0} wirelessDebugging=${Settings.Global.getInt(c.contentResolver,"adb_wifi_enabled",0)} wifi=${Settings.Global.getInt(c.contentResolver,"wifi_on",0)} wifiConnected=${if(WifiConnection.connected(c))1 else 0} watchRunning=${available(c)}"
@@ -69,6 +73,7 @@ object WatchClient {
         require(profile.getInt("watchProtocol")==1&&profile.getString("watchId").isNotBlank()&&binder.interfaceDescriptor==WatchProtocol.DESCRIPTOR)
         LocalAdbPolicy.validateShell(profile.getInt("uid"),profile.getString("selinux"))
         LocalAdbPolicy.validateProfile(profile.getBoolean("abiVerified"),profile.getString("fingerprint"),Build.FINGERPRINT)
+        val ui=c.getSharedPreferences("ui-state",0);var sameHelper=false
         synchronized(queueLock){
             val previous=current
             if(previous?.binder==binder)return true
@@ -77,16 +82,30 @@ object WatchClient {
             val death=IBinder.DeathRecipient{if(current?.binder==binder){current=null;lost(c)}}
             binder.linkToDeath(death,0)
             current=Connection(binder,profile,death)
+            sameHelper=ui.getString("watchId",null)==profile.getString("watchId")
+            ui.edit().putString("watchId",profile.getString("watchId")).apply()
             LocalAdbSession.rememberRegion(c,profile)
             BackgroundWatch.running(c)
-            WatchLog.event("state","watchRunning=true pid=${profile.getInt("pid")} packageEvents=${profile.optBoolean("packageEvents")} permissionEvents=${profile.optBoolean("permissionEvents")}")
+            WatchLog.event("state","watchRunning=true sameHelper=$sameHelper pid=${profile.getInt("pid")} packageEvents=${profile.optBoolean("packageEvents")} permissionEvents=${profile.optBoolean("permissionEvents")}")
             attaching.countDown()
         }
-        signal(c,JournalStore(c).entries().filter(WatchPolicy::eligible).map{it.identity.packageName}.toSet())
+        signal(c,attachTargets(JournalStore(c).entries(),sameHelper))
         LifecycleEvents.changed()
         return true
     }
+    /** What a newly attached helper checks. A new helper (watch start, restart, update): every app it guards. The same helper
+     *  finding a revived app process (Android ends the idle process; the helper's 60 s report starts it again, about 90 times
+     *  a day on the Fold7, each time re-reading all 214 apps): only apps with work left, since the helper kept watching the
+     *  others and reports their changes as events (1.3.2). */
+    internal fun attachTargets(entries:List<Entry>,sameHelper:Boolean)=entries.filter{WatchPolicy.eligible(it)&&!(sameHelper&&it.state==TargetState.APPLIED)}.map{it.identity.packageName}.toSet()
+    // A restarted app process hears from a living helper at its next health report (every 60 s). 5 s (until 1.3.1) showed
+    // "감시가 멈췄어요" while the watch was running (Fold7 2026-11-13 07:07, Reddit S25+ report).
+    private const val LOST_AFTER_MS=75_000L
+    @Volatile private var initializedAt=0L
     private fun lost(c:Context){
+        // While a restarted process still waits for the helper it had, a start that fails on opening the app (no Wi-Fi
+        // permission yet, a connection error) is not a stop: the check after LOST_AFTER_MS decides (Codex v53 review).
+        if(usbEnabled(c)&&current==null&&initializedAt!=0L&&SystemClock.elapsedRealtime()-initializedAt<LOST_AFTER_MS&&c.getSharedPreferences("ui-state",0).getBoolean("watchRunning",false)){LifecycleEvents.changed();return}
         synchronized(queueLock){
             // A wireless start can fail just after a PC-launched helper attached. Its late failure is not a stop.
             if(available(c))BackgroundWatch.running(c) else {
@@ -207,26 +226,30 @@ object WatchClient {
                         val lockAt=SystemClock.elapsedRealtime()
                         if(BatchRuntime.state.value.busy){synchronized(queueLock){deferred+=names};return@exclusive}
                         session.run{active->
-                            val readyAt=SystemClock.elapsedRealtime();val firstRead=HashMap<String,Long>();val rewrote=HashSet<String>()
+                            val readyAt=SystemClock.elapsedRealtime();val firstRead=HashMap<String,Long>();val rewrote=HashSet<String>();val settled=HashSet<String>()
                             val started=SystemClock.elapsedRealtime()
                             val wall=System.currentTimeMillis()
                             val retrying=JournalStore(c).entries().filter(WatchPolicy::retrying).associateBy{it.identity.packageName}
-                            val allowed=names.filter{p->cooldown.allowed(p,started)&&retrying[p]?.let{retry(c).allowed(it,wall)}!=false}.toSet()
+                            val allowed=names.filter{p->cooldown.allowed(p,started)&&retrying[p]?.let{retry(c).allowed(it,wall,synchronized(queueLock){settledNow.remove(p)})}!=false}.toSet()
                             (names-retrying.keys).forEach{retry(c).succeeded(it)}
                             WatchEngine(active,JournalStore(c),System::currentTimeMillis,{BootSession.current(c)},observe={phase,s,wrote->firstRead.putIfAbsent(s.identity.packageName,SystemClock.elapsedRealtime());if(wrote)rewrote+=s.identity.packageName;active.recordVerification(phase,s,wrote)},
-                                onSkip={pkgs,reason->synchronized(queueLock){checked+=pkgs};WatchLog.event("skip","pkg=${pkgs.joinToString(",")} reason=$reason")},
-                                beforeAttempt={entries->entries.filter(WatchPolicy::retrying).forEach{retry(c).tried(it.identity.packageName,System.currentTimeMillis())}})
+                                onSkip={pkgs,reason->if(reason==WatchEngine.INTERRUPTED)settled+=pkgs else synchronized(queueLock){checked+=pkgs};WatchLog.event("skip","pkg=${pkgs.joinToString(",")} reason=$reason")},
+                                beforeAttempt={entries->entries.filter(WatchPolicy::retrying).forEach{retry(c).tried(it.identity.packageName,System.currentTimeMillis())}},
+                                onReread={pkgs,matched->WatchLog.event("reread","pkg=${pkgs.joinToString(",")} matched=$matched")})
                                 .reapply(allowed,{available(c)&&!BatchRuntime.state.value.busy},
                                     {_->},
                                     {result->val doneAt=SystemClock.elapsedRealtime();cooldown.result(result.packageName,doneAt,result.success)
-                                        if(result.success)retry(c).succeeded(result.packageName)
+                                        if(result.success){retry(c).succeeded(result.packageName);StatusWidget.watchConfirmed(c)}
                                         synchronized(queueLock){if(result.success)checked+=result.packageName else checked-=result.packageName}
                                         WatchLog.event("timing","pkg=${result.packageName} ok=${result.success} toWorker=${workerAt-signalAt}ms lockWait=${lockAt-workerAt}ms connect=${readyAt-lockAt}ms checks=${doneAt-(firstRead[result.packageName]?:readyAt)}ms total=${doneAt-signalAt}ms")
                                         ReapplyHistoryStore(c).record(result,ReapplySource.BACKGROUND,rewrote=result.packageName in rewrote)})
                             // Every app of this round, not only those with a result: the watch passes over some without one
                             // (an old record it cannot take, the retry delay, a check cut short; Claude review 2026-10-31).
-                            runCatching{ReapplyNotification.watchFinished(c,names)}
-                            retryLater(c,names)
+                            // An interrupted hide just settled as "hide again" goes straight into the next round (no notice in between).
+                            val again=JournalStore(c).entries().filter{WatchPolicy.retrying(it)&&it.identity.packageName in settled}.map{it.identity.packageName}.toSet()
+                            if(again.isNotEmpty())synchronized(queueLock){pending+=again;settledNow+=again}
+                            runCatching{ReapplyNotification.watchFinished(c,names-again)}
+                            retryLater(c,names-again)
                         }
                     }
                     LifecycleEvents.changed()

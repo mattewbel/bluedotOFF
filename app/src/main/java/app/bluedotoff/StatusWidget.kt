@@ -60,7 +60,7 @@ object StatusWidget {
         }.onFailure{android.util.Log.w("bluedotOFF","Widget could not be updated")}}finally{done()}}
     }
     /** The refresh icon: the watch checks every registered app (re-hiding what lost it, as after a change event); without
-     *  the watch [WidgetCheckService] reads them through wireless debugging. The time moves only when every app was checked. */
+     *  the watch [WidgetCheckService] reads them through wireless debugging. The time moves when every app was checked or the watch re-hid an app (owner 2026-11-12). */
     fun refresh(context:Context){
         val c=context.applicationContext
         if(refreshing)return
@@ -79,6 +79,8 @@ object StatusWidget {
         prefs(c).edit().apply{if(checked)putLong("checkedAt",System.currentTimeMillis());if(notice!=null)putString("notice",notice)}.apply()
         refreshing=false;update(c)
     }
+    /** The watch re-hid an app and confirmed it: the widget shows this as its latest time (owner 2026-11-12). */
+    fun watchConfirmed(c:Context)=prefs(c).edit().putLong("watchAt",System.currentTimeMillis()).apply()
     /** A short answer to a refresh tap that could not check (main thread). */
     fun toast(c:Context,text:String)=android.widget.Toast.makeText(c,UiText.text(c,text),android.widget.Toast.LENGTH_SHORT).show()
     /** The smallest height the launcher gives this widget, in dp; 0 when it has not said. */
@@ -88,7 +90,7 @@ object StatusWidget {
     }
     fun state(c:Context,watching:Boolean=WatchClient.available(c)):State{
         val model=UiModel(entries=JournalStore(c).entries())
-        val checkedAt=maxOf(c.getSharedPreferences("ui-state",0).getLong("lastCheckedAt",0L),prefs(c).getLong("checkedAt",0L))
+        val checkedAt=maxOf(c.getSharedPreferences("ui-state",0).getLong("lastCheckedAt",0L),prefs(c).getLong("checkedAt",0L),prefs(c).getLong("watchAt",0L))
         return State(watching,checkedAt,model.lastVerifiedAppliedCount,model.reapplyCount,model.otherCheckCount,refreshing,!watching&&WidgetCheckService.eligible(c),notice(c))
     }
     /** Wireless debugging seen off settles the cleanup notice for good: turning it on later must not bring it back. */

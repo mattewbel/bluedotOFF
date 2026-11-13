@@ -604,8 +604,6 @@
   "위치 사용 기록을 읽지 못했어요.": "Could not read the location history format.",
   "쓰기 직전 UID 소유 또는 앱 상태가 변경되어 중지했습니다.": "The app changed just before applying. Stopped safely.",
   "이 앱의 UID 공유 상태가 변경되어 자동 변경을 중지했습니다.": "The apps grouped with this app changed. Further changes stopped.",
-  "미국 판매 모델 안내": "US model notice",
-  "미국 판매 모델은 위치 표시를 띄우는 방식이 하나 더 있어서, 적용해도 파란 위치 표시가 사라지지 않을 수 있어요. 위치 권한과 사용 기록은 그대로이고, 언제든 원래 상태로 복원할 수 있어요.": "US models have an additional way of showing the location indicator, so the blue dot may not disappear even after applying. Location permissions and history stay unchanged, and you can restore the original state at any time.",
   "앱 목록 응답 오류": "App list response error",
   "앱 정보 변경": "App information changed",
   "앱 정보 없음": "App information unavailable",

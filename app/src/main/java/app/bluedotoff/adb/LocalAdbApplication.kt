@@ -6,6 +6,7 @@ class LocalAdbApplication:android.app.Application(){
         super.onCreate()
         app.bluedotoff.StartupScanHandoff.observePackages(this)
         app.bluedotoff.LegacyTestLog.cleanup(this)
+        app.bluedotoff.TestLog.init(this)
         // The reapply counter starts with the first run of 1.3.0, not with its first result (the screen names this date).
         runCatching{app.bluedotoff.ReapplyStats.since(this)}
         app.bluedotoff.LifecycleEvents.widget={app.bluedotoff.StatusWidget.update(this)}

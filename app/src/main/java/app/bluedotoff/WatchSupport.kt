@@ -97,7 +97,23 @@ object WatchNotification {
 }
 
 /** Watch diagnostics go to logcat only (I/bluedotOFF, no package names); nothing is stored or collected. */
-internal object WatchLog { fun event(kind:String,message:String){android.util.Log.i("bluedotOFF","watch $kind: $message")} }
+internal object WatchLog { fun event(kind:String,message:String){android.util.Log.i("bluedotOFF","watch $kind: $message");TestLog.write("watch $kind: $message")} }
+
+/** Test builds only ([BuildConfig.TEST_LOG], owner 2026-11-09): the same lines also go to a file the PC can pull later
+ *  (`/sdcard/Android/data/app.bluedotoff/files/watch-test-log.txt`), so a notice can be explained after the phone was unplugged.
+ *  shortcut: 2 MB + one older file, plain text; remove with the flag before a release. */
+internal object TestLog {
+    @Volatile private var dir:File?=null
+    fun init(c:Context){if(BuildConfig.TEST_LOG)dir=c.getExternalFilesDir(null)}
+    @Synchronized fun write(line:String){
+        val d=dir?:return
+        runCatching{
+            val f=File(d,"watch-test-log.txt")
+            if(f.length()>2_000_000)f.renameTo(File(d,"watch-test-log.1.txt"))
+            f.appendText(java.text.SimpleDateFormat("MM-dd HH:mm:ss.SSS",java.util.Locale.US).format(java.util.Date())+" "+line+"\n")
+        }
+    }
+}
 
 /** Earlier 1.1.0 test builds kept a local test log. On first start without it: let the reapply history import its automatic
  *  results (once), then delete the log, its state and its sampling alarm. */

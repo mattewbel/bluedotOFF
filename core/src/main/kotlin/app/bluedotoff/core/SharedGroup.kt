@@ -205,9 +205,16 @@ object SharedGroupReconcile {
         if(!e.enabled&&e.state in setOf(TargetState.NOT_APPLIED,TargetState.INACTIVE_INSTALL,TargetState.NEEDS_REVIEW,TargetState.UNSUPPORTED_STATE,TargetState.MISSING_TARGET)&&
             e.groupIdentities.any{id->all[id.packageName]?.identity?.let{!id.sameInstall(it)}?:true})
             return e.copy(state=if(all[e.identity.packageName]==null)TargetState.MISSING_TARGET else TargetState.INACTIVE_INSTALL)
+        // A registered group locked only by this read-time install check (no write involved) is read again: before
+        // 1.3.2 a key rotation counted as a new install (Google Play services, 2026-11-12). A real change locks it again.
+        // Any lock on that read keeps the original record, so a member missing from one read cannot swap in a reason that
+        // never unlocks (Codex review 2026-11-12).
+        if(e.enabled&&e.state==TargetState.NEEDS_REVIEW&&e.error in NEW_INSTALL+UNREAD)return read(e.copy(state=TargetState.NEEDS_REAPPLY_UPDATE,error=""),all,firmware,boot).takeUnless{it.state==TargetState.NEEDS_REVIEW}?:e
         if(e.state in setOf(TargetState.NEEDS_REVIEW,TargetState.FAILED_ROLLBACK,TargetState.SHARED_UID_CHANGED,TargetState.FAILED_SAFE))return e
-        val members=e.groupIdentities.map{all[it.packageName]?:return e.copy(state=TargetState.NEEDS_REVIEW,error="묶음 앱의 설치 정보를 모두 확인하지 못했어요.")}
-        if(e.groupIdentities.zip(members).any{(id,s)->!id.sameInstall(s.identity)})return e.copy(state=TargetState.NEEDS_REVIEW,error="묶음 앱 중 새로 설치된 앱이 있어요.")
+        // An interrupted group stays PENDING for recover (which reads every member itself): this lock is read again later and
+        // must not turn an unsettled write into a plain record.
+        val members=e.groupIdentities.map{all[it.packageName]?:return if(e.state in setOf(TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE,TargetState.PENDING_SHOW))e else e.copy(state=TargetState.NEEDS_REVIEW,error=UNREAD.first())}
+        if(e.groupIdentities.zip(members).any{(id,s)->!id.sameInstall(s.identity)})return e.copy(state=TargetState.NEEDS_REVIEW,error=NEW_INSTALL.first())
         if(members.any{it.peers.sorted()!=e.groupIdentities.map{p->p.packageName}||it.sharedUserId!=e.sharedUserId})return e.copy(state=TargetState.NEEDS_REVIEW,error=OwnershipChangedException().message!!)
         // B-1: an interrupted group stays PENDING (not changeable by the watch or a batch) until SharedGroupEngine.recover
         // settles it when the app is opened. Identity/ownership changes above still lock it. Before the firmware check, as
@@ -223,4 +230,8 @@ object SharedGroupReconcile {
         if(e.bootSession!=boot||e.state==TargetState.NEEDS_REAPPLY_BOOT)return e.copy(state=TargetState.NEEDS_REAPPLY_BOOT)
         return e.copy(state=if(own.bit==0)TargetState.APPLIED else TargetState.NEEDS_REAPPLY_POLICY)
     }
+    /** The read-time install lock's message, current and before the 1.3.0 wording review. */
+    /** A member was not found in one read: also a read-time lock, read again the same way (Codex review 2026-11-13). */
+    val UNREAD=listOf("묶음 앱의 설치 정보를 모두 확인하지 못했어요.","공유 앱 묶음의 전체 설치 정보를 확인하지 못했습니다.")
+    val NEW_INSTALL=listOf("묶음 앱 중 새로 설치된 앱이 있어요.","공유 앱 묶음의 설치 정보가 바뀌었습니다.")
 }

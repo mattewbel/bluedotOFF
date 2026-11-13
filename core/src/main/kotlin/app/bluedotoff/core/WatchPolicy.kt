@@ -3,7 +3,11 @@ package app.bluedotoff.core
 /** Opt-in background work may only revisit verified, still-registered hides. Never enroll a new app. */
 object WatchPolicy {
     private val states=setOf(TargetState.APPLIED,TargetState.NEEDS_REAPPLY_POLICY,TargetState.NEEDS_REAPPLY_UPDATE)
-    fun eligible(e:Entry)=e.enabled&&!e.restoreRequested&&(e.settlingVerified&&e.state in states||retrying(e))
+    fun eligible(e:Entry)=e.enabled&&!e.restoreRequested&&(e.settlingVerified&&e.state in states||retrying(e)||interrupted(e))
+    /** A single app's hide that never finished: Android ended the idle app process during the watch's checks (Toss, Fold7
+     *  2026-11-12; it stayed "직접 확인할 앱" until bluedotOFF was opened). The watch settles it with the same read-only
+     *  rules as opening the app ([Reconcile.read]) and never writes on it in that pass. Groups wait for the app (B-1). */
+    fun interrupted(e:Entry)=e.enabled&&!e.restoreRequested&&e.state==TargetState.PENDING_HIDE&&e.groupIdentities.isEmpty()
     /** A hide that failed safely, tried again within [WatchRetry]'s limits. */
     fun retrying(e:Entry)=e.enabled&&!e.restoreRequested&&e.state==TargetState.FAILED_SAFE&&e.retryHide
     fun units(entries:List<Entry>,packages:Set<String>):List<List<Entry>> {
@@ -47,7 +51,8 @@ class WatchRetry(private val store:Store,private val gapMs:Long=10*60_000L,priva
     interface Store { fun load(pkg:String):List<Long>; fun save(pkg:String,times:List<Long>) }
     private fun recent(pkg:String,now:Long)=store.load(pkg).filter{it<=now&&now-it<DAY}
     private fun since(e:Entry,tries:List<Long>,now:Long)=(listOf(e.lastVerifiedTime)+tries).filter{it<=now}.maxOrNull()?.let{now-it}?:gapMs
-    @Synchronized fun allowed(e:Entry,now:Long)=recent(e.identity.packageName,now).let{it.size<perDay&&since(e,it,now)>=gapMs}
+    /** [noGap]: an interrupted hide the watch just settled never finished its try, so it need not wait (the daily limit stays). */
+    @Synchronized fun allowed(e:Entry,now:Long,noGap:Boolean=false)=recent(e.identity.packageName,now).let{it.size<perDay&&(noGap||since(e,it,now)>=gapMs)}
     @Synchronized fun tried(pkg:String,now:Long){store.save(pkg,recent(pkg,now)+now)}
     @Synchronized fun succeeded(pkg:String){if(store.load(pkg).isNotEmpty())store.save(pkg,emptyList())}
     /** When the next try may run (ms from [now]); null when the tries of these 24 hours are used up. */

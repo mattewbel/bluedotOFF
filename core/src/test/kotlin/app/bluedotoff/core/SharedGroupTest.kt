@@ -70,6 +70,43 @@ class SharedGroupTest {
         val back=r.snapshots.toMap<String,Snapshot?>()
         assertTrue(r.records.values.all{SharedGroupReconcile.read(it,back,r.fw.key,"boot").state==TargetState.INACTIVE_INSTALL})
     }
+    /** Google Play services rotated its signing key (user report, S25 Ultra, 2026-11-12): the update's key history holds the
+     *  recorded key, so it is the same install. A group already locked by the old check is read again and can be restored;
+     *  a key outside the history or a reinstall still locks it. */
+    @Test fun aRotatedSigningKeyIsTheSameInstallAndUnlocksTheGroup(){
+        val r=Rig();r.run();val p=r.names[0];val old=r.snapshots[p]!!
+        r.records.replaceAll{_,e->e.copy(state=TargetState.NEEDS_REVIEW,error="공유 앱 묶음의 설치 정보가 바뀌었습니다.",restoreRequested=true)}
+        r.snapshots[p]=old.copy(identity=old.identity.copy(signers=listOf("rotated","signer0"),versionCode=2))
+        val all=r.snapshots.toMap<String,Snapshot?>()
+        assertTrue(r.records.values.all{SharedGroupReconcile.read(it,all,r.fw.key,"boot").let{n->n.state==TargetState.NEEDS_REAPPLY_UPDATE&&n.error.isEmpty()}})
+        r.records.replaceAll{_,e->SharedGroupReconcile.read(e,all,r.fw.key,"boot")}
+        r.run(false);assertEquals(listOf(0,256),r.writes);assertTrue(r.records.values.all{!it.enabled&&it.state==TargetState.NOT_APPLIED})
+        for(id in listOf(old.identity.copy(signers=listOf("other")),old.identity.copy(signers=listOf("rotated","signer0"),firstInstallTime=99))){
+            val q=Rig();q.run();q.snapshots[p]=old.copy(identity=id);val now=q.snapshots.toMap<String,Snapshot?>()
+            assertTrue(q.records.values.all{SharedGroupReconcile.read(it,now,q.fw.key,"boot").state==TargetState.NEEDS_REVIEW})
+            val locked=q.records.values.map{it.copy(state=TargetState.NEEDS_REVIEW,error=SharedGroupReconcile.NEW_INSTALL.first())}
+            assertTrue(locked.all{SharedGroupReconcile.read(it,now,q.fw.key,"boot").state==TargetState.NEEDS_REVIEW})
+        }
+        // Codex review: a member missing from one read keeps the original lock, and the next full read still unlocks it.
+        val first=Rig().apply{run()}.records.values.first().copy(state=TargetState.NEEDS_REVIEW,error=SharedGroupReconcile.NEW_INSTALL.last())
+        val partial=SharedGroupReconcile.read(first,all-r.names.last(),r.fw.key,"boot");assertEquals(first,partial)
+        assertEquals(TargetState.NEEDS_REAPPLY_UPDATE,SharedGroupReconcile.read(partial,all,r.fw.key,"boot").state)
+        val locked=Rig().apply{run()}.records.values.first().copy(state=TargetState.NEEDS_REVIEW,error="끊긴 묶음 작업 뒤 상태가 기록과 달라서 바꾸지 않았어요.")
+        assertEquals(locked,SharedGroupReconcile.read(locked,all,r.fw.key,"boot"))
+    }
+    /** Codex review 2026-11-13: an applied group with one member not found in a single read is locked only until the
+     *  next full read; it can then be restored. A member that stays away or comes back reinstalled stays locked. */
+    @Test fun aMemberMissingFromOneReadDoesNotBlockRestoreForever(){
+        val r=Rig();r.run();val full=r.snapshots.toMap<String,Snapshot?>();val partial=full-r.names.last()
+        r.records.replaceAll{_,e->SharedGroupReconcile.read(e,partial,r.fw.key,"boot")}
+        assertTrue(r.records.values.all{it.state==TargetState.NEEDS_REVIEW&&it.originalBit==256})
+        val still=r.records.toMap();r.records.replaceAll{_,e->SharedGroupReconcile.read(e,partial,r.fw.key,"boot")};assertEquals(still,r.records.toMap())
+        val p=r.names.last();val back=full+(p to full[p]!!.copy(identity=full[p]!!.identity.copy(firstInstallTime=99)))
+        assertTrue(r.records.values.all{SharedGroupReconcile.read(it,back,r.fw.key,"boot").state==TargetState.NEEDS_REVIEW})
+        r.records.replaceAll{_,e->SharedGroupReconcile.read(e,full,r.fw.key,"boot")}
+        assertTrue(r.records.values.all{it.state==TargetState.APPLIED&&it.error.isEmpty()})
+        r.run(false);assertEquals(listOf(0,256),r.writes);assertTrue(r.records.values.all{!it.enabled&&it.state==TargetState.NOT_APPLIED})
+    }
     /** B-10 stays narrow: a REGISTERED group whose members were reinstalled is still refused. */
     @Test fun registeredGroupReinstalledIsStillRefused(){
         val r=Rig();r.run();val writes=r.writes.size

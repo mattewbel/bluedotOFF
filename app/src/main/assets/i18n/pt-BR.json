@@ -604,8 +604,6 @@
   "위치 사용 기록을 읽지 못했어요.": "Não foi possível ler o formato do histórico de localização.",
   "쓰기 직전 UID 소유 또는 앱 상태가 변경되어 중지했습니다.": "O app mudou logo antes de aplicar. Interrompido por segurança.",
   "이 앱의 UID 공유 상태가 변경되어 자동 변경을 중지했습니다.": "Os apps agrupados com este app mudaram. Outras alterações foram interrompidas.",
-  "미국 판매 모델 안내": "Aviso sobre modelos dos EUA",
-  "미국 판매 모델은 위치 표시를 띄우는 방식이 하나 더 있어서, 적용해도 파란 위치 표시가 사라지지 않을 수 있어요. 위치 권한과 사용 기록은 그대로이고, 언제든 원래 상태로 복원할 수 있어요.": "Os modelos dos EUA têm uma forma adicional de exibir o indicador de localização, por isso o ponto azul pode não desaparecer mesmo após a aplicação. As permissões e o histórico de localização continuam inalterados, e você pode restaurar o estado original a qualquer momento.",
   "앱 목록 응답 오류": "Erro de resposta da lista de apps",
   "앱 정보 변경": "Informações do app alteradas",
   "앱 정보 없음": "Informações do app indisponíveis",

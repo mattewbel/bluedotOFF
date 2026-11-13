@@ -46,6 +46,8 @@ object UiText {
         // Unknown diagnostics remain verbatim; never hide a real error with a success message.
         return lookup(context,name,value)?:(if(name!="en")lookup(context,"en",value) else null)?:value
     }
+    /** English for the diagnostics mail, whatever the app language. */
+    fun english(context:Context,value:String)=error(value).let{lookup(context,"en",it)?:it}
     const val GENERIC_ERROR="작업을 마치지 못했어요. 기기 연결을 확인한 뒤 다시 시도해주세요."
     /** Internal English diagnostics (helper codes, exception text) become plain guidance. Korean product messages pass through. */
     fun error(value:String):String=when(value){

@@ -107,9 +107,39 @@ class WatchEngineTest {
     @Test fun pendingReviewFailureAndFirmwareStatesAreExcluded(){for(state in listOf(TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE,TargetState.PENDING_SHOW,TargetState.FAILED_SAFE,TargetState.FAILED_ROLLBACK,TargetState.NEEDS_REVIEW,TargetState.SHARED_UID_CHANGED,TargetState.NEEDS_RECHECK_FIRMWARE,TargetState.MISSING_TARGET,TargetState.INACTIVE_INSTALL)){val r=Rig(listOf(entry().copy(state=state)));r.run();assertTrue(state.name,r.writes.isEmpty())}}
     @Test fun unverifiedRegistrationAndBootChangeNeverWrite(){val r=Rig(listOf(entry().copy(settlingVerified=false)));r.run();assertTrue(r.writes.isEmpty());val boot=Rig();boot.run(boot="new-boot");assertTrue(boot.writes.isEmpty())}
     @Test fun currentScopeAndPermissionAreRequired(){for(s in listOf(base.copy(fineGranted=false),base.copy(fineDeclared=false),base.copy(persistent=true,systemCritical=true,applicationScope=ApplicationScope.NORMAL))){val r=Rig();r.snapshot=s;r.run();assertTrue(r.writes.isEmpty())}}
+    /** 2026-11-10: a read taken while Android rewrites the flags is read once more; only a lasting difference is saved. */
+    @Test fun aMismatchThatIsGoneOnTheSecondReadIsHiddenAsUsual(){
+        val r=Rig();r.snapshot=base.copy(coarseFlags=0x200);val rereads=mutableListOf<Boolean>();val waits=mutableListOf<Long>()
+        WatchEngine(r.port,r.store,{300},{"boot"},wait={ms->waits+=ms;if(ms==WatchEngine.REREAD_MS)r.snapshot=base},onReread={_,ok->rereads+=ok}).reapply(setOf(id.packageName),{true},{},r.results::add)
+        assertEquals(listOf(true),rereads);assertEquals(WatchEngine.REREAD_MS,waits.first());assertEquals(listOf(0),r.writes)
+        assertTrue(r.results.single().success);assertEquals(TargetState.APPLIED,r.store.values.single().state)
+    }
+    @Test fun aMismatchThatLastsIsStillLeftForTheUser(){
+        val r=Rig();r.snapshot=base.copy(coarseFlags=0x200);val rereads=mutableListOf<Boolean>()
+        WatchEngine(r.port,r.store,{300},{"boot"},wait={},onReread={_,ok->rereads+=ok}).reapply(setOf(id.packageName),{true},{},r.results::add)
+        assertEquals(listOf(false),rereads);assertTrue(r.writes.isEmpty());assertEquals(TargetState.UNSUPPORTED_STATE,r.store.values.single().state)
+    }
+    /** Fold7 2026-11-12: the app process ended during the watch's hide of Toss and the record stayed PENDING_HIDE. */
+    @Test fun anInterruptedHideIsSettledWithoutAWriteAndHiddenInTheNextRound(){
+        val r=Rig(listOf(entry().copy(state=TargetState.PENDING_HIDE,settlingVerified=false)))
+        r.run();assertTrue(r.writes.isEmpty());assertEquals(listOf(WatchEngine.INTERRUPTED),r.skips)
+        assertEquals(TargetState.FAILED_SAFE,r.store.values.single().state);assertTrue(r.store.values.single().retryHide)
+        r.run();assertEquals(listOf(0),r.writes);assertTrue(r.results.single().success);assertEquals(TargetState.APPLIED,r.store.values.single().state)
+    }
+    @Test fun anInterruptedFirstHideOrGroupOrRestoreIsLeftForTheUser(){
+        val first=Rig(listOf(entry().copy(state=TargetState.PENDING_HIDE,settlingVerified=false,changedByUs=false)))
+        first.run();first.run();assertTrue(first.writes.isEmpty());assertEquals(TargetState.FAILED_SAFE,first.store.values.single().state);assertFalse(first.store.values.single().retryHide)
+        val changed=Rig(listOf(entry().copy(state=TargetState.PENDING_HIDE,settlingVerified=false)));changed.snapshot=base.copy(coarseFlags=0x200)
+        changed.run();changed.run();assertTrue(changed.writes.isEmpty());assertEquals(TargetState.FAILED_ROLLBACK,changed.store.values.single().state)
+        val reboot=Rig(listOf(entry().copy(state=TargetState.PENDING_HIDE,settlingVerified=false)));reboot.run(boot="after-restart")
+        assertTrue(reboot.writes.isEmpty());assertEquals(TargetState.PENDING_HIDE,reboot.store.values.single().state)
+        assertFalse(WatchPolicy.eligible(entry().copy(state=TargetState.PENDING_HIDE,groupIdentities=listOf(id,id.copy(packageName="test.peer")))))
+        assertFalse(WatchPolicy.eligible(entry().copy(state=TargetState.PENDING_HIDE,restoreRequested=true)))
+        assertFalse(WatchPolicy.eligible(entry().copy(state=TargetState.PENDING_RESTORE)))
+    }
     @Test fun otherPermissionChangesRequireReviewWithoutWriting(){val r=Rig();r.snapshot=base.copy(coarseFlags=0x200);r.run();assertTrue(r.writes.isEmpty());assertEquals(TargetState.UNSUPPORTED_STATE,r.store.values.single().state)}
     @Test fun failedDurableCommitCannotReachSetter(){val r=Rig();r.store.durable=false;r.run();assertTrue(r.writes.isEmpty());assertFalse(r.results.single().success)}
-    @Test fun verificationFailureRollsBackAndDoesNotReportSuccess(){val r=Rig();r.resets=4;r.run();assertFalse(r.results.single().success);assertEquals(base.fineFlags,r.snapshot.fineFlags);assertEquals(TargetState.FAILED_SAFE,r.store.values.single().state);assertEquals(listOf(0,0,0,0),r.writes)}
+    @Test fun verificationFailureRollsBackAndDoesNotReportSuccess(){val r=Rig();r.resets=WatchEngine.RETRIES+1;r.run();assertFalse(r.results.single().success);assertEquals(base.fineFlags,r.snapshot.fineFlags);assertEquals(TargetState.FAILED_SAFE,r.store.values.single().state);assertEquals(List(WatchEngine.RETRIES+1){0},r.writes)}
     /** Toss, 2026-10-18: Android reset the flag once more during the checks right after an update. Retried, not locked. */
     @Test fun androidResetDuringChecksIsRetried(){val r=Rig();r.resets=1;r.run();assertEquals(listOf(0,0),r.writes);assertTrue(r.waits.contains(5_000L));assertTrue(r.results.single().success);assertEquals(TargetState.APPLIED,r.store.values.single().state);assertEquals(256,r.store.values.single().originalBit)}
     @Test fun otherChangeDuringChecksStaysLocked(){val r=Rig();var once=true
@@ -184,7 +214,7 @@ class WatchEngineTest {
         val (writes,results)=groupResetDuringChecks(1)
         assertEquals("first try + one retry, no rollback write needed",2,writes);assertEquals(2,results.size);assertTrue(results.all{it.success})
         val (always,failed)=groupResetDuringChecks(9)
-        assertEquals("bounded: first try + 3 retries",4,always);assertTrue(failed.none{it.success})
+        assertEquals("bounded: first try + the retries",WatchEngine.RETRIES+1,always);assertTrue(failed.none{it.success})
     }
     /** D-2a: a lone event keeps its timing; a steady stream is sent at the cap; every app is still taken at the end. */
     @Test fun eventWindowCapsAStreamWithoutDroppingTheLastCheck(){

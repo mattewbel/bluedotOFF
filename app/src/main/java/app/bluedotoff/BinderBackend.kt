@@ -28,6 +28,7 @@ abstract class BinderBackend(private val context: Context) : TargetPort {
         private const val OPS = "com.android.internal.app.IAppOpsService"
         fun ownership(pkg:String,uid:Int,peers:List<String>?,flags:Int,critical:Boolean,sharedUserId:String?)=UidOwnership(pkg,uid,peers,sharedUserId,flags and android.content.pm.ApplicationInfo.FLAG_PERSISTENT!=0,critical)
         fun digest(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it.toInt() and 255) }
+        fun signers(info: PackageInfo) = info.signingInfo?.let { if (it.hasMultipleSigners()) it.apkContentsSigners else it.signingCertificateHistory }?.map { digest(it.toByteArray()) }?.sorted()
     }
     private val validationStart = SystemClock.elapsedRealtime()
     private val codes = java.util.concurrent.ConcurrentHashMap<String, Int>()
@@ -150,7 +151,7 @@ abstract class BinderBackend(private val context: Context) : TargetPort {
         require(packageName.matches(Regex("[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*")))
         val info = packageInfo(packageName) ?: throw PackageManager.NameNotFoundException(packageName)
         val app = info.applicationInfo ?: error("앱 정보 없음")
-        val signers = info.signingInfo?.apkContentsSigners?.map { digest(it.toByteArray()) }?.sorted() ?: error("앱 정보를 읽지 못했어요.")
+        val signers = signers(info) ?: error("앱 정보를 읽지 못했어요.")
         check(signers.isNotEmpty())
         fun declared(p: String) = info.requestedPermissions?.contains(p) == true
         fun grant(p: String): Boolean { val i = info.requestedPermissions?.indexOf(p) ?: -1; return i >= 0 && (info.requestedPermissionsFlags!![i] and PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0 }

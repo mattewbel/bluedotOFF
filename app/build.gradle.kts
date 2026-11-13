@@ -9,13 +9,15 @@ android {
     compileSdk = 37
     compileSdkMinor = 0
     ndkVersion = "27.2.12479018"
-    defaultConfig { applicationId = "app.bluedotoff"; minSdk = 30; targetSdk = 37; versionCode = 45; versionName = "1.3.1" }
+    defaultConfig { applicationId = "app.bluedotoff"; minSdk = 30; targetSdk = 37; versionCode = 55; versionName = "1.3.2" }
     flavorDimensions += "transport"
     productFlavors {
         create("local") { dimension = "transport" }
     }
     defaultConfig {
         buildConfigField("boolean", "LOCAL_WRITES_ENABLED", "true")
+        // Owner 2026-11-09: test builds only. MUST be false for a published release (finalize.py refuses true).
+        buildConfigField("boolean", "TEST_LOG", "false")
         ndk { abiFilters += "arm64-v8a" }
         externalNativeBuild { cmake { arguments += "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"; cppFlags += "-std=c++17"; targets += "bluedot_adb" } }
     }

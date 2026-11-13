@@ -3,7 +3,8 @@ package app.bluedotoff.core
 /** Same engines/journal/settling checks as foreground work; fresh registration is authoritative on every event. */
 class WatchEngine(private val port:TargetPort,private val journal:Journal,private val now:()->Long,private val boot:()->String,
     private val wait:(Long)->Unit={Thread.sleep(it)},private val observe:(String,Snapshot,Boolean)->Unit={_,_,_->},
-    private val onSkip:(List<String>,String)->Unit={_,_->},private val beforeAttempt:(List<Entry>)->Unit={}) {
+    private val onSkip:(List<String>,String)->Unit={_,_->},private val beforeAttempt:(List<Entry>)->Unit={},
+    private val onReread:(List<String>,Boolean)->Unit={_,_->}) {
     fun reapply(packages:Set<String>,canStart:()->Boolean,onUnhidden:(String)->Unit,onResult:(BatchResult)->Unit)=synchronized(SafetyEngine.writeLock) {
         val firmware=port.compatibleFirmware()
         for(unit in WatchPolicy.units(journal.entries(),packages)) {
@@ -12,14 +13,26 @@ class WatchEngine(private val port:TargetPort,private val journal:Journal,privat
             val names=unit.map{it.identity.packageName}
             val latest=WatchPolicy.units(journal.entries(),names.toSet()).firstOrNull{it.map{e->e.identity.packageName}==names}?:continue
             try {
-                val fresh=latest.map{port.read(it.identity.packageName)}
                 val currentBoot=boot()
-                val snapshots=fresh.associateBy{it.identity.packageName}
-                val reconciled=latest.map{e->Reconcile.read(e,snapshots[e.identity.packageName],firmware.key,currentBoot,snapshots){port.read(e.identity.packageName)}}
+                // A write left unconfirmed before a restart (e.g. power lost mid-write) stays for the user, unread (Codex, R-1).
+                if(latest.any{WatchPolicy.interrupted(it)&&it.bootSession!=currentBoot}){onSkip(names,"interruptedBeforeRestart");continue}
+                var fresh=latest.map{port.read(it.identity.packageName)}
+                fun settle(read:List<Snapshot>)=read.associateBy{it.identity.packageName}.let{s->latest.map{e->Reconcile.read(e,s[e.identity.packageName],firmware.key,currentBoot,s){port.read(e.identity.packageName)}}}
+                var reconciled=settle(fresh)
+                // A read can land while Android rewrites an app's permission flags (they are read one call at a time), and
+                // "권한 상태 확인 필요" takes the app out of the watch until bluedotOFF is opened (Toss, Fold7 2026-11-09,
+                // inferred). Only a second read that still differs is saved; one that matches goes on as usual.
+                if(reconciled.any{it.state==TargetState.UNSUPPORTED_STATE}){
+                    wait(REREAD_MS)
+                    fresh=latest.map{port.read(it.identity.packageName)};reconciled=settle(fresh)
+                    onReread(names,reconciled.none{it.state==TargetState.UNSUPPORTED_STATE})
+                }
                 if(reconciled!=latest){
                     val saved=if(reconciled.size==1)journal.commit(reconciled.single()) else journal.commitGroup(reconciled)
                     if(!saved)throw JournalPersistenceException()
                 }
+                // Settled above without a write. One that bluedotOFF had hidden before is now marked for the usual retry.
+                if(latest.any(WatchPolicy::interrupted)){onSkip(names,INTERRUPTED);continue}
                 val skip=WatchPolicy.skipReason(latest,fresh,firmware,currentBoot)
                 if(skip!=null){onSkip(names,skip);continue}
                 if(!canStart())continue
@@ -31,9 +44,11 @@ class WatchEngine(private val port:TargetPort,private val journal:Journal,privat
             }catch(e:Exception){names.forEach{onResult(BatchResult(it,error=e.message?:"WATCH_FAILED"))};break}
         }
     }
+    companion object{const val REREAD_MS=1_500L;const val RETRIES=5;const val INTERRUPTED="interruptedSettled"}
     /** Right after an app update Android can reset the flag again while the write is being verified (Toss on the Fold7,
      *  2026-10-18: two re-hides, the third rolled back and stayed locked). If every app is then exactly as it was before
-     *  the write, nothing else changed: wait, re-check with the watch rules and try again, at most 3 more times.
+     *  the write, nothing else changed: wait, re-check with the watch rules and try again, at most [RETRIES] more times
+     *  (3 until 1.3.2; Toss reached the third one within two days, Fold7 2026-11-11).
      *  Only when the write itself went through and a later check failed (a setter error is not retried). Groups alike. */
     private fun hide(names:List<String>,before:List<Snapshot>,records:List<Entry>,firmware:Firmware,canStart:()->Boolean):List<Entry> {
         var checked=false
@@ -43,7 +58,7 @@ class WatchEngine(private val port:TargetPort,private val journal:Journal,privat
         // The apps' location use may tick between reads; everything else must match the pre-write read.
         fun unchanged(current:List<Snapshot>)=current.zip(before).all{(s,b)->s.copy(lastLocationAccess=b.lastLocationAccess)==b}
         var results=run()
-        repeat(3){
+        repeat(RETRIES){
             if(!checked||results.any{it.state!=TargetState.FAILED_SAFE}||!unchanged(names.map(port::read)))return results
             wait(5_000)
             val again=names.map(port::read)

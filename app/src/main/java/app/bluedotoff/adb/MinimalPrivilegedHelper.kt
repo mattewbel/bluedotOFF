@@ -72,7 +72,7 @@ object MinimalPrivilegedHelper {
         val first=parcelRead("permissionmgr","getPermissionFlags",{it.writeString("app.bluedotoff");it.writeString("android.permission.ACCESS_FINE_LOCATION");it.writeString("default:0");it.writeInt(0)},{it.readInt()})
         check(first>=0&&first==parcelRead("permissionmgr","getPermissionFlags",{it.writeString("app.bluedotoff");it.writeString("android.permission.ACCESS_FINE_LOCATION");it.writeString("default:0");it.writeInt(0)},{it.readInt()})){"Helper getter validation failed"}
         val country=Class.forName("com.samsung.android.feature.SemCscFeature").let{c->c.getMethod("getString",String::class.java,String::class.java).invoke(c.getMethod("getInstance").invoke(null),"CountryISO","") as String}
-        // US CSC adds another SystemUI location path, so the app warns instead of blocking (country is returned below).
+        // US CSC has one more SystemUI location path; users report the hide working there, so it is not blocked (the Home notice went in 1.3.2, owner 2026-11-11).
         check(country.matches(Regex("[A-Z]{2}"))){"Helper CSC policy unsupported"}
         val indicator=sortedMapOf<String,String>()
         asset("reference-indicator.tsv").lineSequence().forEach{l->val p=l.removePrefix("\uFEFF").split('\t');if(p.size==3&&p[0]=="M")indicator[p[1]]=p[2]}

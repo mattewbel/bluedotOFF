@@ -17,6 +17,7 @@ class LifecycleReceiver : BroadcastReceiver() {
     companion object { private val executor = Executors.newSingleThreadExecutor() }
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action
+        TestLog.write("lifecycle $action ${intent.data?.schemeSpecificPart}")
         if(action==ReapplyNotification.DISMISSED){runCatching{ReapplyNotification.dismiss(context,intent.getStringArrayExtra("issues").orEmpty().toSet())};return}
         if (action !in listOf(Intent.ACTION_BOOT_COMPLETED,Intent.ACTION_MY_PACKAGE_REPLACED, Intent.ACTION_PACKAGE_REPLACED, Intent.ACTION_PACKAGE_REMOVED,Intent.ACTION_PACKAGE_FULLY_REMOVED)) return
         if (action == Intent.ACTION_PACKAGE_REMOVED && intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) return
@@ -108,6 +109,7 @@ object ReapplyNotification {
     /** [checkInApp]: some apps still need attention after processing, interruption or a partial success. */
     @Synchronized fun show(context: Context, target: Entry?, checkInApp: Boolean = false) {
         val entries=remaining(context)
+        TestLog.write("notice checkInApp=$checkInApp target=${target?.identity?.packageName} "+entries.joinToString(" | "){"${it.identity.packageName} state=${it.state} retry=${it.retryHide} settled=${it.settlingVerified} error=${it.error}"})
         val issues=episodes(context,entries)?:return
         val manager = context.getSystemService(NotificationManager::class.java)
         // Only our reapply channel is consolidated; pairing and stopped-watch notices are independent.

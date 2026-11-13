@@ -6,8 +6,10 @@ const val SENSITIVITY_BIT = 0x100
 // Stored by name in journals: append only. PENDING_SHOW is an unfinished "표시 켜기" (value before OFF, target ON).
 enum class TargetState { NOT_APPLIED, PENDING_HIDE, PENDING_RESTORE, APPLIED, NEEDS_REAPPLY_BOOT, NEEDS_REAPPLY_UPDATE, NEEDS_RECHECK_FIRMWARE, UNSUPPORTED_STATE, MISSING_TARGET, SHARED_UID_BLOCKED, SHIZUKU_REQUIRED, FAILED_SAFE, FAILED_ROLLBACK, INACTIVE_INSTALL, SHARED_UID_CHANGED, NEEDS_REVIEW, NEEDS_REAPPLY_POLICY, PENDING_SHOW }
 enum class Compatibility { SUPPORTED_VERIFIED, UNVERIFIED, UNSUPPORTED, NEEDS_RECHECK }
+// signers: the signing key history (one entry without key rotation). Android updates an app in place only with a key
+// whose history holds the recorded one, so a rotated key is the same install (Google Play services, 2026-11-12).
 data class Identity(val packageName: String, val userId: Int, val uid: Int, val signers: List<String>, val firstInstallTime: Long, val versionCode: Long, val lastUpdateTime: Long) {
-    fun sameInstall(other: Identity) = packageName == other.packageName && userId == other.userId && uid == other.uid && signers == other.signers && firstInstallTime == other.firstInstallTime
+    fun sameInstall(other: Identity) = packageName == other.packageName && userId == other.userId && uid == other.uid && signers.isNotEmpty() && other.signers.containsAll(signers) && firstInstallTime == other.firstInstallTime
 }
 data class Snapshot(val identity: Identity, val label: String, val peers: List<String>, val fineDeclared: Boolean, val fineGranted: Boolean, val coarseGranted: Boolean, val backgroundGranted: Boolean, val fineFlags: Int, val coarseFlags: Int, val backgroundFlags: Int, val fineMode: Int, val coarseMode: Int, val systemCritical: Boolean, val lastLocationAccess: Long? = null, val sharedUserId:String?=null, val persistent:Boolean=false, val criticalPackage:Boolean=false, val peersAuthoritative:Boolean=true, val singletonVerified:Boolean=false, val coarseDeclared:Boolean=true, val applicationScope:ApplicationScope=ApplicationScope.GROUPS) {
     val bit get() = fineFlags and SENSITIVITY_BIT

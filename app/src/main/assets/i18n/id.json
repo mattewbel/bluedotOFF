@@ -604,8 +604,6 @@
   "위치 사용 기록을 읽지 못했어요.": "Format riwayat lokasi tidak dapat dibaca.",
   "쓰기 직전 UID 소유 또는 앱 상태가 변경되어 중지했습니다.": "Aplikasi berubah tepat sebelum diterapkan. Dihentikan dengan aman.",
   "이 앱의 UID 공유 상태가 변경되어 자동 변경을 중지했습니다.": "Aplikasi yang dikelompokkan dengan aplikasi ini berubah. Perubahan lebih lanjut dihentikan.",
-  "미국 판매 모델 안내": "Pemberitahuan model AS",
-  "미국 판매 모델은 위치 표시를 띄우는 방식이 하나 더 있어서, 적용해도 파란 위치 표시가 사라지지 않을 수 있어요. 위치 권한과 사용 기록은 그대로이고, 언제든 원래 상태로 복원할 수 있어요.": "Model AS memiliki cara tambahan untuk menampilkan indikator lokasi, sehingga titik biru mungkin tidak hilang meski sudah diterapkan. Izin lokasi dan riwayat tetap tidak berubah, dan Anda dapat memulihkan status asli kapan saja.",
   "앱 목록 응답 오류": "Kesalahan respons daftar aplikasi",
   "앱 정보 변경": "Informasi aplikasi berubah",
   "앱 정보 없음": "Informasi aplikasi tidak tersedia",

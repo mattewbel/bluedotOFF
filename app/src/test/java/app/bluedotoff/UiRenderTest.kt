@@ -600,16 +600,6 @@ class UiRenderTest {
     // 1.1.5: Android's largest font scale (2.0) on a narrow screen, Korean and English.
     @Test @Config(qualifiers="ko-rKR-w360dp-h780dp-xxhdpi",fontScale=2.0f) fun koreanLargestTextNarrowScreens()=longLanguageScreens("ko-x2")
     @Test @Config(qualifiers="en-rUS-w360dp-h780dp-night-xxhdpi",fontScale=2.0f) fun englishLargestTextNarrowScreens()=longLanguageScreens("en-x2")
-    /** The US-model notice can be confirmed once; the callback stores that and the notice is gone. */
-    @Test fun usNoticeCanBeConfirmed(){
-        var dismissed=false
-        val current=androidx.compose.runtime.mutableStateOf(model(applied=true).copy(usModel=true,connected=true))
-        controller.get().setContent{BlueDotApp(current.value,{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},dismissUsNotice={dismissed=true;current.value=current.value.copy(usModel=false)})}
-        compose.onNodeWithText("미국 판매 모델 안내").assertExists()
-        compose.onNodeWithText("확인했어요").performClick()
-        compose.waitForIdle()
-        assertTrue(dismissed);compose.onNodeWithText("미국 판매 모델 안내").assertDoesNotExist()
-    }
     /** A broken restore journal is not shown as a connection problem, and the user is told not to clear data. */
     @Test fun journalProblemIsShownSeparatelyFromConnection(){
         render("91-home-journal-problem",model(applied=true).copy(journalProblem=true,connected=true))
@@ -955,12 +945,9 @@ class UiRenderTest {
     @Test fun groupConsentListsEveryMemberBeforeSelection(){var accepted=false;val m=model(page=Page.PICK).copy(sharedOffer=SharedOffer(sharedMembers()));controller.get().setContent{BlueDotApp(m,{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},sharedAccept={accepted=true})};compose.onNodeWithText("demo.phone").assertExists();compose.onNodeWithText("demo.provider").assertExists();org.junit.Assert.assertFalse(accepted);compose.onNodeWithText("묶음 전체 선택").performClick();org.junit.Assert.assertTrue(accepted)}
     @Test fun failedGroupValidationHasNoSelectionAction(){render("80-shared-blocked",model().copy(sharedOffer=SharedOffer(sharedMembers(),error="공유 앱 묶음을 확인해야 해요.")));compose.onNodeWithText("묶음 전체 선택").assertDoesNotExist();compose.onNodeWithText("demo.provider").assertExists()}
     @Test @Config(qualifiers="en-rUS-w412dp-h915dp-xxhdpi") fun sharedEnglishExplainsWholeGroup(){render("80-shared-en",model().copy(sharedOffer=SharedOffer(sharedMembers())));compose.onNodeWithText("Select the whole group").assertExists();compose.onNodeWithText("Apps sharing a location setting").assertExists()}
-    @Test fun usModelShowsWarningOnlyWhenFlagged(){render("84-home-us-model",model(applied=true).copy(usModel=true));compose.onNodeWithText("미국 판매 모델 안내").assertExists()}
     @Test fun unverifiedFirmwareShowsTheUpdateNoticeOnlyWhenFlagged(){render("85-home-firmware-notice",model(applied=true).copy(firmwareNotice=true));compose.onNodeWithText("확인되지 않은 시스템 안내").assertExists()}
     @Test fun verifiedFirmwareHasNoUpdateNotice(){render("85-home-firmware-default",model(applied=true));compose.onNodeWithText("확인되지 않은 시스템 안내").assertDoesNotExist()}
     @Test @Config(qualifiers="en-rUS-w412dp-h915dp-xxhdpi") fun firmwareNoticeIsEnglishOutsideKorean(){render("85-home-firmware-notice-en",model(applied=true).copy(firmwareNotice=true));compose.onNodeWithText("Unverified system notice").assertExists()}
-    @Test fun nonUsModelHasNoRegionWarning(){render("84-home-default",model(applied=true));compose.onNodeWithText("미국 판매 모델 안내").assertDoesNotExist()}
-    @Test @Config(qualifiers="en-rUS-w412dp-h915dp-xxhdpi") fun usModelWarningIsEnglishOutsideKorean(){render("84-home-us-model-en",model(applied=true).copy(usModel=true));compose.onNodeWithText("US model notice").assertExists()}
     @Test fun welcomeWarnsSomeAppsMayLoseHiding(){render("01-welcome-notice",model(gate=Gate.WELCOME));compose.onNodeWithText("미리 알아두세요").assertExists();compose.onNodeWithText("위치 권한을 ‘정확한 위치’로 허용한 앱만 숨길 수 있어요.").assertExists();compose.onNodeWithText("풀린 앱은 bluedotOFF를 열 때 다시 숨겨요. USB 디버깅을 켜 두면 앱을 열지 않아도 감지하는 대로 다시 숨겨요.").assertExists()}
     @Test @Config(qualifiers="en-rUS-w412dp-h915dp-xxhdpi") fun welcomeNoticeIsEnglishOutsideKorean(){render("01-welcome-notice-en",model(gate=Gate.WELCOME));compose.onNodeWithText("Good to know").assertExists()}
     @Test fun homeHasNoWelcomeNotice(){render("01-home-no-notice",model(applied=true));compose.onNodeWithText("미리 알아두세요").assertDoesNotExist()}

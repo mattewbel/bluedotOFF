@@ -2,11 +2,11 @@
 
 **English** | [한국어](README.ko.md)
 
-**[⬇ Download the latest APK](https://github.com/mattewbel/bluedotOFF/releases/latest)** — get `bluedotOFF-1.3.1-release.apk` under Assets.
+**[⬇ Download the latest APK](https://github.com/mattewbel/bluedotOFF/releases/latest)** — get `bluedotOFF-1.3.2-release.apk` under Assets.
 
 > 🔒 **Open source · No ads, analytics or tracking · No root**  
 > The wireless debugging connection stays inside the phone (127.0.0.1). Location permissions are untouched; only one indicator flag (`0x100`) changes.  
-> To confirm a download is the official file, see `bluedotOFF-1.3.1-checksums.txt` on the release. Signing certificate SHA-256: `61:9F:E1:EC:BD:F5:9D:5D:0B:83:8D:DC:64:20:E5:8B:E9:0F:82:8B:E1:1C:B6:1F:E6:C8:E6:AA:4C:EA:AD:62`
+> To confirm a download is the official file, see `bluedotOFF-1.3.2-checksums.txt` on the release. Signing certificate SHA-256: `61:9F:E1:EC:BD:F5:9D:5D:0B:83:8D:DC:64:20:E5:8B:E9:0F:82:8B:E1:1C:B6:1F:E6:C8:E6:AA:4C:EA:AD:62`
 
 An app for Samsung One UI 9 (Android 17) phones that **hides the blue location indicator (Blue Dot) only for the apps you choose**.
 Location permissions and location history stay as they are. bluedotOFF changes a single setting that controls the status bar indicator, and it records the previous state so you can undo it in the app.
@@ -47,14 +47,12 @@ bluedotOFF has one goal:
 
 ## Limitations
 
-- **For some apps, the blue dot comes back quickly.** When an app changes its own components, is updated, or the phone restarts, Android resets the indicator setting to its default. Some banking apps, for example, lose it within minutes. With automatic wireless debugging management, such apps are hidden again automatically when you open bluedotOFF (Settings → **Re-apply automatically when opened**, on by default). While [background watch](#background-watch) is running, they are hidden again as soon as the change is detected, without opening the app; after a phone restart, with automatic management and **Re-apply automatically when opened** on, the watch starts again and re-hides them once Wi-Fi connects (otherwise open the app once). With it off, nothing changes while the app is not open.
-- **Only apps allowed “Precise” location can be hidden.** Apps allowed only approximate location are not listed (or, in All apps mode, are shown for reference only). To hide one, change its location permission to “Precise”.
-- **Only a few devices have been tested.** The developer verified the Galaxy Z Fold7; users reported it working on the Galaxy Z Fold8, a US Galaxy S25 and a Japanese Galaxy S25 Ultra ([Tested devices](#tested-devices)). Other One UI 9 Galaxy models, and phones after a system update, also run as long as the parts of Android the app uses keep the same form. The app then shows an **Unverified system notice**, because it cannot confirm that the blue dot disappears there. If those parts changed (for example after a major Android update), the app stops without changing anything.
-- **Some banking and payment apps refuse to run while Developer options are on.** This is common in Korea. bluedotOFF needs Developer options, so you may have to turn them off briefly to use such an app, then turn them back on before opening bluedotOFF. Background watch also needs USB debugging on, so such apps may refuse more often. If you turned USB debugging or Developer options off, turn Developer options and USB debugging back on and open bluedotOFF on Wi-Fi to start the watch again (no new pairing code needed), or run the [PC command](#no-wi-fi-start-from-a-pc) again.
-- **US models** have an extra location indicator path, so the dot may not be hidden. A user reported it working on a US Galaxy S25.
-- **It does not work while Auto Blocker is on.** Auto Blocker blocks wireless debugging. Turn it off in Settings → Security and privacy → Auto Blocker when you use the app. New Galaxy phones have it on by default, and with “Turn on automatically” it turns back on after 30 minutes. With automatic management, the app notices the block and tells you how to turn it off. It also turns USB debugging off, which stops background watch.
-- **Developer options and Wireless debugging are required** (without Wi-Fi: USB debugging and a PC, see [Start from a PC](#no-wi-fi-start-from-a-pc)). With automatic management, Wireless debugging stays on while you use the app (Android may show a "Wireless debugging connected" notification once when it opens) and turns off shortly after you leave.
-- **Restore everything before uninstalling.** Tap Settings → **Restore before uninstalling**. If you just uninstall, the hidden apps may stay hidden. After reinstalling, you can unhide them in Settings → **Apps left hidden (after reinstalling only)**. However, shared app groups and some internal system apps cannot be unhidden there after their records are lost.
+- **Only apps allowed “Precise” location can be hidden.** Apps allowed only approximate location cannot.
+- **Hiding can come undone.** Android turns the indicator back on when an app is updated or changes its own components, or when the phone restarts. Some apps lose it within minutes. bluedotOFF hides them again when you open it, and with [background watch](#background-watch) on, without opening it.
+- **Developer options are required.** The app uses Wireless debugging (Wi-Fi); without Wi-Fi you can [start from a PC](#no-wi-fi-start-from-a-pc). Some banking and payment apps, common in Korea, refuse to run while Developer options or USB debugging are on, so you may have to turn them off briefly for such an app.
+- **It cannot connect while Auto Blocker is on.** Turn it off in Settings → Security and privacy. New Galaxy phones have it on by default.
+- **For Galaxy phones on One UI 9.** The developer verified the Galaxy Z Fold7; other models are confirmed by user reports ([Tested devices](#tested-devices)). US models have been reported working too. On an unconfirmed model or after a system update the app shows a notice, and if the parts of Android it uses have changed, it stops without changing anything.
+- **Restore everything before uninstalling.** Tap Settings → **Restore before uninstalling** first. If you just uninstall, the hidden apps may stay hidden.
 
 
 ## Tested devices
@@ -63,8 +61,10 @@ bluedotOFF has one goal:
 |---|---|---|---|---|---|---|---|
 | Galaxy Z Fold7 | SM-F966N | 9 | Korea | ✅ Developer | ✅ Developer | ✅ Developer | ✅ Developer (daily use) |
 | Galaxy Z Fold8 | SM-F971N | 9.0 | Korea (KOO) | ✅ User report | ✅ User report (KakaoMap, Naver Map) | ✅ User report | Not reported |
+| Galaxy S24+ | SM-S926B | 9.0 | Europe (Germany) | ✅ User diagnostics | Not reported | Not reported | ✅ User diagnostics |
 | Galaxy S25 | Not reported | Not reported | US | ✅ User report | ✅ User report | Not reported | Not reported |
 | Galaxy S25 Ultra | SM-S938Z | 9.0 | Japan | ✅ User report | ✅ User report | Not reported | Not reported |
+| Galaxy S25 Ultra | SM-S938B | 9.0 | Europe (Netherlands) | ✅ User diagnostics | Not reported | Not reported | ✅ User diagnostics |
 | Galaxy S26 | SC-51G | 9.0 | Japan | ✅ [User report](https://github.com/mattewbel/bluedotOFF/issues/2) | ✅ User report | Not reported | ✅ User report |
 | Galaxy Z Flip6 | Not reported | Not reported | Europe (reporter's location) | ✅ [User report](https://github.com/mattewbel/bluedotOFF/issues/3) | ✅ User report | Not reported | Not reported |
 
@@ -74,7 +74,7 @@ If you tried another model, please share the result in [Issues](../../issues) us
 
 ## Install
 
-Download the latest APK (`bluedotOFF-1.3.1-release.apk`) from [Releases](../../releases) and install it. You may need to allow "Install unknown apps" the first time.
+Download the latest APK (`bluedotOFF-1.3.2-release.apk`) from [Releases](../../releases) and install it. You may need to allow "Install unknown apps" the first time.
 
 To get new versions without checking GitHub yourself, add `https://github.com/mattewbel/bluedotOFF` to [Obtainium](https://github.com/ImranR98/Obtainium), an open-source app that installs updates from GitHub releases. It installs the same signed APK, and Android refuses an update signed by anyone else.
 
@@ -83,8 +83,7 @@ To get new versions without checking GitHub yourself, add `https://github.com/ma
 - A phone with Samsung One UI 9 or later and Android 17 or later
 - Wi-Fi connection (needed for Wireless debugging; no data is sent over the internet. With background watch it is needed only to start the watch.) No Wi-Fi at all? [Start from a PC](#no-wi-fi-start-from-a-pc) instead. The optional [update check](#update-check) is the only internet use.
 - Apps to hide must have location allowed as “Precise”.
-- US models (CSC country code US) can use the app, but Home shows a notice (tap **Got it** to hide it for good). US models have one more way of showing the location indicator, so the blue dot may remain even after applying.
-- On first connection, the app checks the parts of Android it uses. Verified on the Galaxy Z Fold7; users reported it working on the Galaxy Z Fold8, a US Galaxy S25 and a Japanese Galaxy S25 Ultra. Other One UI 9 models run with an **Unverified system notice** as long as those parts keep the same form; if they changed, the app stops without changing anything.
+- On first connection, the app checks the parts of Android it uses. Confirmed models are listed in [Tested devices](#tested-devices). Other One UI 9 models run with an **Unverified system notice** as long as those parts keep the same form; if they changed, the app stops without changing anything.
 
 ## First-time setup
 
@@ -201,7 +200,7 @@ Translations other than English and Korean are new — if a sentence reads wrong
 
 ## Questions and bug reports
 
-Please open an issue in this repository's [Issues](../../issues). If the app stopped making changes (for example **Restore needs review**), do not clear app data; ask in Issues instead. Do not post personal information (phone numbers, accounts, location history screens, etc.). Tapping Settings → About & support → **Copy and send diagnostic info** opens your mail app; sending it or pasting it into an issue helps a lot. It contains the device, Android and app versions, the compatibility check result, the automatic management and scope settings and the number of registered and applied apps, not the names of your apps or your location history.
+Please open an issue in this repository's [Issues](../../issues). If the app stopped making changes (for example **Restore needs review**), do not clear app data; ask in Issues instead. Do not post personal information (phone numbers, accounts, location history screens, etc.). Tapping Settings → About & support → **Copy and send diagnostic info** opens your mail app; sending it or pasting it into an issue helps a lot. It contains the device, Android and app versions, the compatibility check result, the automatic management and scope settings and the number of registered and applied apps and, for apps that need checking, their state and reason, not the names of your apps or your location history.
 
 ## Privacy and security
 

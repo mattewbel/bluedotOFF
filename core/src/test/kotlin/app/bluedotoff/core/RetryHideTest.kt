@@ -39,6 +39,9 @@ class RetryHideTest {
         val retry=WatchRetry(Tries());val at=failed.copy(lastVerifiedTime=1_000_000)
         assertEquals(600_000L,retry.wait(at,1_000_000))
         assertFalse(retry.allowed(at,1_030_001));assertTrue(retry.allowed(at,1_600_000))
+        // A hide the watch just settled after an interruption skips the wait, not the daily limit.
+        assertTrue(retry.allowed(at,1_030_001,noGap=true))
+        assertFalse(WatchRetry(object:WatchRetry.Store{override fun load(pkg:String)=listOf(1L,2L,3L);override fun save(pkg:String,times:List<Long>){}}).allowed(at,1_030_001,noGap=true))
     }
     @Test fun dailyRetryBudgetMustSurviveClientProcessRecreation(){
         val tries=Tries();val retry=WatchRetry(tries);val e=failed.copy(lastVerifiedTime=0)

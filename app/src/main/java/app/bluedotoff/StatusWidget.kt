@@ -45,7 +45,7 @@ object StatusWidget {
     /** Everything the widget prints: stored state plus whether this process holds the watch (no device read).
      *  [wireless]: no watch, but ↻ can check through wireless debugging ([WidgetCheckService]); [notice]: its last check
      *  could not confirm the connection closed, so the person turns wireless debugging off (shown only while it is on). */
-    data class State(val watching:Boolean,val checkedAt:Long,val applied:Int,val reapply:Int,val check:Int,val refreshing:Boolean=false,val wireless:Boolean=false,val notice:String="")
+    data class State(val watching:Boolean,val checkedAt:Long,val applied:Int,val reapply:Int,val check:Int,val refreshing:Boolean=false,val wireless:Boolean=false,val notice:String="",val unconfirmed:Boolean=false)
 
     private val worker=Executors.newSingleThreadExecutor()
     @Volatile private var refreshing=false
@@ -91,7 +91,7 @@ object StatusWidget {
     fun state(c:Context,watching:Boolean=WatchClient.available(c)):State{
         val model=UiModel(entries=JournalStore(c).entries())
         val checkedAt=maxOf(c.getSharedPreferences("ui-state",0).getLong("lastCheckedAt",0L),prefs(c).getLong("checkedAt",0L),prefs(c).getLong("watchAt",0L))
-        return State(watching,checkedAt,model.lastVerifiedAppliedCount,model.reapplyCount,model.otherCheckCount,refreshing,!watching&&WidgetCheckService.eligible(c),notice(c))
+        return State(watching,checkedAt,model.lastVerifiedAppliedCount,model.reapplyCount,model.otherCheckCount,refreshing,!watching&&WidgetCheckService.eligible(c),notice(c),!watching&&BackgroundWatch.enabled(c)&&WatchNotification.awaitingContact(c,WatchClient.usbEnabled(c)))
     }
     /** Wireless debugging seen off settles the cleanup notice for good: turning it on later must not bring it back. */
     private fun notice(c:Context):String{
@@ -126,6 +126,7 @@ object StatusWidget {
         v.setTextViewText(R.id.widget_title,t(when{
             // A cleanup left to do comes first when the second line (the full notice) is not shown or not the live one.
             cleanup&&(!two||!live)->"무선 디버깅 끄기"
+            !s.watching&&s.unconfirmed->"확인 필요"
             !live->"감시 꺼짐"
             s.reapply>0->"다시 적용할 앱 ${s.reapply}개"
             s.check>0->"직접 확인할 앱 ${s.check}개"

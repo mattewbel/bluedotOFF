@@ -247,11 +247,7 @@ class MainActivity : ComponentActivity() {
     private fun markLocalEvents(): List<Entry> {
         val boot = BootSession.current(this)
         check(store.transform { e ->
-            LocalEntryEvents.read(e,Build.FINGERPRINT,boot) { try {
-                val info = packageManager.getPackageInfo(e.identity.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
-                val signers = BinderBackend.signers(info)
-                Identity(e.identity.packageName,e.identity.userId,info.applicationInfo!!.uid,signers.orEmpty(),info.firstInstallTime,info.longVersionCode,info.lastUpdateTime)
-            } catch (_: PackageManager.NameNotFoundException) { null } }
+            LocalEntryEvents.read(e,Build.FINGERPRINT,boot) { LocalEntryEvents.installedIdentity(packageManager,e) }
         }) { "복원 기록을 저장하지 못해서 바꾸지 않았어요." }
         val current=store.entries()
         return current
@@ -523,11 +519,11 @@ class MainActivity : ComponentActivity() {
             "Android: ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})","Build: ${Build.DISPLAY}","One UI: ${stored("deviceOneUi").let{v->v.toIntOrNull()?.takeIf{it>=10000}?.let{"${it/10000}.${it/100%100} ($v)"}?:v}}","Country: ${stored("deviceCountry")}",
             "Compatibility check: ${when{model.gate==Gate.UNSUPPORTED->"not supported (stopped safely)";LocalAdbSession.compatibilityConfirmed->"passed";else->"not checked yet (connect once and copy again)"}}",
             "Automatic management: ${if(model.autoManagement)"on" else "off"}",
-            "Start: ${if(PcStart.chosen(this))"PC" else "Wi-Fi"} (wireless pairing ${if(getSharedPreferences("local-adb",0).getString("pairedGuid",null)!=null)"yes" else "no"}), background watch ${if(model.backgroundWatch)(if(model.watchRunning)"running" else "stopped") else "off"}","App scope: ${model.applicationScope.name}",
-            "Registered apps: ${model.visibleEntries.count{it.enabled}} (applied ${model.lastVerifiedAppliedCount}, reapply needed ${model.reapplyCount})")+
+            "Start: ${if(PcStart.chosen(this))"PC" else "Wi-Fi"} (wireless pairing ${if(getSharedPreferences("local-adb",0).getString("pairedGuid",null)!=null)"yes" else "no"}), background watch ${if(model.backgroundWatch){if(model.watchRunning)"running" else if(WatchNotification.awaitingContact(this,model.usbDebugging))"connection unconfirmed" else "stopped"} else "off"}","App scope: ${model.applicationScope.name}",
+            "Registered apps: ${model.visibleEntries.count{it.enabled}} (applied ${model.lastVerifiedAppliedCount}, reapply needed ${model.reapplyCount})",
+            WatchDiagnostics.report(this))+
             // Apps that need the person: state and reason only, never their names (README privacy promise).
-            model.checkEntries.distinctBy{e->e.groupIdentities.map{it.packageName}.ifEmpty{listOf(e.identity.packageName)}}.map{e->
-                "Needs check: ${if(e.groupIdentities.isEmpty())"single app" else "group of ${e.groupIdentities.size}"}, ${e.state}${if(e.restoreRequested)", restore requested" else ""}${e.error.takeIf{it.isNotBlank()}?.let{", ${UiText.english(this,it)}"}?:""}"}
+            restoreDiagnosticLines(model) { UiText.diagnosticReason(this, it) }
             ).joinToString("\n")
         (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("bluedotOFF diagnostics",text))
         // Opens the user's mail app with the text filled in; nothing is sent until the user taps send there.
@@ -564,6 +560,7 @@ class MainActivity : ComponentActivity() {
         val groupMap=groups.flatMap{g->g.map{it to g}}.toMap()
         val app=applicationContext
         val reapplying=if(hide&&!show)model.entries.filter{it.enabled}.map{it.identity.packageName}.toSet() else emptySet()
+        val expectedInstalls=if(auto) model.entries.filter{it.enabled&&it.identity.userId==0}.associate{it.identity.packageName to it.identity} else emptyMap()
         val total=if(targets.isEmpty())requested.size else targets.size
         val started=BatchRuntime.start(total,hide,show,auto,beforeUninstall) { report ->
             if(!hide&&!show){
@@ -580,7 +577,7 @@ class MainActivity : ComponentActivity() {
                 // left and says not to uninstall yet (full review 2026-11-07). Not connected: nothing changes, press again.
                 if(unavailable.isNotEmpty())return@start BatchOutcome(false,emptyList(),journal.entries(),emptyList(),error=unavailable,beforeUninstall=beforeUninstall&&packages.isEmpty())
             }
-            BatchPipeline.run(app,targets,groupMap,hide,show,auto,beforeUninstall,reapplying,ReapplySource.APP_OPEN,{ForegroundState.canStartTargets},background=false,report=report)
+            BatchPipeline.run(app,targets,groupMap,hide,show,auto,beforeUninstall,reapplying,ReapplySource.APP_OPEN,{ForegroundState.canStartTargets},background=false,report=report,expectedInstalls=expectedInstalls)
         }
         if(started)skipNotice=if(needsCheck>0)"확인이 필요한 ${needsCheck}개 앱은 건너뛰었어요. 홈 목록에서 상태를 확인해주세요." else ""
         if(started)model=model.copy(busy=true,operationHide=hide,operationShow=show,autoReapplying=auto,progress=BatchProgress(0,total),completion=null,restoreSkipped=needsCheck,loadingApps=false,notice="",wirelessWarning="",batchResults=emptyList())

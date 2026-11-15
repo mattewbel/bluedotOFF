@@ -2,11 +2,11 @@
 
 **English** | [한국어](README.ko.md)
 
-**[⬇ Download the latest APK](https://github.com/mattewbel/bluedotOFF/releases/latest)** — get `bluedotOFF-1.3.2-release.apk` under Assets.
+**[⬇ Download the latest APK](https://github.com/mattewbel/bluedotOFF/releases/latest)** — under **Assets**, choose the file ending in `-release.apk`.
 
 > 🔒 **Open source · No ads, analytics or tracking · No root**  
 > The wireless debugging connection stays inside the phone (127.0.0.1). Location permissions are untouched; only one indicator flag (`0x100`) changes.  
-> To confirm a download is the official file, see `bluedotOFF-1.3.2-checksums.txt` on the release. Signing certificate SHA-256: `61:9F:E1:EC:BD:F5:9D:5D:0B:83:8D:DC:64:20:E5:8B:E9:0F:82:8B:E1:1C:B6:1F:E6:C8:E6:AA:4C:EA:AD:62`
+> To confirm a download is the official file, compare its SHA-256 with the value in the file ending in `-checksums.txt` under **Assets**. Signing certificate SHA-256: `61:9F:E1:EC:BD:F5:9D:5D:0B:83:8D:DC:64:20:E5:8B:E9:0F:82:8B:E1:1C:B6:1F:E6:C8:E6:AA:4C:EA:AD:62`
 
 An app for Samsung One UI 9 (Android 17) phones that **hides the blue location indicator (Blue Dot) only for the apps you choose**.
 Location permissions and location history stay as they are. bluedotOFF changes a single setting that controls the status bar indicator, and it records the previous state so you can undo it in the app.
@@ -74,7 +74,7 @@ If you tried another model, please share the result in [Issues](../../issues) us
 
 ## Install
 
-Download the latest APK (`bluedotOFF-1.3.2-release.apk`) from [Releases](../../releases) and install it. You may need to allow "Install unknown apps" the first time.
+Open the [latest release](https://github.com/mattewbel/bluedotOFF/releases/latest). Under **Assets**, download the file ending in `-release.apk` and open it to install. You may need to allow "Install unknown apps" the first time.
 
 To get new versions without checking GitHub yourself, add `https://github.com/mattewbel/bluedotOFF` to [Obtainium](https://github.com/ImranR98/Obtainium), an open-source app that installs updates from GitHub releases. It installs the same signed APK, and Android refuses an update signed by anyone else.
 
@@ -145,6 +145,7 @@ In Settings → **Connection** (off by default). The first time you turn it on, 
 - **Failed re-hides:** If re-hiding a single app that bluedotOFF hid before fails safely (nothing was changed), the watch tries again after 10 minutes, up to 3 times in 24 hours while the problem lasts. Shared app groups are not retried this way. Restoring that app cancels this.
 - **What it needs:** USB debugging has to stay on. The app never turns USB debugging on for you; it opens Developer options for you. If USB debugging is off when you turn the switch on, the app explains this first, and the watch turns on only once you come back with USB debugging on.
 - **Starting and restarting:** Starting the watch briefly needs Wi-Fi and wireless debugging, or a PC ([Start from a PC](#no-wi-fi-start-from-a-pc)). Restarting the phone, updating bluedotOFF or turning USB debugging off stops it. After a restart, with automatic management and **Re-apply automatically when opened** on, it starts again by itself once Wi-Fi connects and re-hides what the restart undid; otherwise a notification tells you. Turn USB debugging back on and open the app while connected to Wi-Fi to start it again (automatically with automatic management on; otherwise turn wireless debugging on yourself first). While it is stopped, Home says so, and a notification tells you when USB debugging is on again.
+- If you see **“Couldn’t check the background watch connection”**, bluedotOFF is waiting to hear from the watch. The notice clears when the watch reconnects.
 - **With automatic management:** While watching, wireless debugging stays off. The **Manage wireless debugging automatically** switch is locked and is used only to start the watch again.
 - **Which apps:** Only registered apps that are currently applied. Restored or unregistered apps, reinstalled apps and apps that need checking are left alone. Shared groups are handled only when the whole group is registered.
 - **Caution:** Some banking and payment apps may not run while USB debugging is on. Auto Blocker turns USB debugging off too, which stops the watch. Battery use may increase slightly.
@@ -200,7 +201,7 @@ Translations other than English and Korean are new — if a sentence reads wrong
 
 ## Questions and bug reports
 
-Please open an issue in this repository's [Issues](../../issues). If the app stopped making changes (for example **Restore needs review**), do not clear app data; ask in Issues instead. Do not post personal information (phone numbers, accounts, location history screens, etc.). Tapping Settings → About & support → **Copy and send diagnostic info** opens your mail app; sending it or pasting it into an issue helps a lot. It contains the device, Android and app versions, the compatibility check result, the automatic management and scope settings and the number of registered and applied apps and, for apps that need checking, their state and reason, not the names of your apps or your location history.
+Please open an issue in this repository's [Issues](../../issues). If the app stopped making changes (for example **Restore needs review**), do not clear app data; ask in Issues instead. Do not post personal information (phone numbers, accounts, location history screens, etc.). Tapping Settings → About & support → **Copy and send diagnostic info** opens your mail app; sending it or pasting it into an issue helps a lot. It contains the device, Android and app versions, the compatibility check result, the automatic management and scope settings and the number of registered and applied apps and, for apps that need checking, their state and reason, not the names of your apps or your location history. It also includes the last ten background watch connection events with their times, and separate totals for the latest background and app-open reapply work.
 
 ## Privacy and security
 

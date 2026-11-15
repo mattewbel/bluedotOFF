@@ -9,6 +9,7 @@ enum class Compatibility { SUPPORTED_VERIFIED, UNVERIFIED, UNSUPPORTED, NEEDS_RE
 // signers: the signing key history (one entry without key rotation). Android updates an app in place only with a key
 // whose history holds the recorded one, so a rotated key is the same install (Google Play services, 2026-11-12).
 data class Identity(val packageName: String, val userId: Int, val uid: Int, val signers: List<String>, val firstInstallTime: Long, val versionCode: Long, val lastUpdateTime: Long) {
+    fun sameUpdate(other: Identity) = versionCode == other.versionCode && lastUpdateTime == other.lastUpdateTime
     fun sameInstall(other: Identity) = packageName == other.packageName && userId == other.userId && uid == other.uid && signers.isNotEmpty() && other.signers.containsAll(signers) && firstInstallTime == other.firstInstallTime
 }
 data class Snapshot(val identity: Identity, val label: String, val peers: List<String>, val fineDeclared: Boolean, val fineGranted: Boolean, val coarseGranted: Boolean, val backgroundGranted: Boolean, val fineFlags: Int, val coarseFlags: Int, val backgroundFlags: Int, val fineMode: Int, val coarseMode: Int, val systemCritical: Boolean, val lastLocationAccess: Long? = null, val sharedUserId:String?=null, val persistent:Boolean=false, val criticalPackage:Boolean=false, val peersAuthoritative:Boolean=true, val singletonVerified:Boolean=false, val coarseDeclared:Boolean=true, val applicationScope:ApplicationScope=ApplicationScope.GROUPS) {
@@ -26,8 +27,28 @@ data class Entry(val identity: Identity, val label: String, val originalBit: Int
     val retryHide:Boolean=false,
     /** A restore request stops automatic hiding even if connection/preflight prevents the restore. Manual hide resets it. */
     val restoreRequested:Boolean=false,
-    val locationRetired:Boolean=false) {
+    val locationRetired:Boolean=false,
+    val holdUpdateKnown:Boolean=true) {
     init { require(originalBit == 0 || originalBit == SENSITIVITY_BIT) }
+    val manualHold get() = state == TargetState.FAILED_SAFE && !retryHide && groupIdentities.isEmpty()
+    // Keep the original owner, signing history and restore values. Only the observed update is consumed.
+    internal fun recordHoldUpdate(observed: Identity) = copy(
+        identity = identity.copy(versionCode = observed.versionCode, lastUpdateTime = observed.lastUpdateTime),
+        holdUpdateKnown = true
+    )
+    val needsReapply get() = enabled && !restoreRequested && !locationRetired &&
+        (state in listOf(TargetState.NEEDS_REAPPLY_POLICY, TargetState.NEEDS_REAPPLY_BOOT,
+            TargetState.NEEDS_REAPPLY_UPDATE, TargetState.NEEDS_RECHECK_FIRMWARE) || WatchPolicy.retrying(this))
+}
+
+/** An automatic batch may finish a registered unit, including its already-applied shared peers. */
+class AutomaticReapply(private val selected: Map<String, Identity>) {
+    fun requireRegistered(pkg: String, record: Entry?) {
+        if (record == null || selected[pkg]?.sameInstall(record.identity) != true ||
+            !record.enabled || record.restoreRequested || record.locationRetired ||
+            !(record.needsReapply || record.groupIdentities.isNotEmpty() && record.state == TargetState.APPLIED && record.settlingVerified))
+            throw SafetyException("작업을 멈춰서 이 앱은 바꾸지 않았어요.")
+    }
 }
 data class Firmware(val manufacturer: String, val sdk: Int, val oneUi: String, val fingerprint: String, val buildId: String, val model: String, val abiProfile: String) {
     val osSupported get() = FirmwareSupport.setup(manufacturer,sdk,oneUi)
@@ -51,7 +72,7 @@ internal class JournalPersistenceException : SafetyException("원래 상태 기�
 class OwnershipChangedException : SafetyException("이 앱과 묶인 앱이 바뀌어서 안전을 위해 멈췄어요.")
 
 /** All target writes use this durable preflight/settling/rollback path (user actions or explicit opt-in WatchEngine). */
-class SafetyEngine(private val port: TargetPort, private val journal: Journal, private val now: () -> Long, private val boot: () -> String, private val wait: (Long) -> Unit = { Thread.sleep(it) }, private val observe: (String, Snapshot, Boolean) -> Unit = { _, _, _ -> }) {
+class SafetyEngine(private val port: TargetPort, private val journal: Journal, private val now: () -> Long, private val boot: () -> String, private val wait: (Long) -> Unit = { Thread.sleep(it) }, private val observe: (String, Snapshot, Boolean) -> Unit = { _, _, _ -> }, private val automaticReapply: AutomaticReapply? = null) {
     companion object {
         internal val writeLock = Any()
         /** Finish any in-flight verification/rollback before recording the user's new intent. No system writes. */
@@ -84,7 +105,9 @@ class SafetyEngine(private val port: TargetPort, private val journal: Journal, p
         val before = port.read(pkg)
         observe("before", before, false)
         if (before.identity.uid in inFlightUids) throw OwnershipChangedException()
-        val old = records().lastOrNull { it.identity.packageName == pkg && it.identity.userId == 0 }?.takeUnless { !it.enabled && (it.state == TargetState.INACTIVE_INSTALL || ((hide || show) && it.state == TargetState.NOT_APPLIED)) }
+        val registered = records().lastOrNull { it.identity.packageName == pkg && it.identity.userId == 0 }
+        automaticReapply?.requireRegistered(pkg, registered)
+        val old = registered?.takeUnless { !it.enabled && (it.state == TargetState.INACTIVE_INSTALL || ((hide || show) && it.state == TargetState.NOT_APPLIED)) }
         if(old?.groupIdentities?.isNotEmpty()==true)throw SafetyException("이 앱은 묶음 앱이라 묶음 전체를 함께 바꿔야 해요.")
         if(show&&old!=null)throw SafetyException("bluedotOFF 기록이 있는 앱이에요. 숨김 풀기 대신 원래대로 복원을 써주세요.")
         if (old?.state in listOf(TargetState.FAILED_ROLLBACK,TargetState.SHARED_UID_CHANGED,TargetState.NEEDS_REVIEW)) throw SafetyException("원래 상태를 확인할 수 없어서, 안전을 위해 이 앱은 바꾸지 않았어요.")
@@ -93,11 +116,11 @@ class SafetyEngine(private val port: TargetPort, private val journal: Journal, p
             throw SafetyException("앱이 새로 설치됐어요. 앱 상세 화면에서 새로 등록해 주세요.")
         }
         if(old?.sharedUserId!=null && (before.peers!=listOf(pkg)||before.sharedUserId!=old.sharedUserId)) {
-            durable(old.copy(state=TargetState.SHARED_UID_CHANGED,error=OwnershipChangedException().message!!))
+            durable(old.copy(state=TargetState.SHARED_UID_CHANGED,retryHide=false,error=OwnershipChangedException().message!!))
             throw OwnershipChangedException()
         }
         if (old?.state in listOf(TargetState.PENDING_HIDE,TargetState.PENDING_RESTORE,TargetState.PENDING_SHOW) && (old!!.invariantDigest.isBlank() || old.invariantDigest != before.invariantDigest())) {
-            durable(old.copy(state=TargetState.FAILED_ROLLBACK,error="작업이 중간에 끊긴 뒤 상태를 확인하지 못해서, 안전을 위해 이 앱은 더 바꾸지 않아요."))
+            durable(old.copy(state=TargetState.FAILED_ROLLBACK,retryHide=false,error="작업이 중간에 끊긴 뒤 상태를 확인하지 못해서, 안전을 위해 이 앱은 더 바꾸지 않아요."))
             throw SafetyException("끊긴 작업이 있어서 먼저 이 앱의 상태를 확인해야 해요.")
         }
         // A record from older firmware is re-applied like after a restart (1.2.0, R-2): this session's helper has checked
@@ -110,16 +133,20 @@ class SafetyEngine(private val port: TargetPort, private val journal: Journal, p
         if (show && before.bit != 0) throw SafetyException("이미 위치 표시가 켜져 있어요. 변경하지 않았어요.")
         val original = old?.originalBit ?: before.bit
         val wanted = if (hide) 0 else if (show) SENSITIVITY_BIT else original
-        val pending = Entry(before.identity, before.label, original, true, if (hide) TargetState.PENDING_HIDE else if (show) TargetState.PENDING_SHOW else TargetState.PENDING_RESTORE, now(), firmware.key, boot(), old?.changedByUs ?: false, error = "", invariantDigest=before.invariantDigest(),sharedUserId=before.sharedUserId,restoreRequested=!hide&&!show)
-        durable(pending) // Mandatory before the first possible system mutation.
         val retry = hide && !show && old != null && old.enabled && (old.changedByUs || old.retryHide)
+        val pending = Entry(before.identity, before.label, original, true, if (hide) TargetState.PENDING_HIDE else if (show) TargetState.PENDING_SHOW else TargetState.PENDING_RESTORE, now(), firmware.key, boot(), old?.changedByUs ?: false, error = "", invariantDigest=before.invariantDigest(),sharedUserId=before.sharedUserId,restoreRequested=!hide&&!show,retryHide=retry)
+        durable(pending) // Mandatory before the first possible system mutation.
         val operation = Verification(before, pending, wanted, hide, before.bit != wanted, show, retry)
         if (!operation.wrote) return Started.Checking(operation)
         // Close the window opened by durable IO; never write against an outdated preflight.
         val immediate = port.read(pkg)
         observe("preflight", immediate, false)
-        if(before.peers!=immediate.peers || before.sharedUserId!=immediate.sharedUserId)return Started.Finished(durable(pending.copy(state=TargetState.SHARED_UID_CHANGED,error=OwnershipChangedException().message!!)))
-        if (!before.invariantEquals(immediate, before.bit)) return Started.Finished(durable(pending.copy(state = TargetState.FAILED_SAFE, retryHide = operation.retry, error = "바꾸기 직전에 앱 상태가 바뀌어서 그대로 두었어요. 상태를 확인한 뒤 다시 시도해 주세요.")))
+        if(before.peers!=immediate.peers || before.sharedUserId!=immediate.sharedUserId)return Started.Finished(durable(pending.copy(state=TargetState.SHARED_UID_CHANGED,retryHide=false,error=OwnershipChangedException().message!!)))
+        if (!before.invariantEquals(immediate, before.bit)) {
+            val failed = pending.copy(state = TargetState.FAILED_SAFE, retryHide = operation.retry, error = "바꾸기 직전에 앱 상태가 바뀌어서 그대로 두었어요. 상태를 확인한 뒤 다시 시도해 주세요.")
+            val held = if (failed.manualHold && before.identity.sameInstall(immediate.identity)) failed.recordHoldUpdate(immediate.identity) else failed
+            return Started.Finished(durable(held))
+        }
         if (!canStart()) return Started.Finished(durable(pending.copy(state=TargetState.FAILED_SAFE,retryHide=operation.retry,error="화면을 떠나서 남은 앱은 바꾸지 않았어요. 이미 끝난 적용과 등록 기록은 그대로예요.")))
         return try {
             port.writeFineBitChecked(immediate,wanted)
@@ -143,14 +170,25 @@ class SafetyEngine(private val port: TargetPort, private val journal: Journal, p
     private fun finished(operation:Verification):Entry = durable(if(operation.show)operation.pending.copy(enabled=false,state=TargetState.NOT_APPLIED,
         originalBit=SENSITIVITY_BIT,changedByUs=false,lastVerifiedTime=now(),settlingVerified=true) else operation.pending.copy(
         enabled=operation.hide,state=if(operation.hide)TargetState.APPLIED else TargetState.NOT_APPLIED,
-        changedByUs=operation.hide && (operation.wrote || operation.pending.changedByUs),lastVerifiedTime=now(),settlingVerified=true))
+        // A retry can verify an earlier managed write that finished just before the process stopped.
+        changedByUs=operation.hide && (operation.wrote || operation.pending.changedByUs || operation.retry),lastVerifiedTime=now(),settlingVerified=true,retryHide=false))
     private fun failed(operation:Verification,failure:Exception):Entry {
         // A storage fault leaves durable PENDING records intact. No additional setter
         // or optimistic success is allowed when a final journal commit fails.
         if(failure is JournalPersistenceException)throw failure
         val before=operation.before;val pending=operation.pending;val original=pending.originalBit
-        if(!operation.wrote)return durable(pending.copy(state=if(failure is OwnershipChangedException)TargetState.NEEDS_REVIEW else TargetState.FAILED_SAFE,retryHide=operation.retry&&failure !is OwnershipChangedException,
-            error=if(failure is OwnershipChangedException)failure.message!! else "표시 상태가 유지되는지 확인하지 못했어요. 다시 확인해 주세요."))
+        if(!operation.wrote) {
+            val ownershipChanged=failure is OwnershipChangedException
+            val failed=pending.copy(state=if(ownershipChanged)TargetState.NEEDS_REVIEW else TargetState.FAILED_SAFE,
+                retryHide=operation.retry&&!ownershipChanged,
+                error=if(ownershipChanged)failure.message!! else "표시 상태가 유지되는지 확인하지 못했어요. 다시 확인해 주세요.")
+            val observed=(failure as? SettlingMismatch)?.observed
+            return durable(when {
+                !failed.manualHold -> failed
+                observed != null && failed.identity.sameInstall(observed) -> failed.recordHoldUpdate(observed)
+                else -> failed.copy(holdUpdateKnown=false)
+            })
+        }
         // Never use an old install's bit on a replaced package. Rollback touches only 0x100.
         var ownershipChanged=failure is OwnershipChangedException
         val restored = try {
@@ -166,11 +204,12 @@ class SafetyEngine(private val port: TargetPort, private val journal: Journal, p
             error=if(ownershipChanged)"이 앱과 묶인 앱이 바뀌어서 안전을 위해 멈췄어요." else if(restored)"변경 후 상태를 확인하지 못해 원래 표시 상태로 되돌렸어요. 다시 확인해 주세요." else "원래대로 되돌렸는지 확인하지 못했어요. 안전을 위해 이 앱은 더 바꾸지 않아요.",changedByUs=!restored,
             retryHide=operation.retry&&restored&&!ownershipChanged))
     }
+    private class SettlingMismatch(val observed:Identity):SafetyException("바꾼 뒤 표시 설정이 유지되는지 확인하지 못했어요.")
     private fun checkSettled(before:Snapshot,wanted:Int,wrote:Boolean,phase:String) {
         val current=port.read(before.identity.packageName)
         observe(phase,current,wrote)
         if(before.peers!=current.peers || before.sharedUserId!=current.sharedUserId)throw OwnershipChangedException()
-        if(!before.invariantEquals(current,wanted) || (wrote && (before.fineFlags xor current.fineFlags)!=SENSITIVITY_BIT))throw SafetyException("바꾼 뒤 표시 설정이 유지되는지 확인하지 못했어요.")
+        if(!before.invariantEquals(current,wanted) || (wrote && (before.fineFlags xor current.fineFlags)!=SENSITIVITY_BIT))throw SettlingMismatch(current.identity)
     }
     /** One worker, one global owner, serialized fresh getters/setters. Only waits overlap.
      * A bounded window drains every started record before its helper can close. */
@@ -253,6 +292,12 @@ object Reconcile {
     private fun marks(entry: Entry) = entry.enabled && !review(entry) && !pending(entry) && entry.state != TargetState.MISSING_TARGET
     fun boot(entry: Entry) = if (marks(entry)) entry.copy(state = TargetState.NEEDS_REAPPLY_BOOT) else entry
     fun update(entry: Entry) = if (marks(entry)) entry.copy(state = TargetState.NEEDS_REAPPLY_UPDATE) else entry
+    /** PACKAGE_REPLACED can arrive after the hold has already observed that very update. */
+    fun observedUpdate(entry: Entry, current: Identity?): Entry {
+        if (current == null || !entry.identity.sameInstall(current)) return entry
+        if (entry.manualHold && !entry.holdUpdateKnown) return entry.recordHoldUpdate(current)
+        return if (entry.identity.sameUpdate(current)) entry else update(entry)
+    }
     /** A lock whose app is verifiably back at its original (same install, owner, firmware and other permission state):
      *  nothing is uncertain any more. It drops to "다시 확인 필요" without a write; from there the usual rules apply
      *  (an update since then makes it "재적용 필요", as after any failed check).
@@ -260,17 +305,37 @@ object Reconcile {
     private fun original(entry:Entry,s:Snapshot?,firmware:String)=entry.state==TargetState.FAILED_ROLLBACK&&s!=null&&entry.firmware==firmware&&
         entry.identity.sameInstall(s.identity)&&entry.sharedUserId==s.sharedUserId&&s.peers==listOf(s.identity.packageName)&&
         s.bit==entry.originalBit&&entry.invariantDigest.isNotBlank()&&entry.invariantDigest==s.invariantDigest()
-    fun read(entry: Entry, snapshot: Snapshot?, firmware: String, bootSession: String,all:Map<String,Snapshot?> = emptyMap(),confirmLocationRemoval:(()->Snapshot?)?=null): Entry {
+    fun read(entry: Entry, snapshot: Snapshot?, firmware: String, bootSession: String,all:Map<String,Snapshot?> = emptyMap(),freshRead:(()->Snapshot?)?=null): Entry {
+        // Scan results can precede the hold or the journal row. Confirm the installed
+        // version when establishing the baseline or when a cached result would replace it.
+        val verifyHold = entry.groupIdentities.isEmpty() && snapshot != null && (
+            original(entry,snapshot,firmware) ||
+            (entry.state==TargetState.PENDING_HIDE && !entry.changedByUs && !entry.retryHide) ||
+            (entry.manualHold && (!entry.holdUpdateKnown || !entry.identity.sameUpdate(snapshot.identity))))
+        val current = if (verifyHold && freshRead != null) {
+            freshRead() ?: return entry
+        } else snapshot
+        return reconcileObserved(entry,current,firmware,bootSession,all,freshRead)
+    }
+    private fun reconcileObserved(entry: Entry, snapshot: Snapshot?, firmware: String, bootSession: String,all:Map<String,Snapshot?>,confirmLocationRemoval:(()->Snapshot?)?): Entry {
         if(entry.groupIdentities.isNotEmpty())return SharedGroupReconcile.read(entry,all,firmware,bootSession)
-        if (review(entry)) return if(original(entry,snapshot,firmware))entry.copy(state=TargetState.FAILED_SAFE,changedByUs=false,error="변경 후 상태를 확인하지 못해 원래 표시 상태로 되돌렸어요. 다시 확인해 주세요.") else entry
+        if (review(entry)) {
+            if (snapshot == null || !original(entry,snapshot,firmware)) return entry
+            return entry.recordHoldUpdate(snapshot.identity).copy(state=TargetState.FAILED_SAFE,bootSession=bootSession,changedByUs=false,retryHide=false,error="변경 후 상태를 확인하지 못해 원래 표시 상태로 되돌렸어요. 다시 확인해 주세요.")
+        }
         if(entry.locationRetired&&!entry.enabled&&entry.state==TargetState.NOT_APPLIED)return entry
         // Absence holds on any firmware; checked first so an uninstalled app is not re-applied after an update (audit H-1).
-        if (snapshot == null) return entry.copy(state = TargetState.MISSING_TARGET)
+        // One missing scan result must not erase a hold. A real package removal is recorded by the receiver.
+        if (snapshot == null) return if (entry.manualHold) entry else entry.copy(state = TargetState.MISSING_TARGET)
         if (entry.firmware != firmware) return if(pending(entry)) entry.copy(error="휴대폰 업데이트 전에 끊긴 작업이 있어요. 이 앱의 상태를 다시 확인해야 해요.") else entry.copy(state = TargetState.NEEDS_RECHECK_FIRMWARE)
         if (!entry.identity.sameInstall(snapshot.identity)) return entry.copy(state = TargetState.INACTIVE_INSTALL, enabled = false)
-        if(entry.sharedUserId!=null && (snapshot.peers!=listOf(snapshot.identity.packageName)||entry.sharedUserId!=snapshot.sharedUserId))return entry.copy(state=TargetState.SHARED_UID_CHANGED,error="이 앱과 묶인 앱이 바뀌어서 안전을 위해 멈췄어요.")
-        if (pending(entry) && (entry.invariantDigest.isBlank() || entry.invariantDigest != snapshot.invariantDigest())) return entry.copy(state=TargetState.FAILED_ROLLBACK,error="작업이 중간에 끊긴 뒤 상태를 확인하지 못해서, 안전을 위해 이 앱은 더 바꾸지 않아요.")
-        if (snapshot.peers != listOf(snapshot.identity.packageName)) return entry.copy(state = TargetState.SHARED_UID_BLOCKED)
+        if(entry.sharedUserId!=null && (snapshot.peers!=listOf(snapshot.identity.packageName)||entry.sharedUserId!=snapshot.sharedUserId))return entry.copy(state=TargetState.SHARED_UID_CHANGED,retryHide=false,error="이 앱과 묶인 앱이 바뀌어서 안전을 위해 멈췄어요.")
+        if (pending(entry) && (entry.invariantDigest.isBlank() || entry.invariantDigest != snapshot.invariantDigest())) return entry.copy(state=TargetState.FAILED_ROLLBACK,retryHide=false,error="작업이 중간에 끊긴 뒤 상태를 확인하지 못해서, 안전을 위해 이 앱은 더 바꾸지 않아요.")
+        if (snapshot.peers != listOf(snapshot.identity.packageName)) return entry.copy(state = TargetState.SHARED_UID_BLOCKED,retryHide=false)
+        if (entry.manualHold && !entry.holdUpdateKnown) return entry.recordHoldUpdate(snapshot.identity)
+        // A transient grant or app-op change on the same revision is not a later update.
+        // Keep the hold so an old PACKAGE_REPLACED cannot reinterpret it as automatic work.
+        if (entry.manualHold && entry.identity.sameUpdate(snapshot.identity)) return entry
         // Missing declarations after a verified same-install update need no setter. Never retire a denied grant,
         // uncertain/pending rollback, or a shared permission owner; retain the original restore evidence.
         if(entry.enabled&&!pending(entry)&&entry.invariantDigest.isNotBlank()&&entry.sharedUserId==null&&snapshot.sharedUserId==null&&snapshot.peersAuthoritative&&
@@ -290,9 +355,15 @@ object Reconcile {
         // reached) or still OFF, that is its real state. It is unregistered with that state as its value from now on.
         if (entry.state == TargetState.PENDING_SHOW) return entry.copy(state = TargetState.NOT_APPLIED, enabled = false, changedByUs = false, originalBit = snapshot.bit)
         if (entry.state == TargetState.PENDING_RESTORE && snapshot.bit == entry.originalBit) return entry.copy(state = TargetState.NOT_APPLIED, enabled = false, changedByUs = false)
-        if (entry.state == TargetState.PENDING_HIDE) return entry.copy(state = TargetState.FAILED_SAFE, retryHide = entry.changedByUs, error = "숨김이 유지되는지 다시 확인해야 해요.")
+        if (entry.state == TargetState.PENDING_HIDE) {
+            val retry = !entry.restoreRequested && (entry.changedByUs || entry.retryHide)
+            val held = if (retry) entry else entry.recordHoldUpdate(snapshot.identity)
+            return held.copy(state = TargetState.FAILED_SAFE, retryHide = retry,
+                bootSession = if (retry) entry.bootSession else bootSession, error = "숨김이 유지되는지 다시 확인해야 해요.")
+        }
         if (entry.state == TargetState.FAILED_SAFE) return entry
-        if (!entry.settlingVerified) return entry.copy(state=TargetState.FAILED_SAFE,error="숨김이 유지되는지 다시 확인해야 해요.")
+        if (!entry.settlingVerified) return entry.copy(state=TargetState.FAILED_SAFE,
+            bootSession=if (entry.retryHide) entry.bootSession else bootSession,error="숨김이 유지되는지 다시 확인해야 해요.")
         // An event marker stays conservative even if early boot/update temporarily still reads OFF.
         if (entry.bootSession != bootSession || entry.state == TargetState.NEEDS_REAPPLY_BOOT) return entry.copy(state = TargetState.NEEDS_REAPPLY_BOOT)
         if (entry.identity.versionCode != snapshot.identity.versionCode || entry.identity.lastUpdateTime != snapshot.identity.lastUpdateTime || entry.state == TargetState.NEEDS_REAPPLY_UPDATE) return entry.copy(state = TargetState.NEEDS_REAPPLY_UPDATE)

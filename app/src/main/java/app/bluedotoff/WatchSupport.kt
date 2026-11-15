@@ -28,6 +28,7 @@ object BackgroundWatch {
     fun acknowledged(c:Context)=prefs(c).getBoolean("backgroundWatchAcknowledged",false)
     fun set(c:Context,on:Boolean){
         val edit=prefs(c).edit().putBoolean("backgroundWatch",on);if(on)edit.putBoolean("backgroundWatchAcknowledged",true) else edit.putBoolean("watchRunning",false);check(edit.commit())
+        if(!on)app.bluedotoff.adb.WatchClient.watchDisabled(c)
     }
     /** Watching (re)started: the next stop (and USB coming back) may be announced again. */
     fun running(c:Context){prefs(c).edit().remove("watchStopNotified").remove("watchUsbBackNotified").putBoolean("watchRunning",true).apply();c.getSystemService(NotificationManager::class.java).cancel(4201)}
@@ -36,7 +37,7 @@ object BackgroundWatch {
         val ctx=c.applicationContext
         ctx.contentResolver.registerContentObserver(Settings.Global.getUriFor(Settings.Global.ADB_ENABLED),false,object:ContentObserver(Handler(Looper.getMainLooper())){
             override fun onChange(selfChange:Boolean){
-                if(Settings.Global.getInt(ctx.contentResolver,Settings.Global.ADB_ENABLED,0)==1&&enabled(ctx)&&!app.bluedotoff.adb.WatchClient.available(ctx))WatchNotification.usbBack(ctx)
+                app.bluedotoff.adb.WatchClient.usbMayBeBack(ctx)
             }})
     }
 }
@@ -44,6 +45,29 @@ object BackgroundWatch {
 object WatchNotification {
     const val CHANNEL="watch"
     private const val ID=4201
+    private const val UNCONFIRMED="CONTACT_UNCONFIRMED"
+    // Display only: a previous live owner may still be reconnecting after the UI process was recreated.
+    fun awaitingContact(c:Context,usbOn:Boolean):Boolean {
+        val prefs=c.getSharedPreferences("ui-state",0)
+        return when(prefs.getString("watchStopNotified",null)){
+            UNCONFIRMED->true
+            null->usbOn&&prefs.getBoolean("watchRunning",false)
+            else->false
+        }
+    }
+    fun unconfirmed(c:Context)=c.getSharedPreferences("ui-state",0).getString("watchStopNotified",null)==UNCONFIRMED
+    internal fun clearDisabled(c:Context){
+        c.getSharedPreferences("ui-state",0).edit().remove("watchStopNotified").remove("watchUsbBackNotified").apply()
+        c.getSystemService(NotificationManager::class.java).cancel(ID)
+    }
+    /** Lack of a report is not proof that the helper died. A confirmed stop may supersede this notice. */
+    fun contactMissing(c:Context){
+        val prefs=c.getSharedPreferences("ui-state",0)
+        if(!BackgroundWatch.enabled(c)||prefs.contains("watchStopNotified"))return
+        prefs.edit().putString("watchStopNotified",UNCONFIRMED).apply()
+        WatchDiagnostics.record(c,WatchDiagnostics.Event.CONTACT_UNCONFIRMED)
+        post(c,"백그라운드 감시 연결을 확인하지 못했어요",UiText.text(c,"아직 감시의 응답이 없어요. bluedotOFF를 열어 상태를 확인해주세요."),usbAction=false)
+    }
     enum class Reason(val message:String){
         BOOT("휴대폰이 다시 시작되어 백그라운드 감시가 멈췄어요."),
         USB_DEBUGGING_OFF("USB 디버깅이 꺼져서 백그라운드 감시가 멈췄어요."),
@@ -65,10 +89,12 @@ object WatchNotification {
     fun stopped(c:Context,reason:Reason){
         c.getSharedPreferences("ui-state",Context.MODE_PRIVATE).edit().putBoolean("watchRunning",false).apply()
         if(!BackgroundWatch.enabled(c))return
+        if(reason==Reason.BOOT)WatchDiagnostics.record(c,WatchDiagnostics.Event.BOOT)
         // R-1: the after-restart job starts it again on Wi-Fi; the re-apply notice already says what to do if it cannot.
         if(reason==Reason.BOOT&&RestartRecoveryJob.eligible(c))return
         val prefs=c.getSharedPreferences("ui-state",Context.MODE_PRIVATE)
-        if(prefs.getString("watchStopNotified",null)!=null)return
+        if(prefs.contains("watchStopNotified")&&!unconfirmed(c))return
+        if(reason==Reason.USB_DEBUGGING_OFF)WatchDiagnostics.record(c,WatchDiagnostics.Event.USB_OFF)
         prefs.edit().putString("watchStopNotified",reason.name).apply()
         WatchLog.event("state","watchStopNotice reason=${reason.name}")
         val usb=usbOn(c)

@@ -25,7 +25,9 @@ object ResidentWatchHelper {
     private var appUpdatedAt=0L
     private val operationLock=Any()
     private val callbacks=Executors.newSingleThreadExecutor()
-    private val targets=java.util.concurrent.ConcurrentHashMap<String,Int>()
+    @Volatile private var targets:Map<String,Int> = emptyMap()
+    @Volatile private var targetVersion=0L
+    private val delivery=WatchDelivery()
     private val windows=listOf(app.bluedotoff.core.EventWindow(750,3_000),app.bluedotoff.core.EventWindow(5_000,15_000))
     private val ends=windows.map{w->Runnable{val names=w.take();if(names.isNotEmpty())send("event",names)}}
     private val receivers=mutableListOf<Any>()
@@ -64,37 +66,50 @@ object ResidentWatchHelper {
             return true
         }
     }
-    private fun configure(list:JSONArray){
+    @Synchronized private fun configure(list:JSONArray){
         require(list.length()<=2000)
         val next=mutableMapOf<String,Int>()
         repeat(list.length()){i->val row=list.getJSONObject(i);require(row.keys().asSequence().toSet()==setOf("package","uid"));val p=row.getString("package");val uid=row.getInt("uid");require(p.length<=255&&p.matches(Regex("[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*"))&&uid in 0..19999);next[p]=uid}
-        val added=next.keys-targets.keys.toSet()
-        targets.clear();targets.putAll(next)
+        val added=next.keys-targets.keys
+        targets=next
+        targetVersion++
         // A package toggle can precede registration while its flag reset arrives several seconds later.
         // Newly registered targets get the same bounded two checks; existing targets are not polled again.
         added.forEach(::changed)
     }
+    @Synchronized private fun configureReply(list:JSONArray,versionAtRequest:Long){
+        if(targetVersion==versionAtRequest)configure(list)
+    }
     /** External provider starts/reconnects the ordinary app process without opening an Activity. Token is always removed. */
-    private fun deliver(method:String,packages:Set<String> = emptySet()) {
-        if(stopping)return
+    private fun deliver(method:String,packet:Map<String,Long> = emptyMap()):WatchReceipt {
+        if(stopping)return WatchReceipt()
+        val versionAtRequest=targetVersion
         validateInstall()
         val token=Binder()
         val get=am.javaClass.getMethod("getContentProviderExternal",String::class.java,Int::class.javaPrimitiveType,IBinder::class.java,String::class.java).apply{isAccessible=true}
         val holder=get.invoke(am,WatchProtocol.AUTHORITY,0,token,"bluedotOFF-watch")?:error("Watch provider unavailable")
         try {
             val provider=holder.javaClass.getField("provider").get(holder)
-            val extras=Bundle().apply{putBinder("helper",server);putString("profile",proof.toString());putStringArrayList("packages",ArrayList(packages));putString("apk",apk);putLong("version",app.bluedotoff.BuildConfig.VERSION_CODE.toLong())}
+            val extras=Bundle().apply{putBinder("helper",server);putString("profile",proof.toString());putStringArrayList("packages",ArrayList(packet.keys));putLongArray("revisions",packet.values.toLongArray());putString("apk",apk);putLong("version",app.bluedotoff.BuildConfig.VERSION_CODE.toLong())}
             val call=provider.javaClass.methods.single{it.name=="call"&&it.parameterTypes.size==5}.apply{isAccessible=true}
             val source=AttributionSource.Builder(2000).setPackageName("com.android.shell").build()
             val response=call.invoke(provider,source,WatchProtocol.AUTHORITY,method,null,extras) as? Bundle?:error("Watch attach refused")
             check(response.getInt("uid",-1)==appUid)
-            if(!response.getBoolean("enabled")){targets.clear();if(!response.getBoolean("draining")){stopping=true;main.post{System.exit(0)}};return}
-            configure(JSONArray(response.getString("targets")?:"[]"))
+            if(!response.getBoolean("enabled")){if(!response.getBoolean("draining")){stopping=true;main.post{System.exit(0)}};return WatchReceipt()}
+            configureReply(JSONArray(response.getString("targets")?:"[]"),versionAtRequest)
+            return WatchReceipt(response.getLongArray("checkedRevisions") ?: longArrayOf(),
+                response.getLongArray("failedRevisions") ?: longArrayOf())
         }finally{
             am.javaClass.getMethod("removeContentProviderExternalAsUser",String::class.java,IBinder::class.java,Int::class.javaPrimitiveType).apply{isAccessible=true}.invoke(am,WatchProtocol.AUTHORITY,token,0)
         }
     }
-    private fun send(method:String,packages:Set<String> = emptySet()){callbacks.execute{try{deliver(method,packages)}catch(_:Exception){if(runCatching{validateInstall()}.isFailure){stopping=true;System.exit(0)}}}}
+    private fun send(method:String,packages:Set<String> = emptySet()){
+        callbacks.execute {
+            val packet=delivery.offer(packages,targets.keys)
+            try { delivery.acknowledge(packet,deliver(method,packet)) }
+            catch(_:Exception){if(runCatching{validateInstall()}.isFailure){stopping=true;System.exit(0)}}
+        }
+    }
     private fun changed(pkg:String){
         if(!targets.containsKey(pkg)||stopping)return
         // PermissionController may recompute flags asynchronously after PACKAGE_CHANGED. Two bounded checks, no polling.

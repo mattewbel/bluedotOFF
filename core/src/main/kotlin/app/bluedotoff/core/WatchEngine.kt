@@ -4,7 +4,8 @@ package app.bluedotoff.core
 class WatchEngine(private val port:TargetPort,private val journal:Journal,private val now:()->Long,private val boot:()->String,
     private val wait:(Long)->Unit={Thread.sleep(it)},private val observe:(String,Snapshot,Boolean)->Unit={_,_,_->},
     private val onSkip:(List<String>,String)->Unit={_,_->},private val beforeAttempt:(List<Entry>)->Unit={},
-    private val onReread:(List<String>,Boolean)->Unit={_,_->}) {
+    private val onReread:(List<String>,Boolean)->Unit={_,_->},
+    private val onRead:(List<String>)->Unit={}) {
     fun reapply(packages:Set<String>,canStart:()->Boolean,onUnhidden:(String)->Unit,onResult:(BatchResult)->Unit)=synchronized(SafetyEngine.writeLock) {
         val firmware=port.compatibleFirmware()
         for(unit in WatchPolicy.units(journal.entries(),packages)) {
@@ -17,6 +18,9 @@ class WatchEngine(private val port:TargetPort,private val journal:Journal,privat
                 // A write left unconfirmed before a restart (e.g. power lost mid-write) stays for the user, unread (Codex, R-1).
                 if(latest.any{WatchPolicy.interrupted(it)&&it.bootSession!=currentBoot}){onSkip(names,"interruptedBeforeRestart");continue}
                 var fresh=latest.map{port.read(it.identity.packageName)}
+                // Report only successful reads. The caller can count distinct package names across units;
+                // this includes already-hidden apps and does not expose package names in diagnostics storage.
+                runCatching { onRead(names) }
                 fun settle(read:List<Snapshot>)=read.associateBy{it.identity.packageName}.let{s->latest.map{e->Reconcile.read(e,s[e.identity.packageName],firmware.key,currentBoot,s){port.read(e.identity.packageName)}}}
                 var reconciled=settle(fresh)
                 // A read can land while Android rewrites an app's permission flags (they are read one call at a time), and

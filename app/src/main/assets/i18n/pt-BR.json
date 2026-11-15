@@ -804,6 +804,8 @@
   "개발자 옵션에서 ‘USB 디버깅’을 켠 뒤 이 화면으로 돌아오세요. 켜져 있으면 자동으로 다음 단계로 넘어가요.": "Ative a “Depuração USB” nas Opções do desenvolvedor e volte para esta tela. Assim que estiver ativada, a etapa seguinte continua automaticamente.",
   "휴대폰을 재시작하거나 bluedotOFF를 업데이트하거나 USB 디버깅을 끄면 감시가 멈추고 알림과 홈에서 알려드려요. USB 디버깅을 다시 켜고 Wi-Fi에 연결된 상태에서 bluedotOFF를 열면 다시 시작해요(자동 관리가 꺼져 있으면 무선 디버깅도 켜주세요). 처음 연결할 때처럼 코드를 다시 넣을 필요는 없어요.": "Reiniciar o celular, atualizar o bluedotOFF ou desativar a depuração USB interrompe o monitoramento; você receberá um aviso por notificação e na tela inicial. Ative a depuração USB novamente e abra o bluedotOFF conectado ao Wi-Fi para reiniciar o monitoramento (se o gerenciamento automático estiver desativado, ative também a depuração sem fio). Não é necessário inserir o código de pareamento de novo.",
   "백그라운드 감시가 실행 중이 아니에요.": "O monitoramento em segundo plano não está em execução.",
+  "백그라운드 감시 연결을 확인하지 못했어요": "Não foi possível verificar a conexão do monitoramento em segundo plano",
+  "아직 감시의 응답이 없어요. bluedotOFF를 열어 상태를 확인해주세요.": "O monitoramento ainda não respondeu. Abra o bluedotOFF para verificar o status.",
   "백그라운드 감시가 멈춰 있어요": "O monitoramento em segundo plano está parado",
   "USB 디버깅 켜기": "Ativar depuração USB",
   "USB 디버깅이 켜졌어요": "A depuração USB está ativada",

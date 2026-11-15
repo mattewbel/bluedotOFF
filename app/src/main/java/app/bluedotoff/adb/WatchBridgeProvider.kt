@@ -6,7 +6,7 @@ import android.database.Cursor
 import android.net.Uri
 import android.os.Binder
 import android.os.Bundle
-import app.bluedotoff.BackgroundWatch
+import org.json.JSONArray
 import org.json.JSONObject
 
 /** Only shell can deliver a helper/event. The manifest also requires INTERACT_ACROSS_USERS_FULL.
@@ -23,15 +23,31 @@ class WatchBridgeProvider:ContentProvider() {
             val phase=profile.getString("startupPhase");val error=profile.getString("startupError")
             require(phase in setOf("PROFILE","PACKAGE_CALLBACK","PROCESS_CALLBACK","CLIENT_HANDSHAKE")&&error.matches(Regex("[A-Za-z0-9_]{1,100}")))
             app.bluedotoff.WatchLog.event("state","watchStartupFailed phase=$phase error=$error")
-            if(!WatchClient.available(c))app.bluedotoff.WatchNotification.stopped(c,app.bluedotoff.WatchNotification.Reason.STOPPED)
+            WatchClient.startupFailed(c)
             return Bundle().apply{putInt("uid",c.applicationInfo.uid);putBoolean("enabled",false)}
         }
         val accepted=WatchClient.attach(c,b,profile,extras.getString("apk")?:error("Missing install"),extras.getLong("version"))
+        val targets=if(accepted) WatchClient.config(c) else JSONArray()
+        var receipt=WatchReceipt()
         if(accepted){
-            if(method=="event")WatchClient.signal(c,extras.getStringArrayList("packages")?.takeIf{it.size<=2000}?.toSet()?:emptySet())
+            val packages=extras.getStringArrayList("packages").orEmpty()
+            val revisions=extras.getLongArray("revisions") ?: longArrayOf()
+            require(packages.size==revisions.size && packages.size<=WatchDelivery.MAX_PACKET)
+            if(packages.isNotEmpty()){
+                require(packages.distinct().size==packages.size && revisions.all{it>0} && revisions.distinct().size==revisions.size)
+                val eligible=(0 until targets.length()).mapTo(mutableSetOf()){targets.getJSONObject(it).getString("package")}
+                receipt=WatchClient.receiveEvents(c,b,packages.indices.associate{packages[it] to revisions[it]},eligible)
+            }
             WatchClient.reportState(c)
         }
-        return Bundle().apply{putInt("uid",c.applicationInfo.uid);putBoolean("enabled",accepted&&BackgroundWatch.enabled(c));putBoolean("draining",WatchClient.draining(b));putString("targets",if(accepted)WatchClient.config(c).toString() else "[]")}
+        return Bundle().apply {
+            putInt("uid",c.applicationInfo.uid)
+            putBoolean("enabled",accepted&&WatchClient.owns(c,b))
+            putBoolean("draining",WatchClient.draining(b))
+            putString("targets",targets.toString())
+            putLongArray("checkedRevisions",receipt.checked)
+            putLongArray("failedRevisions",receipt.failed)
+        }
     }
     override fun query(u:Uri,p:Array<out String>?,s:String?,a:Array<out String>?,o:String?):Cursor?=throw UnsupportedOperationException()
     override fun getType(u:Uri):String?=null

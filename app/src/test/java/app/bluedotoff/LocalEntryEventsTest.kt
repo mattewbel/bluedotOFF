@@ -15,6 +15,14 @@ class LocalEntryEventsTest {
             assertEquals(e,LocalEntryEvents.read(e,"fp","boot"){null})
         }
     }
+    @Test fun anEstimatedBootCannotReleaseAManualHoldButAnActualAppUpdateCan(){
+        val held=entry.copy(state=TargetState.FAILED_SAFE,retryHide=false,bootSession="estimate:123")
+        assertEquals(held,BootEvents.fromBroadcast(held,"estimate:123"))
+        assertEquals(held,LocalEntryEvents.read(held,"fp","estimate:124"){held.identity})
+        assertEquals(TargetState.NEEDS_REAPPLY_UPDATE,LocalEntryEvents.read(held,"fp","estimate:124"){
+            held.identity.copy(versionCode=held.identity.versionCode+1)
+        }.state)
+    }
     @Test fun previousUnknownNeedsAuthoritativeReadThenSurvivesLocalVisibilityMiss(){
         val unknown=entry.copy(state=TargetState.SHIZUKU_REQUIRED)
         assertEquals(unknown,LocalEntryEvents.read(unknown,"fp","boot"){null})

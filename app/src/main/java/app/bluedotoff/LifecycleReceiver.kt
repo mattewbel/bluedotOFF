@@ -22,8 +22,8 @@ class LifecycleReceiver : BroadcastReceiver() {
         if (action !in listOf(Intent.ACTION_BOOT_COMPLETED,Intent.ACTION_MY_PACKAGE_REPLACED, Intent.ACTION_PACKAGE_REPLACED, Intent.ACTION_PACKAGE_REMOVED,Intent.ACTION_PACKAGE_FULLY_REMOVED)) return
         if (action == Intent.ACTION_PACKAGE_REMOVED && intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) return
         // A restart always stops background watching; it is started again from the app (wireless debugging).
-        if (action == Intent.ACTION_BOOT_COMPLETED) { WatchNotification.stopped(context,WatchNotification.Reason.BOOT) }
-        if(action==Intent.ACTION_MY_PACKAGE_REPLACED){WatchNotification.stopped(context,WatchNotification.Reason.STOPPED);return}
+        if (action == Intent.ACTION_BOOT_COMPLETED) { app.bluedotoff.adb.WatchClient.bootCompleted(context) }
+        if(action==Intent.ACTION_MY_PACKAGE_REPLACED){app.bluedotoff.adb.WatchClient.packageReplaced(context);return}
         val pending = goAsync()
         executor.execute {
             try {
@@ -38,6 +38,7 @@ class LifecycleReceiver : BroadcastReceiver() {
                     action == Intent.ACTION_BOOT_COMPLETED -> BootEvents.fromBroadcast(e,currentBoot)
                     e.identity.packageName != target -> e
                     action in listOf(Intent.ACTION_PACKAGE_REMOVED,Intent.ACTION_PACKAGE_FULLY_REMOVED) -> e.copy(state = TargetState.MISSING_TARGET)
+                    e.state==TargetState.FAILED_SAFE && !e.retryHide -> Reconcile.observedUpdate(e,LocalEntryEvents.installedIdentity(context.packageManager,e))
                     else -> Reconcile.update(e)
                 } })
                 val changed=store.entries().filter{e->e.enabled&&e.state in listOf(TargetState.NEEDS_REAPPLY_BOOT,TargetState.NEEDS_REAPPLY_UPDATE)&&previous.firstOrNull{it.identity==e.identity}?.state!=e.state}

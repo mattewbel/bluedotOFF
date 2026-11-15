@@ -39,6 +39,29 @@ class SharedGroupWindowTest {
         r.results.clear();r.writes.clear();r.run(false)
         assertTrue(r.results.all{it.second.getOrThrow().all{e->!e.enabled&&e.state==TargetState.NOT_APPLIED}});assertTrue(r.snapshots.values.all{it.bit==256})
     }
+    @Test fun queuedGroupAllowsAnUpdatedMemberAndAppliedPeerButCannotRegisterAnInactiveMember(){
+        val r=Rig(1)
+        r.run()
+        val names=r.groups.single()
+        val selected=AutomaticReapply(r.records.mapValues { it.value.identity })
+        val auto=SharedGroupEngine(r.port,r.journal,{r.clock},{"boot"},wait={r.clock+=it},automaticReapply=selected)
+        val first=names.first()
+        val old=r.snapshots.getValue(first)
+        r.snapshots[first]=old.copy(identity=old.identity.copy(versionCode=2,lastUpdateTime=2))
+        r.records[first]=r.records.getValue(first).copy(state=TargetState.NEEDS_REAPPLY_UPDATE)
+        for(name in names)r.snapshots[name]=r.snapshots.getValue(name).copy(fineFlags=0x300)
+        r.writes.clear()
+        assertTrue(auto.execute(names,true){true}.all{it.state==TargetState.APPLIED})
+        assertEquals(1,r.writes.size)
+        r.records[first]=r.records.getValue(first).copy(state=TargetState.NEEDS_REAPPLY_POLICY)
+        val peer=names.last()
+        r.records[peer]=r.records.getValue(peer).copy(state=TargetState.INACTIVE_INSTALL,enabled=false)
+        val prior=r.records.toMap()
+        r.writes.clear()
+        assertTrue(runCatching{auto.execute(names,true){true}}.exceptionOrNull() is SafetyException)
+        assertEquals(prior,r.records)
+        assertTrue(r.writes.isEmpty())
+    }
     @Test fun aFailedGroupStopsNewStartsButStartedGroupsFinish(){
         val r=Rig(3)
         // Group 1 is ineligible at its first read: groups 0 still finishes, group 2 never starts.

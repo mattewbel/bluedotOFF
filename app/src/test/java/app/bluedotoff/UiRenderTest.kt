@@ -469,6 +469,20 @@ class UiRenderTest {
         compose.runOnIdle{current.value=current.value.copy(watchRunning=true)}
         compose.onNodeWithText("백그라운드 감시가 멈춰 있어요").assertDoesNotExist()
     }
+    @Test fun homeUpdatesWhenWatchContactBecomesUnconfirmedAndRecovers(){
+        val prefs=controller.get().getSharedPreferences("ui-state",0)
+        prefs.edit().remove("watchStopNotified").commit()
+        controller.get().setContent{BlueDotApp(model(applied=true).copy(backgroundWatch=true,usbDebugging=true,watchRunning=false),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})}
+        compose.onNodeWithText("백그라운드 감시가 멈춰 있어요").assertExists()
+        compose.runOnIdle{prefs.edit().putBoolean("watchRunning",true).commit()}
+        compose.onNodeWithText("백그라운드 감시 연결을 확인하지 못했어요").assertExists()
+        compose.onNodeWithText("감시를 다시 켜지 못했어요.").assertDoesNotExist()
+        compose.runOnIdle{prefs.edit().putBoolean("watchRunning",false).putString("watchStopNotified","CONTACT_UNCONFIRMED").commit()}
+        compose.onNodeWithText("백그라운드 감시 연결을 확인하지 못했어요").assertExists()
+        compose.onNodeWithText("백그라운드 감시가 멈춰 있어요").assertDoesNotExist()
+        compose.runOnIdle{prefs.edit().remove("watchStopNotified").commit()}
+        compose.onNodeWithText("백그라운드 감시가 멈춰 있어요").assertExists()
+    }
     /** Fold7 2026-10-29: a refused key (the pairing expired) asks for pairing again instead of Wi-Fi advice. */
     @Test fun anExpiredPairingAsksToPairAgain(){
         var opened=0

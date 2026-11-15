@@ -14,6 +14,13 @@ class WatchEngineTest {
         WatchEngine(r.port,r.store,{300},{"boot"},wait={},beforeAttempt={attempts++}).reapply(setOf(id.packageName),{++checks<2},{},{})
         assertEquals(0,attempts);assertTrue(r.writes.isEmpty())
     }
+    @Test fun successfulReadIsReportedEvenWhenAlreadyHidden(){
+        val r=Rig();r.snapshot=base.copy(fineFlags=0x200);val read=mutableListOf<List<String>>()
+        WatchEngine(r.port,r.store,{300},{"boot"},wait={},onSkip={_,_->},onRead={read+=it})
+            .reapply(setOf(id.packageName),{true},{},{})
+        assertEquals(listOf(listOf(id.packageName)),read)
+        assertTrue(r.writes.isEmpty())
+    }
     @Test fun retryQuotaIsSavedBeforeAttemptAndNotChargedForLaterUnreachedApps(){
         val second=id.copy(packageName="test.second")
         val entries=listOf(id,second).map{entry().copy(identity=it,state=TargetState.FAILED_SAFE,retryHide=true)}

@@ -44,7 +44,8 @@ class WatchStopGraceTest {
         try{
             assertFalse(WatchClient.ensureStarted(c,true));assertFalse(notice())
             assertTrue(c.getSharedPreferences("ui-state",0).getBoolean("watchRunning",false))
-            step(75_000);assertTrue("no helper after the wait is a real stop",notice())
+            step(75_000);assertFalse(notice())
+            step(75_000);assertTrue(WatchNotification.unconfirmed(c));assertTrue(notice())
             assertTrue(attach(Server()));assertFalse(notice())
         }finally{ForegroundState.paused();ForegroundState.stopped()}
     }

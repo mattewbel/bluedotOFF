@@ -91,12 +91,13 @@ class RestartRecoveryJob:JobService() {
             return false
         }
         val groups=entries.map{it.groupIdentities.map{p->p.packageName}}.filter{it.isNotEmpty()}.distinct()
+        val expectedInstalls=entries.filter{it.enabled&&it.identity.userId==0}.associate{it.identity.packageName to it.identity}
         val groupMap=groups.flatMap{g->g.map{it to g}}.toMap()
         val done=CountDownLatch(1)
         var succeeded=emptySet<String>()
         val started=BatchRuntime.start(targets.size,hide=true,auto=true){report->
             try{BatchPipeline.run(c,targets,groupMap,hide=true,show=false,auto=true,beforeUninstall=false,reapplying=emptySet(),autoSource=ReapplySource.RESTART,
-                canStart=canStart,background=true,report=report).also{o->succeeded=o.results.filter{it.success}.map{it.packageName}.toSet()}}
+                canStart=canStart,background=true,report=report,expectedInstalls=expectedInstalls).also{o->succeeded=o.results.filter{it.success}.map{it.packageName}.toSet()}}
             finally{done.countDown()}
         }
         if(!started)return false // A screen batch is already running.

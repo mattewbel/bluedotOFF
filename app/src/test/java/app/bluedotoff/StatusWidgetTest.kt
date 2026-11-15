@@ -49,6 +49,25 @@ class StatusWidgetTest {
         assertEquals("눌러서 bluedotOFF 열기",v.text(R.id.widget_status))
         assertFalse(v.shown(R.id.widget_refresh))
     }
+    @Test fun unconfirmedWatchShowsAttentionWithoutChangingControls(){
+        val absent=state(false).copy(unconfirmed=true)
+        assertEquals("확인 필요",render(absent).text(R.id.widget_title))
+        assertFalse(render(absent).shown(R.id.widget_refresh))
+        assertEquals("확인 필요",render(absent.copy(wireless=true)).text(R.id.widget_title))
+        assertTrue(render(absent.copy(wireless=true)).shown(R.id.widget_refresh))
+        assertEquals("2개 앱 숨김 유지",render(absent.copy(watching=true)).text(R.id.widget_title))
+        assertEquals("감시 꺼짐",render(absent.copy(unconfirmed=false)).text(R.id.widget_title))
+    }
+    @Test fun savedUnconfirmedStatusRequiresBackgroundWatchEnabled(){
+        val prefs=context.getSharedPreferences("ui-state",0)
+        prefs.edit().putString("watchStopNotified","CONTACT_UNCONFIRMED").commit()
+        try{
+            BackgroundWatch.set(context,true)
+            assertTrue(state(false).unconfirmed)
+            BackgroundWatch.set(context,false)
+            assertFalse(state(false).unconfirmed)
+        }finally{prefs.edit().remove("watchStopNotified").commit()}
+    }
     @Test fun withoutTheWatchButWithAutomaticManagementTheRefreshChecksOverWirelessDebugging(){
         val v=render(state(false).copy(wireless=true))
         assertEquals("2개 앱 숨김 유지",v.text(R.id.widget_title))

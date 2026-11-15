@@ -79,7 +79,7 @@ data class UiModel(val gate: Gate = Gate.CHECKING, val page: Page = Page.HOME, v
     private val activeEntries get()=visibleEntries.filter{it.enabled}
     val allLastVerifiedApplied get()=activeEntries.isNotEmpty()&&activeEntries.all{!it.restoreRequested&&it.state==TargetState.APPLIED&&it.settlingVerified}
     val lastVerifiedAppliedCount get()=visibleEntries.count{it.enabled&&!it.restoreRequested&&it.state==TargetState.APPLIED&&it.settlingVerified}
-    fun needsReapply(e:Entry)=!e.restoreRequested&&(e.enabled&&e.state in listOf(TargetState.NEEDS_REAPPLY_POLICY,TargetState.NEEDS_REAPPLY_BOOT,TargetState.NEEDS_REAPPLY_UPDATE,TargetState.NEEDS_RECHECK_FIRMWARE)||WatchPolicy.retrying(e))
+    fun needsReapply(e:Entry)=e.needsReapply
     val reapplyEntries get()=visibleEntries.filter(::needsReapply)
     // Presentation order only; keep journal order and all original records intact.
     val registeredDisplayEntries get()=visibleEntries.sortedBy{!needsReapply(it)}

@@ -52,6 +52,28 @@ class JournalStoreTest {
         assertEquals(org.json.JSONArray(payload).toString(),payload);assertEquals(5,JournalStore(context).entries().size)
     }
     @Test fun durableRoundTripAcrossNewStoreInstance(){assertTrue(JournalStore(context).commit(entry));assertEquals(listOf(entry),JournalStore(context).entries())}
+    @Test fun oldManualHoldLearnsOneRevisionWithoutLosingItsRestoreEvidence() {
+        val store=JournalStore(context)
+        val record=entry.copy(state=TargetState.FAILED_SAFE,error="manual",invariantDigest="original")
+        assertTrue(store.commit(record))
+        val root=org.json.JSONObject(file.readText())
+        val rows=org.json.JSONArray(root.getString("payload"))
+        rows.getJSONObject(0).remove("holdUpdateKnown")
+        val payload=rows.toString()
+        file.writeText(root.put("payload",payload).put("checksum",BinderBackend.digest(payload.toByteArray())).toString())
+        val old=store.entries().single()
+        assertTrue(old.manualHold)
+        assertFalse(old.holdUpdateKnown)
+        assertEquals(old,Reconcile.observedUpdate(old,null))
+        val latest=old.identity.copy(versionCode=4,lastUpdateTime=100)
+        assertEquals(old,Reconcile.observedUpdate(old,latest.copy(firstInstallTime=200)))
+        assertTrue(store.transform { Reconcile.observedUpdate(it,latest) })
+        file.appendText(" ") // Fresh checksum-verified read, bypassing the byte cache.
+        val held=store.entries().single()
+        assertEquals(record.copy(identity=latest),held)
+        assertEquals(held,Reconcile.observedUpdate(held,latest))
+        assertTrue(Reconcile.observedUpdate(held,latest.copy(lastUpdateTime=101)).needsReapply)
+    }
     @Test fun singletonNamespaceAndReviewStatePersist(){val e=entry.copy(sharedUserId="test.shared",state=TargetState.NEEDS_REVIEW);assertTrue(JournalStore(context).commit(e));assertEquals(e,JournalStore(context).entries().single())}
     @Test fun test4JournalWithoutNamespaceRetainsOriginalAndIdentity(){JournalStore(context).commit(entry);val root=org.json.JSONObject(file.readText());val payload=org.json.JSONArray(root.getString("payload"));payload.getJSONObject(0).remove("sharedUserId");val text=payload.toString();file.writeText(root.put("payload",text).put("checksum",BinderBackend.digest(text.toByteArray())).toString());assertEquals(entry,JournalStore(context).entries().single())}
     @Test fun metadataSnapshotIsNotAStoredRestoreValue(){JournalStore(context).commit(entry);assertTrue(file.readText().contains("originalBit"));assertFalse(file.readText().contains("fineFlags"));assertFalse(file.readText().contains("coarseFlags"))}

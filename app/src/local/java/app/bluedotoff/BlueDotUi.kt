@@ -318,6 +318,16 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
 
 @Composable private fun HomeScreen(m:UiModel,wide:Boolean,add:()->Unit,restoreMenu:()->Unit,select:(String)->Unit,open:()->Unit,history:()->Unit,hide:(String)->Unit,edit:()->Unit,toggle:(String)->Unit,restoreSelected:()->Unit,wirelessExit:()->Unit,showNeeded:()->Unit,recheck:()->Unit={},openDeveloperOptions:()->Unit={},dismissFirmwareNotice:()->Unit={},openUpdate:(String)->Unit={},skipUpdate:(String)->Unit={},pcStart:()->Unit={},watchRetry:()->Unit={}) {
     val context=LocalContext.current
+    val watchPrefs=remember(context){context.getSharedPreferences("ui-state",0)}
+    var watchUnconfirmed by remember(context,m.usbDebugging){mutableStateOf(WatchNotification.awaitingContact(context,m.usbDebugging))}
+    DisposableEffect(watchPrefs,m.usbDebugging){
+        val listener=android.content.SharedPreferences.OnSharedPreferenceChangeListener{_,key->
+            if(key=="watchStopNotified"||key=="watchRunning")watchUnconfirmed=WatchNotification.awaitingContact(context,m.usbDebugging)
+        }
+        watchPrefs.registerOnSharedPreferenceChangeListener(listener)
+        watchUnconfirmed=WatchNotification.awaitingContact(context,m.usbDebugging)
+        onDispose{watchPrefs.unregisterOnSharedPreferenceChangeListener(listener)}
+    }
     var showCheck by rememberSaveable{mutableStateOf(false)}
     if(showCheck&&m.otherCheckCount>0)CheckNeededDialog(m,{showCheck=false}){pkg->showCheck=false;select(pkg)}
     val attention=m.reapplyCount>0||m.otherCheckCount>0
@@ -411,10 +421,10 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
             // Not while it is being started again (opening the app restarts it), nor when the pairing expired (said above).
             if(m.backgroundWatch&&!m.watchRunning&&!m.pairingExpired&&!(m.watchStarting&&m.usbDebugging)&&m.gate==Gate.READY)Surface(shape=RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.secondaryContainer,contentColor=MaterialTheme.colorScheme.onSecondaryContainer){
                 Column(Modifier.fillMaxWidth().padding(18.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
-                    Text("백그라운드 감시가 멈춰 있어요",style=MaterialTheme.typography.titleMedium)
+                    Text(if(watchUnconfirmed)"백그라운드 감시 연결을 확인하지 못했어요" else "백그라운드 감시가 멈춰 있어요",style=MaterialTheme.typography.titleMedium)
                     // Already open on Wi-Fi: "open bluedotOFF on Wi-Fi" is done, so offer the start itself (owner 2026-10-29).
                     val retry=m.usbDebugging&&m.wifiConnected&&!m.pcOnly
-                    Text(if(retry)"감시를 다시 켜지 못했어요." else WatchNotification.advice(m.usbDebugging,m.autoManagement,m.pcOnly),style=MaterialTheme.typography.bodyMedium)
+                    if(!watchUnconfirmed)Text(if(retry)"감시를 다시 켜지 못했어요." else WatchNotification.advice(m.usbDebugging,m.autoManagement,m.pcOnly),style=MaterialTheme.typography.bodyMedium)
                     if(retry)TextButton(onClick=watchRetry){Text("감시 다시 켜기")}
                     if(!m.usbDebugging)TextButton(onClick=openDeveloperOptions){Text("USB 디버깅 켜기")}
                     // Without Wi-Fi a Wi-Fi user is stuck here too, so everyone gets the PC way (owner 2026-10-21).

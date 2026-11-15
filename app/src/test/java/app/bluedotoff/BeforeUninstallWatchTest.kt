@@ -84,11 +84,31 @@ class BeforeUninstallWatchTest {
         val server=Server(context);attach(server)
         val retired=entry().copy(enabled=false,state=TargetState.NOT_APPLIED,locationRetired=true)
         assertTrue(JournalStore(context).commit(retired))
-        val outcome=BatchPipeline.run(context,listOf("test.map"),emptyMap(),true,false,true,false,setOf("test.map"),ReapplySource.APP_OPEN,{true},true,{})
+        val outcome=BatchPipeline.run(context,listOf("test.map"),emptyMap(),true,false,true,false,setOf("test.map"),ReapplySource.APP_OPEN,{true},true,{},mapOf("test.map" to retired.identity))
         assertEquals("작업을 멈춰서 이 앱은 바꾸지 않았어요.",outcome.error)
         assertEquals(1,outcome.results.size);assertFalse(outcome.results.single().success);assertEquals(retired,JournalStore(context).entries().single())
         assertFalse(server.restoreSessionWithLiveWatch)
     }
+    @Test fun aQueuedAutomaticHideStillRespectsANewManualReview() {
+        val server = Server(context)
+        attach(server)
+        val journal = JournalStore(context)
+        val previous = entry().copy(state = TargetState.FAILED_SAFE, retryHide = true)
+        val targets = UiModel(entries = listOf(previous)).reapplyTargetPackages
+        assertEquals(listOf("test.map"), targets)
+        val held = previous.copy(changedByUs = false, retryHide = false)
+        assertTrue(journal.commit(held))
+        assertTrue(UiModel(entries = journal.entries()).reapplyTargetPackages.isEmpty())
+        for (source in listOf(ReapplySource.APP_OPEN, ReapplySource.RESTART)) {
+            val outcome = BatchPipeline.run(context, targets, emptyMap(), true, false, true, false,
+                targets.toSet(), source, { true }, true, {},mapOf("test.map" to previous.identity))
+            assertEquals("작업을 멈춰서 이 앱은 바꾸지 않았어요.", outcome.error)
+            assertFalse(outcome.results.single().success)
+            assertEquals(held, journal.entries().single())
+            assertFalse(server.restoreSessionWithLiveWatch)
+        }
+    }
+
     @Test fun offlineUninstallRestoreKeepsTheHelperUntilItsResultAndDoesNotHideFailure(){
         val controller=Robolectric.buildActivity(MainActivity::class.java).create()
         val server=Server(context)

@@ -33,7 +33,8 @@ object SharedGroupPolicy {
 
 /** One fsynced group record per member, committed atomically before a single UID setter. */
 class SharedGroupEngine(private val port:TargetPort,private val journal:Journal,private val now:()->Long,private val boot:()->String,
-    private val wait:(Long)->Unit={Thread.sleep(it)},private val observe:(String,Snapshot,Boolean)->Unit={_,_,_->}) {
+    private val wait:(Long)->Unit={Thread.sleep(it)},private val observe:(String,Snapshot,Boolean)->Unit={_,_,_->},
+    private val automaticReapply:AutomaticReapply?=null) {
     private fun durable(entries:List<Entry>){val saved=try{journal.commitGroup(entries)}catch(_:Exception){false};if(!saved)throw JournalPersistenceException()}
     private class Started(val names:List<String>,val before:List<Snapshot>,val pending:List<Entry>,val original:Int,val wanted:Int,val hide:Boolean){var attempted=false}
     fun execute(packages:List<String>,hide:Boolean,canStart:()->Boolean):List<Entry> = synchronized(SafetyEngine.writeLock) {
@@ -96,10 +97,12 @@ class SharedGroupEngine(private val port:TargetPort,private val journal:Journal,
         before.forEach{observe("before",it,false)}
         if(before.first().identity.uid in inFlightUids)throw OwnershipChangedException()
         val identities=before.map{it.identity}
-        val all=journal.entries();val old=names.map{p->all.lastOrNull{it.identity.packageName==p&&it.identity.userId==0}
+        val all=journal.entries();val old=names.map{p->
+            val registered=all.lastOrNull{it.identity.packageName==p&&it.identity.userId==0}
+            automaticReapply?.requireRegistered(p,registered)
             // B-10: same rule as single apps (SafetyEngine.prepare): a restored, unregistered record or an old install's record
             // does not block registering the group again; the fresh read is the original.
-            ?.takeUnless{!it.enabled&&(it.state==TargetState.INACTIVE_INSTALL||hide&&it.state==TargetState.NOT_APPLIED)}}
+            registered?.takeUnless{!it.enabled&&(it.state==TargetState.INACTIVE_INSTALL||hide&&it.state==TargetState.NOT_APPLIED)}}
         if(old.any{it!=null}&&old.any{it==null})throw SafetyException("묶음 앱 중 일부만 기록이 있어서 바꾸지 않았어요.")
         if(!hide&&old.any{it==null})throw SafetyException("되돌릴 묶음 기록이 없어요.")
         old.filterNotNull().forEachIndexed{i,e->

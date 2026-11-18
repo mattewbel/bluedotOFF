@@ -23,6 +23,7 @@ internal class OrderlyHelperChain {
 
 /** Keeps adbd stable across bounded helpers; only the final orderly close permits OFF. */
 object WirelessWork {
+    internal class ServiceNotFound:IllegalStateException("연결을 찾지 못했어요. 무선 디버깅의 네트워크 허용과 연결 정보를 확인해주세요.")
     private val lock=Any()
     /** True while this app holds a lease; its own wireless ON/OFF must not look like a user-made connection change. */
     @Volatile var leasing=false;private set
@@ -85,7 +86,11 @@ object WirelessWork {
         val wasOff=!controls.wireless
         if(wasOff) {
             check(controls.mayStart(userAction&&ForegroundState.active||noScreen)){"무선 디버깅을 켜주세요."}
-            check(controls.enableWirelessDebugging(noScreen)){if(AutoBlocker.suspected)AutoBlocker.MESSAGE else "무선 디버깅을 켜지 못했어요. 설정에서 직접 켜주세요."}
+            when(controls.requestWirelessDebugging(noScreen)){
+                WirelessControls.EnableResult.ON -> Unit
+                WirelessControls.EnableResult.REFUSED -> throw AutoBlocker.EnableRefused()
+                WirelessControls.EnableResult.FAILED -> throw AutoBlocker.EnableFailed()
+            }
         }
         val observers=mutableListOf<LocalAdbDiscovery>()
         var completed=false
@@ -101,8 +106,8 @@ object WirelessWork {
                 observer.candidates(LocalAdbDiscovery.CONNECT,guid).singleOrNull()?.port?.takeIf{it!=exclude}?.let{selected=it;latch.countDown()}
             }
             observers+=observer;observer.start()
-            check(latch.await(15,TimeUnit.SECONDS)){"연결을 찾지 못했어요. 무선 디버깅의 네트워크 허용과 연결 정보를 확인해주세요."}
-            return selected?:error("연결을 확인하지 못했어요.")
+            if(!latch.await(15,TimeUnit.SECONDS))throw ServiceNotFound()
+            return selected?:throw ServiceNotFound()
         }
         fun isConnectFailure(error:Throwable)=(error as? LocalAdbStageException)?.state==app.bluedotoff.core.LocalAdbState.ADB_CONNECTION_FAILED
         // A refused key (e.g. the pairing expired) ends before any session: nothing ran, so turning wireless debugging off is safe

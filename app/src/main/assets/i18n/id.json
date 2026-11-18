@@ -766,6 +766,7 @@
   "백그라운드 감시가 멈췄어요": "Pemantauan latar belakang berhenti",
   "휴대폰이 다시 시작되어 백그라운드 감시가 멈췄어요.": "Pemantauan latar belakang berhenti karena ponsel dimulai ulang.",
   "USB 디버깅이 꺼져서 백그라운드 감시가 멈췄어요.": "Pemantauan latar belakang berhenti karena Proses debug USB dimatikan.",
+  "USB 디버깅 상태를 확인하지 못해 백그라운드 감시를 멈췄어요.": "Pemantauan latar belakang dihentikan karena status proses debug USB tidak dapat diperiksa.",
   "백그라운드 감시가 멈췄어요.": "Pemantauan latar belakang berhenti.",
   "다시 켜려면 Wi-Fi에 연결된 상태에서 bluedotOFF를 열어주세요.": "Untuk memulainya lagi, buka bluedotOFF saat terhubung ke Wi-Fi.",
   "USB 디버깅을 켜 두면 bluedotOFF를 열지 않아도 숨김이 풀린 앱을 감지하는 대로 다시 적용해요.": "Dengan Proses debug USB aktif, aplikasi yang penyembunyiannya hilang diterapkan ulang segera setelah perubahan terdeteksi, bahkan tanpa membuka bluedotOFF.",
@@ -1001,5 +1002,13 @@
   "관리 목록에서 제외한 앱": "Aplikasi yang dihapus dari daftar pengelolaan",
   "업데이트 후 위치 권한 요청이 없어졌어요.": "Aplikasi ini tidak lagi meminta izin lokasi setelah pembaruan.",
   "위젯 확인": "Pemeriksaan widget",
-  "확인하지 못했어요. bluedotOFF를 열어 다시 확인해주세요.": "Tidak dapat memeriksa. Buka bluedotOFF untuk memeriksa lagi."
+  "확인하지 못했어요. bluedotOFF를 열어 다시 확인해주세요.": "Tidak dapat memeriksa. Buka bluedotOFF untuk memeriksa lagi.",
+  "앱을 열 때 다시 숨기고 닫으면 무선 디버깅이 꺼져요. 적용 후에는 보안 위험 자동 차단을 다시 켜도 돼요. 다음에 확인하거나 다시 적용할 때만 잠시 꺼주세요.": "Aplikasi disembunyikan lagi saat Anda membuka aplikasi, dan debug nirkabel mati saat Anda menutupnya. Setelah menerapkan, Anda dapat mengaktifkan kembali Pemblokir Otomatis. Nonaktifkan sebentar hanya saat memeriksa atau menerapkan ulang.",
+  "앱을 열지 않아도 다시 숨겨요. 보안 위험 자동 차단 때문에 USB 디버깅이 꺼지면 감시가 멈춰요. USB 디버깅을 켜 두면 일부 은행·결제 앱이 안 열릴 수 있어요.": "Aplikasi disembunyikan lagi tanpa membuka aplikasi. Jika Pemblokir Otomatis menonaktifkan debug USB, pemantauan berhenti. Beberapa aplikasi perbankan dan pembayaran mungkin tidak terbuka saat debug USB aktif.",
+  "보안 위험 자동 차단을 확인해 주세요": "Periksa Pemblokir Otomatis",
+  "무선 디버깅을 켤 수 없어요. 보안 위험 자동 차단이 켜져 있다면 잠시 끈 뒤 bluedotOFF로 돌아와 주세요. 이미 꺼져 있다면 연결 설정을 확인해 주세요.": "Debug nirkabel tidak dapat diaktifkan. Jika Pemblokir Otomatis aktif, nonaktifkan sebentar lalu kembali ke bluedotOFF. Jika sudah nonaktif, periksa pengaturan koneksi.",
+  "확인이 끝났어요. 보안 위험 자동 차단을 껐다면 다시 켜도 돼요.": "Pemeriksaan selesai. Jika Anda menonaktifkan Pemblokir Otomatis, Anda dapat mengaktifkannya kembali.",
+  "‘앱을 켤 때만 적용’으로 숨긴 뒤에는 보안 위험 자동 차단을 다시 켜도 돼요. 숨김을 확인하거나 다시 적용할 때만 설정 → 보안 및 개인정보 보호에서 잠시 꺼주세요. 백그라운드 감시 중 USB 디버깅이 꺼지면 감시가 멈춰요.": "Setelah menyembunyikan dengan “Hanya saat Anda membuka aplikasi”, Anda dapat mengaktifkan kembali Pemblokir Otomatis. Nonaktifkan sebentar di Pengaturan → Keamanan dan privasi hanya saat memeriksa atau menerapkan ulang penyembunyian. Jika debug USB nonaktif saat pemantauan latar belakang, pemantauan berhenti.",
+  "휴대폰이 재시작됐어요. bluedotOFF에서 등록한 앱의 숨김 상태를 확인해 주세요.": "Ponsel dimulai ulang. Periksa status penyembunyian aplikasi yang terdaftar di bluedotOFF.",
+  "무선 디버깅에 연결할 수 없어요. 이 Wi-Fi에서 무선 디버깅을 허용했는지, 보안 위험 자동 차단이 연결을 막고 있는지 확인해 주세요.": "Tidak dapat terhubung ke debug nirkabel. Periksa apakah Anda mengizinkan debug nirkabel di Wi-Fi ini dan apakah Pemblokir Otomatis memblokir koneksi."
 }

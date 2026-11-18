@@ -153,9 +153,9 @@ object ScopeDialogs {
     fun pcHelp(activity:ComponentActivity):AutoCloseable =
         alert(activity,"명령이 안 될 때","PC 명령 창에 나온 문구에 맞는 항목을 확인하세요.","닫기" to {},extra={app.bluedotoff.adb.PcStart.HELP.forEach{Copy(it)}})
     /** Setup: Auto Blocker cannot be detected there, so the same two-picture guide as the Home dialog. */
-    fun autoBlocker(activity:ComponentActivity):AutoCloseable =
-        alert(activity,"보안 위험 자동 차단을 꺼주세요","이 기능이 켜져 있으면 휴대폰이 무선 디버깅을 막아서 bluedotOFF가 연결할 수 없어요. 아래 순서대로 끈 뒤 다시 시도해주세요.",
-            "보안 설정 열기" to {SettingsEntrypoints.autoBlocker(activity)},"닫기" to {},extra={
+    fun autoBlocker(activity:ComponentActivity,openSettings:()->Unit={SettingsEntrypoints.autoBlocker(activity)}):AutoCloseable =
+        alert(activity,app.bluedotoff.adb.AutoBlocker.TITLE,app.bluedotoff.adb.AutoBlocker.MESSAGE,
+            "보안 설정 열기" to openSettings,"닫기" to {},extra={
                 listOf(app.bluedotoff.core.GuideStep.AUTO_BLOCKER,app.bluedotoff.core.GuideStep.AUTO_BLOCKER_OFF).forEach{step->
                     val guide=GuideContent.load(activity,app.bluedotoff.core.GuideSelection(step))
                     Text("${step.number}  ${guide.title}",style=MaterialTheme.typography.titleSmall)

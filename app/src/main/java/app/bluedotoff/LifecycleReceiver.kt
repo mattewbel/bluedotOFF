@@ -104,9 +104,6 @@ object ReapplyNotification {
         if(unresolved.any{it.identity.packageName in packages})show(context,unresolved.first(),checkInApp=true)
         else clear(context)
     }
-    /** Opening bluedotOFF re-applies by itself (setting on and automatic management ready). */
-    private fun autoReapply(context: Context) = context.getSharedPreferences("ui-state",Context.MODE_PRIVATE).getBoolean("autoReapply",true) &&
-        app.bluedotoff.adb.WirelessControls(context).let { it.consent && it.granted }
     /** [checkInApp]: some apps still need attention after processing, interruption or a partial success. */
     @Synchronized fun show(context: Context, target: Entry?, checkInApp: Boolean = false) {
         val entries=remaining(context)
@@ -129,8 +126,7 @@ object ReapplyNotification {
         val body=if(checkInApp) "숨김 설정을 확인해야 하는 앱이 남았어요. 앱을 열어 이유를 확인해 주세요."
             else if(target!=null) "앱 업데이트 후 숨김 설정을 다시 확인해야 해요. bluedotOFF를 열어 확인해 주세요."
             else if(RestartRecoveryJob.eligible(context)) "Wi-Fi에 연결되면 숨김을 자동으로 다시 적용해요. 그래도 남아 있으면 bluedotOFF를 열어주세요."
-            else if(autoReapply(context)) "bluedotOFF를 열면 숨김을 자동으로 다시 적용해요."
-            else "재부팅 후에는 무선 디버깅을 잠시 켜고 등록 앱을 확인해주세요."
+            else "휴대폰이 재시작됐어요. bluedotOFF에서 등록한 앱의 숨김 상태를 확인해 주세요."
         val notification = Notification.Builder(context, CHANNEL).setSmallIcon(R.drawable.ic_dot).setContentTitle(UiText.text(context,"파란 위치 표시 · 확인할 앱 ${entries.size}개")).setContentText(UiText.text(context,body)).setStyle(Notification.BigTextStyle().bigText(UiText.text(context,body))).setContentIntent(content).setDeleteIntent(delete).addExtras(android.os.Bundle().apply{putStringArray("issues",issues.toTypedArray())}).setAutoCancel(true).setOnlyAlertOnce(true).addAction(Notification.Action.Builder(null,UiText.text(context,"설정 확인"),content).build()).build()
         try { manager.notify(ID, notification) } catch (_: SecurityException) { /* Notifications optional; journal already durable. */ }
     }

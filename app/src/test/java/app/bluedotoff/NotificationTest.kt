@@ -5,6 +5,10 @@ import android.app.Application
 import android.app.NotificationManager
 import android.app.Notification
 import android.app.NotificationChannel
+import android.content.Intent
+import android.content.IntentFilter
+import android.net.Uri
+import android.provider.Settings
 import app.bluedotoff.core.*
 import org.junit.Assert.*
 import org.junit.Test
@@ -83,6 +87,35 @@ class NotificationTest {
         assertNull(intent.getStringExtra("target"));assertEquals(MainActivity::class.java.name,intent.component!!.className)
         assertTrue(intent.getBooleanExtra("check",false))
         assertEquals(n.contentIntent,n.actions.single().actionIntent)
+    }
+    @Test fun receivedUpdateAndBootCanPromptACheckWithBothDebuggingSwitchesOff(){
+        shadowOf(context).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        Settings.Global.putInt(context.contentResolver,Settings.Global.ADB_ENABLED,0)
+        Settings.Global.putInt(context.contentResolver,"adb_wifi_enabled",0)
+        Settings.Global.putInt(context.contentResolver,Settings.Global.BOOT_COUNT,2)
+        val target=entry(state=TargetState.APPLIED).copy(bootSession="count:1")
+        val receiver=LifecycleReceiver()
+        val executor=LifecycleReceiver::class.java.getDeclaredField("executor").apply{isAccessible=true}.get(null) as java.util.concurrent.ExecutorService
+        for(action in listOf(Intent.ACTION_PACKAGE_REPLACED,Intent.ACTION_BOOT_COMPLETED)){
+            save(target);manager.cancelAll()
+            val update=action==Intent.ACTION_PACKAGE_REPLACED
+            val filter=IntentFilter(action).apply{if(update)addDataScheme("package")}
+            context.registerReceiver(receiver,filter,android.content.Context.RECEIVER_NOT_EXPORTED)
+            try{
+                val event=Intent(action).setPackage(context.packageName)
+                if(update)event.data=Uri.fromParts("package",target.identity.packageName,null)
+                context.sendBroadcast(event);shadowOf(context.mainLooper).idle()
+                executor.submit{}.get(5,java.util.concurrent.TimeUnit.SECONDS)
+                val saved=JournalStore(context).entries().single()
+                assertEquals(if(update)TargetState.NEEDS_REAPPLY_UPDATE else TargetState.NEEDS_REAPPLY_BOOT,saved.state)
+                assertEquals(target.originalBit,saved.originalBit)
+                val alert=shadowOf(manager).allNotifications.single()
+                assertTrue(shadowOf(alert.contentIntent).savedIntent.getBooleanExtra("check",false))
+                if(!update)assertEquals(UiText.text(context,"휴대폰이 재시작됐어요. bluedotOFF에서 등록한 앱의 숨김 상태를 확인해 주세요."),alert.extras.getCharSequence(Notification.EXTRA_TEXT))
+                assertEquals(0,Settings.Global.getInt(context.contentResolver,"adb_wifi_enabled"))
+                assertEquals(0,Settings.Global.getInt(context.contentResolver,Settings.Global.ADB_ENABLED))
+            }finally{context.unregisterReceiver(receiver)}
+        }
     }
     @Test fun updateNotificationOpensHomeForAllAppsWithoutChangingTheirRecords(){
         shadowOf(context).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)

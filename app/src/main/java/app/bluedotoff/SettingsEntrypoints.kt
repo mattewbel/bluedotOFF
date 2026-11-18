@@ -29,12 +29,13 @@ object SettingsEntrypoints {
         }
     }
     /** Auto Blocker screen when Samsung exports it to apps; otherwise the general security screen. */
-    fun autoBlocker(context:Context) {
+    fun autoBlocker(context:Context):Boolean {
         val direct=Intent("com.samsung.android.rampart.action.MAIN_SETTING_ACTIVITY").setPackage("com.samsung.android.rampart")
         val info=context.packageManager.resolveActivity(direct,PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo
-        if(info!=null&&info.exported&&info.enabled&&(info.permission==null||context.checkSelfPermission(info.permission)==PackageManager.PERMISSION_GRANTED)&&runCatching{context.startActivity(direct)}.isSuccess)return
+        if(info!=null&&info.exported&&info.enabled&&(info.permission==null||context.checkSelfPermission(info.permission)==PackageManager.PERMISSION_GRANTED)&&runCatching{context.startActivity(direct)}.isSuccess)return true
         for(action in listOf(Settings.ACTION_SECURITY_SETTINGS,Settings.ACTION_SETTINGS))
-            if(runCatching{context.startActivity(Intent(action))}.isSuccess)return
+            if(runCatching{context.startActivity(Intent(action))}.isSuccess)return true
+        return false
     }
     /** Developer options, where USB debugging is switched on (background watch). */
     fun developerOptions(context:Context) {

@@ -42,11 +42,16 @@ class WatchBridgeProvider:ContentProvider() {
         }
         return Bundle().apply {
             putInt("uid",c.applicationInfo.uid)
-            putBoolean("enabled",accepted&&WatchClient.owns(c,b))
-            putBoolean("draining",WatchClient.draining(b))
+            val enabled=accepted&&WatchClient.owns(c,b)
+            val draining=WatchClient.draining(b)
+            val retryContact=!enabled&&!draining&&WatchClient.retryUsbContact(c,b)
+            putBoolean("enabled",enabled)
+            putBoolean("draining",draining)
+            putBoolean("retryContact",retryContact)
             putString("targets",targets.toString())
             putLongArray("checkedRevisions",receipt.checked)
             putLongArray("failedRevisions",receipt.failed)
+            if(!enabled&&!draining&&!retryContact)WatchClient.recordExitReply(c,b)
         }
     }
     override fun query(u:Uri,p:Array<out String>?,s:String?,a:Array<out String>?,o:String?):Cursor?=throw UnsupportedOperationException()

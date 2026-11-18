@@ -766,6 +766,7 @@
   "백그라운드 감시가 멈췄어요": "Hintergrundüberwachung gestoppt",
   "휴대폰이 다시 시작되어 백그라운드 감시가 멈췄어요.": "Die Hintergrundüberwachung wurde gestoppt, weil das Telefon neu gestartet wurde.",
   "USB 디버깅이 꺼져서 백그라운드 감시가 멈췄어요.": "Die Hintergrundüberwachung wurde gestoppt, weil USB-Debugging ausgeschaltet wurde.",
+  "USB 디버깅 상태를 확인하지 못해 백그라운드 감시를 멈췄어요.": "Die Hintergrundüberwachung wurde gestoppt, weil der Status des USB-Debuggings nicht geprüft werden konnte.",
   "백그라운드 감시가 멈췄어요.": "Hintergrundüberwachung gestoppt.",
   "다시 켜려면 Wi-Fi에 연결된 상태에서 bluedotOFF를 열어주세요.": "Um sie neu zu starten, öffnen Sie bluedotOFF bei bestehender WLAN-Verbindung.",
   "USB 디버깅을 켜 두면 bluedotOFF를 열지 않아도 숨김이 풀린 앱을 감지하는 대로 다시 적용해요.": "Bei aktivem USB-Debugging werden Apps, deren Ausblendung aufgehoben wurde, erneut angewendet, sobald eine Änderung erkannt wird – auch ohne bluedotOFF zu öffnen.",
@@ -1001,5 +1002,13 @@
   "관리 목록에서 제외한 앱": "Aus der Verwaltungsliste entfernte Apps",
   "업데이트 후 위치 권한 요청이 없어졌어요.": "Die App fordert nach dem Update keine Standortberechtigung mehr an.",
   "위젯 확인": "Widget-Prüfung",
-  "확인하지 못했어요. bluedotOFF를 열어 다시 확인해주세요.": "Prüfung nicht möglich. Öffnen Sie bluedotOFF, um erneut zu prüfen."
+  "확인하지 못했어요. bluedotOFF를 열어 다시 확인해주세요.": "Prüfung nicht möglich. Öffnen Sie bluedotOFF, um erneut zu prüfen.",
+  "앱을 열 때 다시 숨기고 닫으면 무선 디버깅이 꺼져요. 적용 후에는 보안 위험 자동 차단을 다시 켜도 돼요. 다음에 확인하거나 다시 적용할 때만 잠시 꺼주세요.": "Beim Öffnen der App werden Apps wieder ausgeblendet; beim Schließen wird Debugging über WLAN ausgeschaltet. Nach dem Anwenden können Sie die Automatische Sperre wieder einschalten. Schalten Sie sie nur zur nächsten Prüfung oder erneuten Anwendung kurz aus.",
+  "앱을 열지 않아도 다시 숨겨요. 보안 위험 자동 차단 때문에 USB 디버깅이 꺼지면 감시가 멈춰요. USB 디버깅을 켜 두면 일부 은행·결제 앱이 안 열릴 수 있어요.": "Apps werden auch ohne Öffnen der App wieder ausgeblendet. Wenn die Automatische Sperre USB-Debugging ausschaltet, stoppt die Überwachung. Bei eingeschaltetem USB-Debugging öffnen manche Banking- und Bezahl-Apps möglicherweise nicht.",
+  "보안 위험 자동 차단을 확인해 주세요": "Automatische Sperre prüfen",
+  "무선 디버깅을 켤 수 없어요. 보안 위험 자동 차단이 켜져 있다면 잠시 끈 뒤 bluedotOFF로 돌아와 주세요. 이미 꺼져 있다면 연결 설정을 확인해 주세요.": "Debugging über WLAN konnte nicht eingeschaltet werden. Falls die Automatische Sperre aktiv ist, schalten Sie sie kurz aus und kehren Sie zu bluedotOFF zurück. Ist sie bereits aus, prüfen Sie die Verbindungseinstellungen.",
+  "확인이 끝났어요. 보안 위험 자동 차단을 껐다면 다시 켜도 돼요.": "Die Prüfung ist abgeschlossen. Falls Sie die Automatische Sperre ausgeschaltet haben, können Sie sie wieder einschalten.",
+  "‘앱을 켤 때만 적용’으로 숨긴 뒤에는 보안 위험 자동 차단을 다시 켜도 돼요. 숨김을 확인하거나 다시 적용할 때만 설정 → 보안 및 개인정보 보호에서 잠시 꺼주세요. 백그라운드 감시 중 USB 디버깅이 꺼지면 감시가 멈춰요.": "Nach dem Ausblenden mit „Nur beim Öffnen der App“ können Sie die Automatische Sperre wieder einschalten. Schalten Sie sie nur zum Prüfen oder erneuten Anwenden der Ausblendung unter Einstellungen → Sicherheit und Datenschutz kurz aus. Wenn USB-Debugging während der Hintergrundüberwachung ausgeschaltet wird, stoppt die Überwachung.",
+  "휴대폰이 재시작됐어요. bluedotOFF에서 등록한 앱의 숨김 상태를 확인해 주세요.": "Ihr Telefon wurde neu gestartet. Bitte prüfen Sie in bluedotOFF den Ausblendungsstatus Ihrer registrierten Apps.",
+  "무선 디버깅에 연결할 수 없어요. 이 Wi-Fi에서 무선 디버깅을 허용했는지, 보안 위험 자동 차단이 연결을 막고 있는지 확인해 주세요.": "Keine Verbindung zu Debugging über WLAN möglich. Prüfen Sie, ob Sie Debugging über WLAN in diesem WLAN zugelassen haben und ob die Automatische Sperre die Verbindung blockiert."
 }

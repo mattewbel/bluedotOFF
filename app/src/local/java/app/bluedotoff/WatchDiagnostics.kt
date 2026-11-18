@@ -22,8 +22,11 @@ internal object WatchDiagnostics {
         CONTACT_UNCONFIRMED("Helper contact could not be confirmed"),
         CONTACT_DELAYED("Expected helper contact was delayed"),
         BINDER_DIED("Active helper connection died"),
+        ACTIVE_REFUSED("App asked its active helper to exit"),
         APP_UPDATED("App updated"),
         USB_OFF("USB debugging reported off"),
+        USB_UNKNOWN("USB debugging state could not be read"),
+        UNOWNED_USB_UNKNOWN("Unowned helper contact refused while USB debugging state was unavailable"),
         BOOT("Phone restarted"),
         ATTACH_SAME("Existing helper connection confirmed"),
         ATTACH_NEW("New helper connection confirmed")

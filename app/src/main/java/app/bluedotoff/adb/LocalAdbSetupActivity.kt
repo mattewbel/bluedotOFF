@@ -33,6 +33,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
     private var permissionDialog=false
     private var notificationSettingsOpened=false
     private var batterySettingsOpened=false
+    private var securitySettingsOpened=false
     private var notificationReminder:AutoCloseable?=null
     private var code:EditText?=null
     private val changed:()->Unit={runOnUiThread{render()}}
@@ -43,6 +44,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         usbChoicePending=state?.getBoolean("usbChoicePending")?:false
         notificationSettingsOpened=state?.getBoolean("notificationSettingsOpened")?:false
         batterySettingsOpened=state?.getBoolean("batterySettingsOpened")?:false
+        securitySettingsOpened=state?.getBoolean(AutoBlocker.SETUP_VISIT)?:false
         advanced=app.bluedotoff.BuildConfig.DEBUG&&intent.getBooleanExtra("diagnostics",false)
         val wirelessSetup=state?.getBoolean(WIRELESS_SETUP,intent.getBooleanExtra(WIRELESS_SETUP,false))?:intent.getBooleanExtra(WIRELESS_SETUP,false)
         intent.putExtra(WIRELESS_SETUP,wirelessSetup)
@@ -93,7 +95,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
     override fun onStop(){app.bluedotoff.ForegroundState.stopped();super.onStop()}
     override fun onResume(){super.onResume();foreground=true;PairingNotifications.cancelHint(this);if(notificationSettingsOpened){notificationSettingsOpened=false;session.notificationsResult()};if(!permissionDialog){if(batterySettingsOpened){batterySettingsOpened=false;session.batterySettingsReturned()}else session.resume()};render()}
     override fun onPause(){foreground=false;super.onPause()}
-    override fun onSaveInstanceState(state:Bundle){state.putBoolean("permissionDialog",permissionDialog);state.putBoolean("usbChoicePending",usbChoicePending);state.putBoolean("notificationSettingsOpened",notificationSettingsOpened);state.putBoolean("batterySettingsOpened",batterySettingsOpened);state.putBoolean(WIRELESS_SETUP,intent.getBooleanExtra(WIRELESS_SETUP,false));state.putBoolean(PC_CHOSEN_HERE,intent.getBooleanExtra(PC_CHOSEN_HERE,false));super.onSaveInstanceState(state)}
+    override fun onSaveInstanceState(state:Bundle){state.putBoolean("permissionDialog",permissionDialog);state.putBoolean("usbChoicePending",usbChoicePending);state.putBoolean("notificationSettingsOpened",notificationSettingsOpened);state.putBoolean("batterySettingsOpened",batterySettingsOpened);state.putBoolean(AutoBlocker.SETUP_VISIT,securitySettingsOpened);state.putBoolean(WIRELESS_SETUP,intent.getBooleanExtra(WIRELESS_SETUP,false));state.putBoolean(PC_CHOSEN_HERE,intent.getBooleanExtra(PC_CHOSEN_HERE,false));super.onSaveInstanceState(state)}
     override fun onDestroy(){notificationReminder?.close();code?.text?.clear();session.detach(changed);if(isFinishing&&!isChangingConfigurations)session.close();super.onDestroy()}
     private fun add(view:View){
         box.addView(view,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(BlueDotAppearance.SECTION_GAP)})
@@ -247,8 +249,8 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         }else if(p.stage in listOf(SetupStage.PAIRING,SetupStage.CONNECTING,SetupStage.VERIFYING,SetupStage.FINAL_CHECK,SetupStage.ENABLING_MANAGEMENT))add(ProgressBar(this).apply{indeterminateTintList=ColorStateList.valueOf(colors.primary.toArgb())})
         if(p.stage==SetupStage.AUTOMATIC_MANAGEMENT){
             if(session.managementError.isNotBlank())text(session.managementError,14f)
-            choice(p.button,"무선 디버깅","bluedotOFF를 열 때 풀린 앱을 다시 숨겨요. 앱을 닫으면 무선 디버깅도 꺼져요."){act(p.action)}
-            choice("② 백그라운드 자동 감시","USB 디버깅","앱을 열지 않아도 풀린 앱을 알아서 다시 숨겨요. USB 디버깅을 켜 둬야 해서 일부 은행·결제 앱이 안 열릴 수 있어요."){chooseUsbWatch()}
+            choice(p.button,"무선 디버깅","앱을 열 때 다시 숨기고 닫으면 무선 디버깅이 꺼져요. 적용 후에는 보안 위험 자동 차단을 다시 켜도 돼요. 다음에 확인하거나 다시 적용할 때만 잠시 꺼주세요."){act(p.action)}
+            choice("② 백그라운드 자동 감시","USB 디버깅","앱을 열지 않아도 다시 숨겨요. 보안 위험 자동 차단 때문에 USB 디버깅이 꺼지면 감시가 멈춰요. USB 디버깅을 켜 두면 일부 은행·결제 앱이 안 열릴 수 있어요."){chooseUsbWatch()}
             text("두 방법 모두 bluedotOFF에 시스템 설정 변경 권한을 줘요. 이 권한으로 페어링이 7일 뒤 저절로 풀리지 않게도 해요(이 폰에서 디버깅을 허락한 PC에도 적용).",14f)
             if(usbChoicePending&&app.bluedotoff.adb.WatchClient.usbEnabled(this))box.post{finishUsbChoice()}
             if(usbChoicePending)text("개발자 옵션에서 ‘USB 디버깅’을 켠 뒤 이 화면으로 돌아오세요. 켜져 있으면 자동으로 다음 단계로 넘어가요.",14f)
@@ -318,7 +320,8 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
             }
         }
     }
-    private fun autoBlockerHelp(){app.bluedotoff.ScopeDialogs.autoBlocker(this)}
+    private fun openSecuritySettings(){if(app.bluedotoff.SettingsEntrypoints.autoBlocker(this))securitySettingsOpened=true}
+    private fun autoBlockerHelp(){app.bluedotoff.ScopeDialogs.autoBlocker(this,::openSecuritySettings)}
     /** "PC로 시작" runs the background watch (the helper is that watch): one notice says so with the watch risks. */
     private fun noWifi(){
         app.bluedotoff.ScopeDialogs.watch(this,"Wi-Fi 없이 PC로 시작할까요?","보통은 Wi-Fi로 시작해요. 다른 휴대폰의 핫스팟에 연결해도 될 수 있어요. Wi-Fi가 전혀 없다면 PC와 USB 케이블로 시작할 수 있어요. PC로 시작하면 백그라운드 감시 방법으로만 동작하고, 휴대폰을 다시 시작하거나 bluedotOFF를 업데이트할 때마다 PC에서 명령을 다시 실행해야 해요.","PC로 시작"){startPc()}
@@ -334,6 +337,8 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         if(intent.getBooleanExtra(WIRELESS_SETUP,false)&&!session.facts.pcStart&&session.facts.verified){
             check(getSharedPreferences("ui-state",0).edit().putBoolean("pcStart",false).remove("pcStartWatchOn").commit())
         }
+        if(securitySettingsOpened&&session.facts.verified&&!session.facts.pcStart&&!app.bluedotoff.BackgroundWatch.enabled(this))
+            getSharedPreferences("ui-state",0).edit().putBoolean(AutoBlocker.SETUP_VISIT,true).apply()
         session.close(keepScan=true)
         startActivity(Intent(this,app.bluedotoff.MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP));finish()
     }
@@ -362,7 +367,7 @@ class LocalAdbSetupActivity:androidx.activity.ComponentActivity() {
         SetupAction.RETRY_PAIRING->session.beginPairing()
         SetupAction.RETRY_CONNECTION,SetupAction.RESUME->session.retryConnection()
         SetupAction.CHOOSE_CONNECTION->session.chooseConnection()
-        SetupAction.SECURITY_SETTINGS->app.bluedotoff.SettingsEntrypoints.autoBlocker(this)
+        SetupAction.SECURITY_SETTINGS->openSecuritySettings()
         SetupAction.NONE->Unit
     }}
     override fun onRequestPermissionsResult(r:Int,p:Array<String>,g:IntArray){

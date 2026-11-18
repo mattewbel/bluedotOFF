@@ -79,7 +79,7 @@ fun TargetState.label(): String = when(this) {
 private fun Snapshot.blockReason(): String = rejectionReason()
 
 @Composable
-fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, hide: (String)->Unit, restore: (String)->Unit, hideAll: ()->Unit, restoreAll: ()->Unit, openBackend: ()->Unit, setupBackend: ()->Unit, authorize: ()->Unit, refresh: ()->Unit, allowNotifications: ()->Unit, dismissNotifications: ()->Unit, begin: ()->Unit, loadApps: ()->Unit, clearNotice: ()->Unit, togglePick:(String)->Unit={}, addSelected:()->Unit={}, queryChanged:(String)->Unit={},filterChanged:(AppFilter)->Unit={},editHome:()->Unit={},toggleHome:(String)->Unit={},restoreSelected:()->Unit={},contentShown:()->Unit={},pickerRevision:Long=0L,historyViewChanged:(HistoryView)->Unit={},pickerViewChanged:(PickerView)->Unit={},wirelessExit:()->Unit={},toggleAll:()->Unit={},managementChanged:(Boolean)->Unit={},removeManagementPermission:()->Unit={},sharedInspect:(String)->Unit={},sharedAccept:()->Unit={},sharedDismiss:()->Unit={},scopeChange:()->Unit={},reapplyNeeded:(List<String>)->Unit={},notificationChanged:(Boolean)->Unit={},recheck:()->Unit={},bigGroupsAccept:()->Unit={},bigGroupsDismiss:()->Unit={},restorePickAll:(List<String>)->Unit={},rejectedDismiss:()->Unit={},showPick:(String)->Unit={},showPickAll:(List<String>)->Unit={},showSelected:()->Unit={},refreshHistory:()->Unit={},autoReapplyChanged:(Boolean)->Unit={},openShow:()->Unit={},beforeUninstall:()->Unit={},uninstallDismiss:()->Unit={},openAppInfo:()->Unit={},copyDiagnostics:()->Unit={},backgroundWatchChanged:(Boolean)->Unit={},openDeveloperOptions:()->Unit={},openBattery:(Boolean)->Unit={},dismissFirmwareNotice:()->Unit={},updateOfferAnswer:(Boolean)->Unit={},updateCheckChanged:(Boolean)->Unit={},checkUpdateNow:()->Unit={},openUpdate:(String)->Unit={},skipUpdate:(String)->Unit={},pcStart:()->Unit={},wifiSetup:()->Unit={},watchAfterUsb:()->Unit={}) {
+fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, hide: (String)->Unit, restore: (String)->Unit, hideAll: ()->Unit, restoreAll: ()->Unit, openBackend: ()->Unit, setupBackend: ()->Unit, authorize: ()->Unit, refresh: ()->Unit, allowNotifications: ()->Unit, dismissNotifications: ()->Unit, begin: ()->Unit, loadApps: ()->Unit, clearNotice: ()->Unit, togglePick:(String)->Unit={}, addSelected:()->Unit={}, queryChanged:(String)->Unit={},filterChanged:(AppFilter)->Unit={},editHome:()->Unit={},toggleHome:(String)->Unit={},restoreSelected:()->Unit={},contentShown:()->Unit={},pickerRevision:Long=0L,historyViewChanged:(HistoryView)->Unit={},pickerViewChanged:(PickerView)->Unit={},wirelessExit:()->Unit={},toggleAll:()->Unit={},managementChanged:(Boolean)->Unit={},removeManagementPermission:()->Unit={},sharedInspect:(String)->Unit={},sharedAccept:()->Unit={},sharedDismiss:()->Unit={},scopeChange:()->Unit={},reapplyNeeded:(List<String>)->Unit={},notificationChanged:(Boolean)->Unit={},recheck:()->Unit={},bigGroupsAccept:()->Unit={},bigGroupsDismiss:()->Unit={},restorePickAll:(List<String>)->Unit={},rejectedDismiss:()->Unit={},showPick:(String)->Unit={},showPickAll:(List<String>)->Unit={},showSelected:()->Unit={},refreshHistory:()->Unit={},autoReapplyChanged:(Boolean)->Unit={},openShow:()->Unit={},beforeUninstall:()->Unit={},uninstallDismiss:()->Unit={},openAppInfo:()->Unit={},copyDiagnostics:()->Unit={},backgroundWatchChanged:(Boolean)->Unit={},openDeveloperOptions:()->Unit={},openBattery:(Boolean)->Unit={},dismissFirmwareNotice:()->Unit={},updateOfferAnswer:(Boolean)->Unit={},updateCheckChanged:(Boolean)->Unit={},checkUpdateNow:()->Unit={},openUpdate:(String)->Unit={},skipUpdate:(String)->Unit={},pcStart:()->Unit={},wifiSetup:()->Unit={},watchAfterUsb:()->Unit={},openSecurity:()->Unit={}) {
     val context = LocalContext.current
     val dark = isSystemInDarkTheme()
     val motion = ValueAnimator.areAnimatorsEnabled()
@@ -112,7 +112,10 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
     // Height of a page's pinned bottom buttons (앱 추가, 복원, 숨김 풀기), so notices do not cover those either.
     var actionHeight by remember { mutableStateOf(0) }
     val reportActions=remember{{h:Int->actionHeight=h}}
-    LaunchedEffect(model.notice,model.busy) { if(model.notice==app.bluedotoff.adb.AutoBlocker.MESSAGE&&!model.busy){showAutoBlocker=true;clearNotice()} else if(model.notice.isNotBlank()&&!model.busy){val text=UiText.text(context,UiText.error(model.notice));clearNotice()
+    LaunchedEffect(model.notice,model.busy,model.blockerReminder) { if(model.notice==app.bluedotoff.adb.AutoBlocker.MESSAGE&&!model.busy){showAutoBlocker=true;clearNotice()} else if((model.notice.isNotBlank()||model.blockerReminder)&&!model.busy){
+        val text=listOfNotNull(model.notice.takeIf{it.isNotBlank()}?.let{UiText.text(context,UiText.error(it))},
+            if(model.blockerReminder)UiText.text(context,app.bluedotoff.adb.AutoBlocker.FINISHED) else null).joinToString("\n")
+        clearNotice()
         // Shown for 5 s in its own scope: clearing or replacing the notice right after must not cut it short (it looked like ~1 s).
         snackScope.launch{snackbars.currentSnackbarData?.dismiss();val shown=launch{snackbars.showSnackbar(text,duration=SnackbarDuration.Indefinite)};kotlinx.coroutines.delay(5000);shown.cancel()}} }
     MaterialTheme(colorScheme=scheme) {
@@ -176,7 +179,7 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
                     if(model.page==Page.HELP) HelpScreen(openBackend,setupBackend,{navigate(model.pageBack)},setupFirst=model.gate!=Gate.READY,pcOnly=model.pcOnly)
                     else if(model.gate!=Gate.READY) Wizard(model,openBackend,begin,{navigate(Page.HELP)},copyDiagnostics)
                     else when(model.page) {
-                        Page.HOME -> HomeScreen(model,wide,{navigate(Page.PICK)},{showRestoreMenu=true},select,openBackend,{navigate(Page.HISTORY)},hide,editHome,toggleHome,restoreSelected,wirelessExit,{showReapplyNeeded=true},recheck,openDeveloperOptions=openDeveloperOptions,dismissFirmwareNotice=dismissFirmwareNotice,openUpdate=openUpdate,skipUpdate=skipUpdate,pcStart=pcStart,watchRetry={backgroundWatchChanged(true)})
+                        Page.HOME -> HomeScreen(model,wide,{navigate(Page.PICK)},{showRestoreMenu=true},select,openBackend,{navigate(Page.HISTORY)},hide,editHome,toggleHome,restoreSelected,wirelessExit,{showReapplyNeeded=true},recheck,openDeveloperOptions=openDeveloperOptions,dismissFirmwareNotice=dismissFirmwareNotice,openUpdate=openUpdate,skipUpdate=skipUpdate,pcStart=pcStart,watchRetry={backgroundWatchChanged(true)},openSecurity=openSecurity)
                         Page.HISTORY -> HistoryScreen(model,hide,openBackend,historyViewChanged,select,refreshHistory)
                         Page.RESTORE -> RestoreScreen(model,toggleHome,restorePickAll,restoreSelected,openBackend)
                         Page.SHOW -> ShowScreen(model,showPick,showPickAll,showSelected)
@@ -221,9 +224,9 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
                 }
             }
         }
-        if(showAutoBlocker&&!model.busy) PanelAlert(onDismissRequest={showAutoBlocker=false},title={Text("보안 위험 자동 차단을 꺼주세요")},
-            text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(16.dp)){Text("이 기능이 켜져 있으면 휴대폰이 무선 디버깅을 막아서 bluedotOFF가 연결할 수 없어요. 아래 순서대로 끈 뒤 다시 시도해주세요.");GuideCard(GuideSelection(GuideStep.AUTO_BLOCKER));GuideCard(GuideSelection(GuideStep.AUTO_BLOCKER_OFF))}},
-            confirmButton={DialogAction(onClick={showAutoBlocker=false;SettingsEntrypoints.autoBlocker(context)}){Text("보안 설정 열기")}},dismissButton={DialogCancel(onClick={showAutoBlocker=false}){Text("닫기")}})
+        if(showAutoBlocker&&!model.busy) PanelAlert(onDismissRequest={showAutoBlocker=false},title={Text(app.bluedotoff.adb.AutoBlocker.TITLE)},
+            text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(16.dp)){Text(app.bluedotoff.adb.AutoBlocker.MESSAGE);GuideCard(GuideSelection(GuideStep.AUTO_BLOCKER));GuideCard(GuideSelection(GuideStep.AUTO_BLOCKER_OFF))}},
+            confirmButton={DialogAction(onClick={showAutoBlocker=false;openSecurity()}){Text("보안 설정 열기")}},dismissButton={DialogCancel(onClick={showAutoBlocker=false}){Text("닫기")}})
         if(model.notificationOffer&&model.gate==Gate.READY&&!model.busy) PanelAlert(onDismissRequest=dismissNotifications,title={Text("재적용 알림")},text={Text("휴대폰 재시작이나 등록 앱 업데이트로 숨김이 풀릴 수 있을 때 알려드려요. 광고나 상시 알림은 없어요. 알림 없이도 핵심 기능은 쓸 수 있어요.")},confirmButton={DialogAction(onClick=allowNotifications){Text("알림 허용")}},dismissButton={DialogCancel(onClick=dismissNotifications){Text("나중에")}})
         if(model.updateOffer&&!model.notificationOffer&&model.gate==Gate.READY&&!model.busy) UpdateOfferDialog(updateOfferAnswer)
         if(model.rejectedGroupList.isNotEmpty()&&model.bigGroups.isEmpty()&&!model.busy) PanelAlert(onDismissRequest=rejectedDismiss,title={Text("선택하지 않은 앱 묶음")},
@@ -316,7 +319,7 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
     }
 }
 
-@Composable private fun HomeScreen(m:UiModel,wide:Boolean,add:()->Unit,restoreMenu:()->Unit,select:(String)->Unit,open:()->Unit,history:()->Unit,hide:(String)->Unit,edit:()->Unit,toggle:(String)->Unit,restoreSelected:()->Unit,wirelessExit:()->Unit,showNeeded:()->Unit,recheck:()->Unit={},openDeveloperOptions:()->Unit={},dismissFirmwareNotice:()->Unit={},openUpdate:(String)->Unit={},skipUpdate:(String)->Unit={},pcStart:()->Unit={},watchRetry:()->Unit={}) {
+@Composable private fun HomeScreen(m:UiModel,wide:Boolean,add:()->Unit,restoreMenu:()->Unit,select:(String)->Unit,open:()->Unit,history:()->Unit,hide:(String)->Unit,edit:()->Unit,toggle:(String)->Unit,restoreSelected:()->Unit,wirelessExit:()->Unit,showNeeded:()->Unit,recheck:()->Unit={},openDeveloperOptions:()->Unit={},dismissFirmwareNotice:()->Unit={},openUpdate:(String)->Unit={},skipUpdate:(String)->Unit={},pcStart:()->Unit={},watchRetry:()->Unit={},openSecurity:()->Unit={}) {
     val context=LocalContext.current
     val watchPrefs=remember(context){context.getSharedPreferences("ui-state",0)}
     var watchUnconfirmed by remember(context,m.usbDebugging){mutableStateOf(WatchNotification.awaitingContact(context,m.usbDebugging))}
@@ -389,11 +392,18 @@ fun BlueDotApp(model: UiModel, navigate: (Page)->Unit, select: (String)->Unit, h
             }}
             // After a phone update the structure check can fail: that is not a connection problem, so no "연결 준비" here.
             val osChanged=m.compatibility==SetupFlow.OS_CHANGED
-            if(osChanged||!m.connected&&!m.automaticReady&&!m.journalProblem)Surface(shape=RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.tertiaryContainer,contentColor=MaterialTheme.colorScheme.onTertiaryContainer,border=BorderStroke(1.dp,MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha=0.18f))){
+            val refused=m.compatibility==app.bluedotoff.adb.AutoBlocker.MESSAGE
+            val connectionGuide=app.bluedotoff.adb.AutoBlocker.isGuide(m.compatibility)&&m.wifiConnected&&!m.connected
+            if(osChanged||!m.connected&&(!m.automaticReady||connectionGuide)&&!m.journalProblem)Surface(shape=RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.tertiaryContainer,contentColor=MaterialTheme.colorScheme.onTertiaryContainer,border=BorderStroke(1.dp,MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha=0.18f))){
                 Column(Modifier.fillMaxWidth().padding(18.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
-                    Text(if(osChanged)"휴대폰 업데이트로 내부 구조가 바뀌었어요" else "설정을 변경하려면 연결이 필요해요",style=MaterialTheme.typography.titleMedium)
+                    Text(if(osChanged)"휴대폰 업데이트로 내부 구조가 바뀌었어요" else if(refused)app.bluedotoff.adb.AutoBlocker.TITLE else "설정을 변경하려면 연결이 필요해요",style=MaterialTheme.typography.titleMedium)
                     Text(m.compatibility,style=MaterialTheme.typography.bodyMedium)
-                    if(!osChanged)TextButton(onClick=open){Text("연결 준비")}
+                    if(connectionGuide)FlowRow{
+                        val actions=listOf("연결 준비" to open,"보안 설정 열기" to openSecurity)
+                        (if(refused)actions.asReversed() else actions).forEach{(label,action)->
+                            TextButton(onClick=action,enabled=!m.busy&&!m.rechecking){Text(label)}
+                        }
+                    }else if(!osChanged)TextButton(onClick=open){Text("연결 준비")}
                 }
             }
             if(m.journalProblem)Surface(shape=RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.errorContainer,contentColor=MaterialTheme.colorScheme.onErrorContainer){
@@ -1027,7 +1037,7 @@ fun accessAge(time:Long?,now:Long=System.currentTimeMillis()):String {
         Text("휴대폰을 재시작한 경우에는 자동 관리와 앱을 열 때 자동 재적용이 켜져 있으면, Wi-Fi에 연결될 때 감시를 다시 켜고 풀린 숨김도 다시 적용해요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         Text("Wi-Fi가 전혀 없다면 연결 준비의 Wi-Fi 단계에서 ‘Wi-Fi가 없나요? PC로 시작하기’를 누르세요. PC에서 명령을 한 번 실행해 감시를 시작하고, 재시작이나 업데이트 뒤에는 그 명령을 다시 실행해요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         Topic("연결이 안 될 때")
-        Text("보안 위험 자동 차단이 켜져 있으면 Android가 무선 디버깅을 막아 연결할 수 없어요. 작업할 때는 설정 → 보안 및 개인정보 보호에서 꺼주세요. ‘자동으로 켜기’를 켜두면 30분 뒤 다시 켜져요. 이때는 USB 디버깅도 꺼져서 백그라운드 감시도 멈춰요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("‘앱을 켤 때만 적용’으로 숨긴 뒤에는 보안 위험 자동 차단을 다시 켜도 돼요. 숨김을 확인하거나 다시 적용할 때만 설정 → 보안 및 개인정보 보호에서 잠시 꺼주세요. 백그라운드 감시 중 USB 디버깅이 꺼지면 감시가 멈춰요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         Topic("은행·결제 앱이 안 열릴 때")
         Text("백그라운드 감시를 설정에서 켜면 USB 디버깅으로 연결을 유지해서, bluedotOFF를 열지 않아도 숨김이 풀린 앱을 감지하는 대로 다시 숨겨요. USB 디버깅을 계속 켜 둬야 하고, 일부 은행·결제 앱은 이때 실행되지 않을 수 있어요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         Text("은행 앱이 개발자 옵션 자체를 검사하면 USB 디버깅만 꺼서는 안 될 수 있어요. 그럴 때는 개발자 옵션을 잠시 끄고, 다시 쓸 때 개발자 옵션과 USB 디버깅을 켠 뒤 Wi-Fi에서 bluedotOFF를 열어주세요. PC로 시작했다면 Wi-Fi 대신 PC에서 시작 명령을 다시 실행하세요.",color=MaterialTheme.colorScheme.onSurfaceVariant)

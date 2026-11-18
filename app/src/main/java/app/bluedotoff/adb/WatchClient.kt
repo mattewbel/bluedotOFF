@@ -19,12 +19,17 @@ class UnresponsiveHelperException:java.io.IOException(WatchClient.UNRESPONSIVE)
 object WatchClient {
     internal class Connection(val binder:IBinder,val profile:JSONObject,val death:IBinder.DeathRecipient,val sameHelper:Boolean) {
         @Volatile var needsInitialTargets=true
+        val unreadableUsbReported=java.util.concurrent.atomic.AtomicBoolean()
+        var usbRecheck:Runnable?=null
+        var usbRecheckExpired=false
+        var usbOffSeen=false
         // Guarded by queueLock. An ordinary timer or startup signal has no helper-held revision.
         val retryOnContact=mutableSetOf<String>()
     }
     @Volatile private var current:Connection?=null
     @Volatile private var attaching=CountDownLatch(1)
     @Volatile private var starting=false
+    private var unownedUsbReported=false
     private var lastStart=0L
     private val worker=Executors.newSingleThreadExecutor()
     private val queueLock=Any()
@@ -52,11 +57,85 @@ object WatchClient {
     private var states=""
     private var wifiObserver:AutoCloseable?=null
     private val handler by lazy {Handler(Looper.getMainLooper())}
-    fun usbEnabled(c:Context)=Settings.Global.getInt(c.contentResolver,Settings.Global.ADB_ENABLED,0)==1
+    internal enum class UsbState(val stopReason:WatchNotification.Reason) {
+        ON(WatchNotification.Reason.STOPPED), OFF(WatchNotification.Reason.USB_DEBUGGING_OFF),
+        UNKNOWN(WatchNotification.Reason.USB_STATE_UNKNOWN);
+        companion object {
+            fun read(setting:()->Int):UsbState {
+                repeat(2) {
+                    val value=try { setting() } catch (_:SecurityException) { return UNKNOWN }
+                        catch (_:RuntimeException) { -1 }
+                    when(value) { 0 -> return OFF; 1 -> return ON }
+                }
+                return UNKNOWN
+            }
+        }
+    }
+    internal fun usbState(c:Context)=UsbState.read{Settings.Global.getInt(c.contentResolver,Settings.Global.ADB_ENABLED,-1)}
+    fun usbEnabled(c:Context)=usbState(c)==UsbState.ON
     fun available(c:Context)=BackgroundWatch.enabled(c)&&usbEnabled(c)&&current?.binder?.isBinderAlive==true
-    internal fun owns(c:Context,binder:IBinder)=synchronized(queueLock){current?.binder==binder&&available(c)}
+    // Retain only an already authenticated owner while a settings read is unavailable. No work is authorized.
+    private fun deferUsbRecheck(c:Context,binder:IBinder):Boolean=synchronized(queueLock){
+        val owner=current?.takeIf{it.binder==binder&&binder.isBinderAlive}?:return false
+        if(!BackgroundWatch.enabled(c)||owner.usbOffSeen||owner.usbRecheckExpired)return false
+        val usb=usbState(c)
+        if(usb==UsbState.OFF){owner.usbOffSeen=true;return false}
+        if(usb==UsbState.UNKNOWN&&owner.unreadableUsbReported.compareAndSet(false,true))
+            WatchDiagnostics.record(c,WatchDiagnostics.Event.USB_UNKNOWN)
+        if(owner.usbRecheck!=null)return true
+        val check=object:Runnable{
+            override fun run(){
+                synchronized(queueLock){
+                    if(current!==owner||owner.usbRecheck!==this)return
+                    owner.usbRecheck=null
+                    val usb=usbState(c)
+                    if(usb==UsbState.ON&&BackgroundWatch.enabled(c))resumeDeferred(c)
+                    else {
+                        owner.usbRecheckExpired=true
+                        stop(c,usb.stopReason)
+                    }
+                }
+                LifecycleEvents.changed()
+            }
+        }
+        owner.usbRecheck=check
+        if(handler.postDelayed(check,1_250L))true else {
+            owner.usbRecheck=null
+            owner.usbRecheckExpired=true
+            false
+        }
+    }
+    internal fun retryUsbContact(c:Context,binder:IBinder)=deferUsbRecheck(c,binder)
+    private fun clearUsbRecheck(owner:Connection){
+        owner.usbRecheck?.let(handler::removeCallbacks)
+        owner.usbRecheck=null
+    }
+    private fun permitsContact(c:Context,binder:IBinder):Boolean=synchronized(queueLock){
+        if(!BackgroundWatch.enabled(c))return false
+        val usb=usbState(c)
+        val owner=current
+        if(owner!=null&&owner.binder==binder){
+            if(usb==UsbState.UNKNOWN){
+                if(owner.unreadableUsbReported.compareAndSet(false,true))WatchDiagnostics.record(c,WatchDiagnostics.Event.USB_UNKNOWN)
+            }else {
+                owner.unreadableUsbReported.set(false)
+                owner.usbOffSeen=usb==UsbState.OFF
+                if(usb==UsbState.OFF)clearUsbRecheck(owner)
+                owner.usbRecheckExpired=false
+            }
+        }
+        return usb==UsbState.ON
+    }
+    internal fun owns(c:Context,binder:IBinder)=synchronized(queueLock){current?.binder==binder&&binder.isBinderAlive&&permitsContact(c,binder)}
     internal fun connected()=current?.binder?.isBinderAlive==true
     internal fun draining(binder:IBinder)=current?.binder==binder&&LocalAdbSession.busy
+    internal fun recordExitReply(c:Context,binder:IBinder)=synchronized(queueLock){
+        if(current?.binder==binder)WatchDiagnostics.record(c,WatchDiagnostics.Event.ACTIVE_REFUSED)
+        else if(current==null&&BackgroundWatch.enabled(c)&&usbState(c)==UsbState.UNKNOWN&&!unownedUsbReported){
+            unownedUsbReported=true
+            WatchDiagnostics.record(c,WatchDiagnostics.Event.UNOWNED_USB_UNKNOWN)
+        }
+    }
     private val initLock=Any()
     fun initialize(context:Context){if(!BackgroundWatch.enabled(context))return
         val c=context.applicationContext
@@ -68,9 +147,10 @@ object WatchClient {
             registerObservers(c)
             synchronized(queueLock){
                 val prefs=c.getSharedPreferences("ui-state",0)
-                if(BackgroundWatch.enabled(c)&&!usbEnabled(c)&&(prefs.getBoolean("watchRunning",false)||WatchNotification.unconfirmed(c))){
+                val usb=usbState(c)
+                if(BackgroundWatch.enabled(c)&&usb!=UsbState.ON&&(prefs.getBoolean("watchRunning",false)||WatchNotification.unconfirmed(c))){
                     clearReportWait()
-                    recordAvailability(c,WatchNotification.Reason.USB_DEBUGGING_OFF)
+                    recordAvailability(c,usb.stopReason)
                 }
             }
             initialized=true
@@ -81,9 +161,10 @@ object WatchClient {
         BatchRuntime.onIdle=::foregroundIdle
         val observer=object:ContentObserver(handler){
             override fun onChange(selfChange:Boolean){
-                state(c)
+                runCatching{state(c)}
                 if(!BackgroundWatch.enabled(c))return
-                if(!usbEnabled(c))stop(c,WatchNotification.Reason.USB_DEBUGGING_OFF)
+                val usb=usbState(c)
+                if(usb!=UsbState.ON)stop(c,usb.stopReason)
                 else if(!BatchRuntime.state.value.busy)resumeDeferred(c)
             }
         }
@@ -99,13 +180,14 @@ object WatchClient {
         }
     }
     private fun state(c:Context){
-        val next="usbDebugging=${if(usbEnabled(c))1 else 0} wirelessDebugging=${Settings.Global.getInt(c.contentResolver,"adb_wifi_enabled",0)} wifi=${Settings.Global.getInt(c.contentResolver,"wifi_on",0)} wifiConnected=${if(WifiConnection.connected(c))1 else 0} watchRunning=${available(c)}"
+        val usb=when(usbState(c)){UsbState.ON->"1";UsbState.OFF->"0";UsbState.UNKNOWN->"unknown"}
+        val next="usbDebugging=$usb wirelessDebugging=${Settings.Global.getInt(c.contentResolver,"adb_wifi_enabled",0)} wifi=${Settings.Global.getInt(c.contentResolver,"wifi_on",0)} wifiConnected=${if(WifiConnection.connected(c))1 else 0} watchRunning=${available(c)}"
         synchronized(queueLock){if(next==states)return;states=next}
         WatchLog.event("state",next)
     }
     /** Called only by the protected provider, with Binder shell UID already checked. */
     internal fun attach(c:Context,binder:IBinder,profile:JSONObject,apk:String,version:Long):Boolean {
-        if(!BackgroundWatch.enabled(c)||!usbEnabled(c))return false
+        if(!permitsContact(c,binder))return false
         require(apk==c.applicationInfo.sourceDir&&version==BuildConfig.VERSION_CODE.toLong())
         @Suppress("DEPRECATION")
         require(profile.getLong("appUpdatedAt")==c.packageManager.getPackageInfo(c.packageName,0).lastUpdateTime)
@@ -118,7 +200,7 @@ object WatchClient {
         val owner:Connection
         synchronized(queueLock){
             // The remote proof can block while USB or the user's watch switch is turned off.
-            if(!BackgroundWatch.enabled(c)||!usbEnabled(c))return false
+            if(!permitsContact(c,binder))return false
             val previous=current
             newConnection=previous?.binder!=binder
             sameHelper=ui.getString("watchId",null)==profile.getString("watchId")
@@ -127,16 +209,17 @@ object WatchClient {
                 if(previous?.binder?.isBinderAlive==true)return false
                 val death=IBinder.DeathRecipient{helperDied(c,binder)}
                 binder.linkToDeath(death,0)
-                if(!BackgroundWatch.enabled(c)||!usbEnabled(c)||!binder.isBinderAlive){
+                if(!permitsContact(c,binder)||!binder.isBinderAlive){
                     runCatching{binder.unlinkToDeath(death,0)}
                     return false
                 }
                 eventReceipts=WatchReceipts()
                 current=Connection(binder,profile,death,sameHelper)
+                unownedUsbReported=false
                 ui.edit().putString("watchId",profile.getString("watchId")).apply()
                 LocalAdbSession.rememberRegion(c,profile)
             }else{
-                if(!available(c))return false
+                if(!owns(c,binder))return false
             }
             owner=checkNotNull(current)
             val repair=ui.contains("watchStopNotified")||ui.contains("watchUsbBackNotified")
@@ -152,7 +235,7 @@ object WatchClient {
         synchronized(owner){
             val targets=if(owner.needsInitialTargets)attachTargets(JournalStore(c).entries(),owner.sameHelper) else emptySet()
             synchronized(queueLock){
-                if(current!==owner||!available(c))return false
+                if(current!==owner||!owns(c,binder))return false
                 val work=targets+owner.retryOnContact
                 if(work.isNotEmpty()&&!signal(c,work))return false
                 owner.needsInitialTargets=false
@@ -183,9 +266,10 @@ object WatchClient {
                 synchronized(queueLock){
                     if(reportCheck!==this)return
                     if(!BackgroundWatch.enabled(c)||available(c)){clearReportWait();return}
-                    if(!usbEnabled(c)){
+                    val usb=usbState(c)
+                    if(usb!=UsbState.ON){
                         clearReportWait()
-                        recordAvailability(c,WatchNotification.Reason.USB_DEBUGGING_OFF)
+                        recordAvailability(c,usb.stopReason)
                     }else if(!contactDelayed){
                         contactDelayed=true
                         WatchDiagnostics.record(c,WatchDiagnostics.Event.CONTACT_DELAYED)
@@ -213,9 +297,10 @@ object WatchClient {
 
     private fun lost(c:Context){
         synchronized(queueLock){
+            val usb=usbState(c)
             when{
                 !BackgroundWatch.enabled(c)->clearReportWait()
-                !usbEnabled(c)->{clearReportWait();recordAvailability(c,WatchNotification.Reason.USB_DEBUGGING_OFF)}
+                usb!=UsbState.ON->{clearReportWait();recordAvailability(c,usb.stopReason)}
                 available(c)->recordAvailability(c)
                 else->awaitReport(c)
             }
@@ -226,6 +311,7 @@ object WatchClient {
     private fun helperDied(c:Context,binder:IBinder){
         synchronized(queueLock){
             if(current?.binder!=binder)return
+            current?.let(::clearUsbRecheck)
             current=null
             clearReportWait()
             WatchDiagnostics.record(c,WatchDiagnostics.Event.BINDER_DIED)
@@ -237,32 +323,43 @@ object WatchClient {
     /** An update invalidates the old installation, but the new helper can attach before the broadcast arrives. */
     internal fun packageReplaced(c:Context){
         synchronized(queueLock){
-            clearReportWait()
             if(BackgroundWatch.enabled(c))WatchDiagnostics.record(c,WatchDiagnostics.Event.APP_UPDATED)
-            recordAvailability(c,WatchNotification.Reason.STOPPED)
+            lifecycleNotice(c,WatchNotification.Reason.STOPPED)
         }
         LifecycleEvents.changed()
     }
 
     internal fun bootCompleted(c:Context)=synchronized(queueLock){
-        if(available(c))WatchDiagnostics.record(c,WatchDiagnostics.Event.BOOT)
-        else {
-            clearReportWait()
-            WatchNotification.stopped(c,WatchNotification.Reason.BOOT)
+        lifecycleNotice(c,WatchNotification.Reason.BOOT)
+    }
+    /** A delayed broadcast can arrive after the current installation's authenticated helper. */
+    private fun lifecycleNotice(c:Context,reason:WatchNotification.Reason) {
+        clearReportWait()
+        if(connected()&&BackgroundWatch.enabled(c)){
+            val usb=usbState(c)
+            if(usb!=UsbState.OFF){
+                if(reason==WatchNotification.Reason.BOOT)WatchDiagnostics.record(c,WatchDiagnostics.Event.BOOT)
+                if(usb==UsbState.UNKNOWN)stop(c,usb.stopReason)
+                else if(reason!=WatchNotification.Reason.BOOT)BackgroundWatch.running(c)
+                return
+            }
         }
+        WatchNotification.stopped(c,reason)
     }
 
     internal fun watchDisabled(c:Context)=synchronized(queueLock){
         if(!BackgroundWatch.enabled(c)){
+            current?.let(::clearUsbRecheck)
             clearReportWait()
             WatchNotification.clearDisabled(c)
         }
     }
 
     /** Caller holds queueLock so a late failure cannot overwrite a verified attachment. */
-    private fun recordAvailability(c:Context,reason:WatchNotification.Reason=if(usbEnabled(c))WatchNotification.Reason.STOPPED else WatchNotification.Reason.USB_DEBUGGING_OFF){
+    private fun recordAvailability(c:Context,reason:WatchNotification.Reason=usbState(c).stopReason){
         if(available(c))BackgroundWatch.running(c) else {
-            state(c)
+            if(reason==WatchNotification.Reason.USB_STATE_UNKNOWN&&current?.let{deferUsbRecheck(c,it.binder)}==true)return
+            runCatching{state(c)}
             WatchNotification.stopped(c,reason)
         }
     }
@@ -335,21 +432,33 @@ object WatchClient {
     }
     /** Drain a started operation, then discard the queue only if the stop is still required. */
     fun stop(c:Context,reason:WatchNotification.Reason=WatchNotification.Reason.STOPPED){
-        worker.execute{stopCurrent(c,reason,onlyIfDisabled=true)}
+        val owner=synchronized(queueLock){
+            if(reason==WatchNotification.Reason.USB_STATE_UNKNOWN&&current?.let{deferUsbRecheck(c,it.binder)}==true)return
+            current
+        }
+        worker.execute{stopCurrent(c,reason,onlyIfDisabled=true,expectedOwner=owner)}
     }
     fun stopNow(c:Context,reason:WatchNotification.Reason=WatchNotification.Reason.STOPPED)=stopCurrent(c,reason,onlyIfDisabled=false)
-    private fun stopCurrent(c:Context,reason:WatchNotification.Reason,onlyIfDisabled:Boolean)=LocalAdbSession.exclusive {
-        val previous=synchronized(queueLock){
-            if(onlyIfDisabled&&BackgroundWatch.enabled(c)&&usbEnabled(c)){
-                if(!BatchRuntime.state.value.busy)resumeDeferred(c)
-                return@exclusive
+    private fun stopCurrent(c:Context,reason:WatchNotification.Reason,onlyIfDisabled:Boolean,expectedOwner:Connection?=null)=LocalAdbSession.exclusive {
+        val (previous,receipts)=synchronized(queueLock){
+            if(onlyIfDisabled&&current!==expectedOwner)return@exclusive
+            if(onlyIfDisabled&&BackgroundWatch.enabled(c)){
+                val usb=usbState(c)
+                if(usb==UsbState.ON){
+                    if(!BatchRuntime.state.value.busy)resumeDeferred(c)
+                    return@exclusive
+                }
+                // A confirmed contact may have ended the outage that queued this stop.
+                if(usb==UsbState.UNKNOWN&&reason==WatchNotification.Reason.USB_STATE_UNKNOWN&&
+                    expectedOwner!=null&&deferUsbRecheck(c,expectedOwner.binder))return@exclusive
             }
             pending.clear();deferred.clear()
-            val old=current;current=null;clearReportWait();old
+            val old=current;old?.let(::clearUsbRecheck);current=null;clearReportWait();old to eventReceipts
         }
         if(previous!=null){runCatching{timedRpc(previous,WatchProtocol.STOP,JSONObject(),10_000)};runCatching{previous.binder.unlinkToDeath(previous.death,0)}}
         synchronized(queueLock){
-            val now=if(reason==WatchNotification.Reason.USB_DEBUGGING_OFF&&usbEnabled(c))WatchNotification.Reason.STOPPED else reason
+            if(eventReceipts!==receipts)return@synchronized
+            val now=if(reason==WatchNotification.Reason.USB_DEBUGGING_OFF||reason==WatchNotification.Reason.USB_STATE_UNKNOWN)usbState(c).stopReason else reason
             recordAvailability(c,now)
         }
     }
@@ -388,8 +497,11 @@ object WatchClient {
         synchronized(queueLock){if(pending.isEmpty())firstSignalAt=SystemClock.elapsedRealtime();pending+=packages;if(queued)return true;queued=true}
         worker.execute{
             var inFlight=emptySet<String>()
+            var admissionOwner:WatchReceipts?=null
+            var withoutRevision=emptySet<String>()
             try{
                 while(true){
+                    admissionOwner=null
                     val signalAt=synchronized(queueLock){firstSignalAt};val workerAt=SystemClock.elapsedRealtime()
                     val (names,receipts,revisions)=synchronized(queueLock){
                         val batch=pending.toSet()
@@ -399,10 +511,14 @@ object WatchClient {
                     inFlight=names
                     if(names.isEmpty())break
                     if(!availableForQueued(c,names)){runCatching{ReapplyNotification.watchFinished(c,names)};break}
+                    admissionOwner=receipts
+                    withoutRevision=names-revisions.keys
                     exclusive(c){session->
                         val lockAt=SystemClock.elapsedRealtime()
                         if(BatchRuntime.state.value.busy){synchronized(queueLock){deferred+=names};return@exclusive}
                         session.run{active->
+                            // From this point the per-target accounting below owns retries.
+                            admissionOwner=null
                             val handled=mutableSetOf<String>()
                             val errors=mutableSetOf<String>()
                             val settled=mutableSetOf<String>()
@@ -480,15 +596,31 @@ object WatchClient {
                     }
                     LifecycleEvents.changed()
                 }
-            }catch(e:Exception){availableForQueued(c,inFlight);workFailures++;WatchLog.event("state","watchWorkFailed=${e.javaClass.simpleName}");runCatching{ReapplyNotification.show(c,null,checkInApp=true)};if(current?.binder?.isBinderAlive!=true)lost(c)}
+            }catch(e:Exception){
+                val awaitingContact=synchronized(queueLock){
+                    val owner=current
+                    if(admissionOwner!==eventReceipts||owner==null||!owner.binder.isBinderAlive||!BackgroundWatch.enabled(c))false
+                    else{
+                        owner.retryOnContact.addAll(withoutRevision)
+                        !owner.usbOffSeen&&usbState(c)!=UsbState.OFF
+                    }
+                }
+                availableForQueued(c,inFlight);workFailures++;WatchLog.event("state","watchWorkFailed=${e.javaClass.simpleName}")
+                if(!awaitingContact)runCatching{ReapplyNotification.show(c,null,checkInApp=true)}
+                if(current?.binder?.isBinderAlive!=true)lost(c)
+            }
             finally{synchronized(queueLock){queued=false};val remaining=synchronized(queueLock){pending.toSet()};if(remaining.isNotEmpty()&&!signal(c,remaining))runCatching{ReapplyNotification.watchFinished(c,remaining)}}
         }
         return true
     }
     private fun availableForQueued(c:Context,names:Set<String>):Boolean=synchronized(queueLock){
         if(!BackgroundWatch.enabled(c)||!connected())return false
-        if(usbEnabled(c))return true
+        val usb=usbState(c)
+        if(usb==UsbState.ON)return true
+        if(usb==UsbState.OFF)current?.usbOffSeen=true
         deferred+=names
+        if(usb==UsbState.UNKNOWN&&current?.let{deferUsbRecheck(c,it.binder)}!=true)
+            stop(c,WatchNotification.Reason.USB_STATE_UNKNOWN)
         false
     }
     /** A hide that failed safely is tried again later even without a new event (owner 2026-10-31). A killed app process

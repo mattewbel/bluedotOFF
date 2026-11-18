@@ -1080,11 +1080,20 @@ class UiRenderTest {
     @Test fun autoBlockerOpensACenteredGuideInsteadOfASnackbar(){
         controller.get().setContent { BlueDotApp(model(applied=true).copy(notice=app.bluedotoff.adb.AutoBlocker.MESSAGE),{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}) }
         compose.waitForIdle()
-        compose.onNodeWithText("보안 위험 자동 차단을 꺼주세요").assertExists();compose.onNodeWithText("보안 설정 열기").assertExists();compose.onNodeWithText("닫기").assertExists()
+        compose.onNodeWithText(app.bluedotoff.adb.AutoBlocker.TITLE).assertExists();compose.onNodeWithText("보안 설정 열기").assertExists();compose.onNodeWithText("닫기").assertExists()
         compose.onNodeWithText("자동 차단 끄기",substring=true).assertExists()
         val view=checkNotNull(org.robolectric.shadows.ShadowDialog.getLatestDialog().window).decorView
         val image=Bitmap.createBitmap(view.width,view.height,Bitmap.Config.ARGB_8888);compose.runOnIdle{view.draw(Canvas(image))}
         File(checkNotNull(System.getProperty("screenshotDir")).also{File(it).mkdirs()},"87-auto-blocker-dialog.png").outputStream().use{check(image.compress(Bitmap.CompressFormat.PNG,100,it))}
+    }
+    @Test fun aRefusedHomeCheckOffersSecuritySettingsAndAnotherConnectionOption(){
+        val m=model(applied=true).copy(automaticReady=true,wifiConnected=true,connected=false,compatibility=app.bluedotoff.adb.AutoBlocker.MESSAGE)
+        var security=0;var connection=0
+        controller.get().setContent { BlueDotApp(m,{}, {}, {}, {}, {}, {}, {connection++}, {}, {}, {}, {}, {}, {}, {}, {},openSecurity={security++}) }
+        compose.onNodeWithText(app.bluedotoff.adb.AutoBlocker.TITLE).assertExists()
+        compose.onNodeWithText("보안 설정 열기").performClick()
+        compose.onNodeWithText("연결 준비").performClick()
+        assertTrue(security==1&&connection==1)
     }
     /** 1.2.1: a user who started from a PC without wireless pairing is told to run the PC command again (Home card,
      *  Settings) and can open the steps with the command. */

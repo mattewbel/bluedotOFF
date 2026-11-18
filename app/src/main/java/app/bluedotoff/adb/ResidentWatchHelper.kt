@@ -32,14 +32,28 @@ object ResidentWatchHelper {
     private val ends=windows.map{w->Runnable{val names=w.take();if(names.isNotEmpty())send("event",names)}}
     private val receivers=mutableListOf<Any>()
     @Volatile private var stopping=false
+    private val contactRetry=java.util.concurrent.atomic.AtomicBoolean()
     private var permissionListener:Any?=null
     private fun pm()=context.packageManager
     private fun signatures(pi:android.content.pm.PackageInfo)=pi.signingInfo!!.apkContentsSigners.map{app.bluedotoff.BinderBackend.digest(it.toByteArray())}.sorted()
     private fun validateInstall() {
-        val pi=pm().getPackageInfo("app.bluedotoff",PackageManager.GET_SIGNING_CERTIFICATES)
+        val pi=WatchInstallCheck.lookup { pm().getPackageInfo("app.bluedotoff",PackageManager.GET_SIGNING_CERTIFICATES) }
         check(pi.applicationInfo!!.uid==appUid&&pi.applicationInfo!!.sourceDir==apk&&pi.longVersionCode==app.bluedotoff.BuildConfig.VERSION_CODE.toLong()&&pi.lastUpdateTime==appUpdatedAt&&signatures(pi)==signer)
-        check(pm().getPackagesForUid(appUid)?.sorted()==listOf("app.bluedotoff"))
+        val packages = WatchInstallCheck.lookup { pm().getPackagesForUid(appUid) }
+        check(packages?.sorted()==listOf("app.bluedotoff"))
     }
+    private val installMonitor by lazy {
+        WatchInstallCheck.Monitor(::validateInstall,
+            schedule = { task, delay -> main.postDelayed({ if (!stopping) task.run() }, delay) },
+            recovered = { if (!stopping) send("state") },
+            failed = { e ->
+                stopping = true
+                val reason = if (e is WatchInstallCheck.LookupUnavailable) "install lookup unavailable" else "install verification failed"
+                android.util.Log.w("bluedotOFF-watch", reason)
+                System.exit(0)
+            })
+    }
+    private fun monitorInstallOrExit() = !stopping && installMonitor.check()
     private val server=object:Binder(){
         override fun onTransact(code:Int,data:Parcel,reply:Parcel?,flags:Int):Boolean {
             if(code==INTERFACE_TRANSACTION){reply?.writeString(WatchProtocol.DESCRIPTOR);return true}
@@ -81,10 +95,12 @@ object ResidentWatchHelper {
         if(targetVersion==versionAtRequest)configure(list)
     }
     /** External provider starts/reconnects the ordinary app process without opening an Activity. Token is always removed. */
-    private fun deliver(method:String,packet:Map<String,Long> = emptyMap()):WatchReceipt {
+    private fun deliver(method:String,packet:Map<String,Long> = emptyMap(),monitor:Boolean=false):WatchReceipt {
         if(stopping)return WatchReceipt()
         val versionAtRequest=targetVersion
-        validateInstall()
+        if (monitor) {
+            if (!monitorInstallOrExit()) return WatchReceipt()
+        } else validateInstall()
         val token=Binder()
         val get=am.javaClass.getMethod("getContentProviderExternal",String::class.java,Int::class.javaPrimitiveType,IBinder::class.java,String::class.java).apply{isAccessible=true}
         val holder=get.invoke(am,WatchProtocol.AUTHORITY,0,token,"bluedotOFF-watch")?:error("Watch provider unavailable")
@@ -95,7 +111,17 @@ object ResidentWatchHelper {
             val source=AttributionSource.Builder(2000).setPackageName("com.android.shell").build()
             val response=call.invoke(provider,source,WatchProtocol.AUTHORITY,method,null,extras) as? Bundle?:error("Watch attach refused")
             check(response.getInt("uid",-1)==appUid)
-            if(!response.getBoolean("enabled")){if(!response.getBoolean("draining")){stopping=true;main.post{System.exit(0)}};return WatchReceipt()}
+            if(!response.getBoolean("enabled")){
+                if(response.getBoolean("retryContact")){
+                    if(contactRetry.compareAndSet(false,true)){
+                        check(main.postDelayed({
+                            contactRetry.set(false)
+                            if(!stopping)send("state")
+                        },1_250L)){"Watch contact retry unavailable"}
+                    }
+                }else if(!response.getBoolean("draining")){stopping=true;main.post{System.exit(0)}}
+                return WatchReceipt()
+            }
             configureReply(JSONArray(response.getString("targets")?:"[]"),versionAtRequest)
             return WatchReceipt(response.getLongArray("checkedRevisions") ?: longArrayOf(),
                 response.getLongArray("failedRevisions") ?: longArrayOf())
@@ -106,8 +132,8 @@ object ResidentWatchHelper {
     private fun send(method:String,packages:Set<String> = emptySet()){
         callbacks.execute {
             val packet=delivery.offer(packages,targets.keys)
-            try { delivery.acknowledge(packet,deliver(method,packet)) }
-            catch(_:Exception){if(runCatching{validateInstall()}.isFailure){stopping=true;System.exit(0)}}
+            try { delivery.acknowledge(packet,deliver(method,packet,monitor=true)) }
+            catch(_:Exception){monitorInstallOrExit()}
         }
     }
     private fun changed(pkg:String){
@@ -143,7 +169,8 @@ object ResidentWatchHelper {
             main.post{
                 val pkg=intent.data?.schemeSpecificPart?:return@post
                 if(pkg=="app.bluedotoff"){
-                    if(intent.action in setOf(Intent.ACTION_PACKAGE_REPLACED,Intent.ACTION_PACKAGE_REMOVED)||runCatching{validateInstall()}.isFailure){stopping=true;System.exit(0)}
+                    if(intent.action in setOf(Intent.ACTION_PACKAGE_REPLACED,Intent.ACTION_PACKAGE_REMOVED)){stopping=true;System.exit(0)}
+                    else monitorInstallOrExit()
                 }
                 else if(intent.action in setOf(Intent.ACTION_PACKAGE_CHANGED,Intent.ACTION_PACKAGE_REPLACED,Intent.ACTION_PACKAGE_REMOVED,Intent.ACTION_PACKAGE_ADDED))changed(pkg)
             }
@@ -176,7 +203,8 @@ object ResidentWatchHelper {
     @JvmStatic fun main(args:Array<String>) {
         var phase="PROFILE"
         try{start(args){phase=it}}catch(e:Exception){
-            runCatching{proof.put("startupPhase",phase).put("startupError",e.javaClass.simpleName);deliver("failed")}
+            if (phase == "RUNNING") android.util.Log.w("bluedotOFF-watch","watch loop failed")
+            else runCatching{proof.put("startupPhase",phase).put("startupError",e.javaClass.simpleName);deliver("failed")}
             System.exit(71)
         }
     }
@@ -195,8 +223,11 @@ object ResidentWatchHelper {
         server.attachInterface(null,WatchProtocol.DESCRIPTOR)
         // An orphan whose initial handshake fails must not remain privileged indefinitely.
         phase("CLIENT_HANDSHAKE");deliver("attach")
-        val health=object:Runnable{override fun run(){if(stopping)return;if(runCatching{validateInstall()}.isFailure){System.exit(0);return};send("state");main.postDelayed(this,60_000)}}
+        val health=object:Runnable{override fun run(){if(stopping)return;if(monitorInstallOrExit())send("state");main.postDelayed(this,60_000)}}
         main.postDelayed(health,60_000)
+        phase("RUNNING")
         Looper.loop()
+        // A stopped looper can no longer deliver monitoring, including a pending install recheck.
+        System.exit(0)
     }
 }

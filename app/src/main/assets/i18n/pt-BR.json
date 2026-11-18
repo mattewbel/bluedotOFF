@@ -766,6 +766,7 @@
   "백그라운드 감시가 멈췄어요": "O monitoramento em segundo plano parou",
   "휴대폰이 다시 시작되어 백그라운드 감시가 멈췄어요.": "O monitoramento em segundo plano parou porque o celular foi reiniciado.",
   "USB 디버깅이 꺼져서 백그라운드 감시가 멈췄어요.": "O monitoramento em segundo plano parou porque a depuração USB foi desativada.",
+  "USB 디버깅 상태를 확인하지 못해 백그라운드 감시를 멈췄어요.": "O monitoramento em segundo plano foi interrompido porque não foi possível verificar o estado da depuração USB.",
   "백그라운드 감시가 멈췄어요.": "O monitoramento em segundo plano parou.",
   "다시 켜려면 Wi-Fi에 연결된 상태에서 bluedotOFF를 열어주세요.": "Para ativar novamente, abra o bluedotOFF conectado ao Wi-Fi.",
   "USB 디버깅을 켜 두면 bluedotOFF를 열지 않아도 숨김이 풀린 앱을 감지하는 대로 다시 적용해요.": "Com a depuração USB ativada, os apps que perderam a ocultação são reaplicados assim que uma alteração é detectada, mesmo sem abrir o bluedotOFF.",
@@ -1001,5 +1002,13 @@
   "관리 목록에서 제외한 앱": "Aplicativos removidos da lista de gerenciamento",
   "업데이트 후 위치 권한 요청이 없어졌어요.": "O aplicativo deixou de solicitar permissão de localização após a atualização.",
   "위젯 확인": "Verificação do widget",
-  "확인하지 못했어요. bluedotOFF를 열어 다시 확인해주세요.": "Não foi possível verificar. Abra o bluedotOFF para verificar de novo."
+  "확인하지 못했어요. bluedotOFF를 열어 다시 확인해주세요.": "Não foi possível verificar. Abra o bluedotOFF para verificar de novo.",
+  "앱을 열 때 다시 숨기고 닫으면 무선 디버깅이 꺼져요. 적용 후에는 보안 위험 자동 차단을 다시 켜도 돼요. 다음에 확인하거나 다시 적용할 때만 잠시 꺼주세요.": "Os apps são ocultados novamente ao abrir o app, e a depuração sem fio é desativada ao fechá-lo. Após aplicar, você pode reativar o Bloqueador Automático. Desative-o brevemente apenas ao verificar ou reaplicar.",
+  "앱을 열지 않아도 다시 숨겨요. 보안 위험 자동 차단 때문에 USB 디버깅이 꺼지면 감시가 멈춰요. USB 디버깅을 켜 두면 일부 은행·결제 앱이 안 열릴 수 있어요.": "Os apps são ocultados novamente mesmo sem abrir o app. Se o Bloqueador Automático desativar a depuração USB, o monitoramento para. Alguns apps bancários e de pagamento podem não abrir enquanto a depuração USB estiver ativada.",
+  "보안 위험 자동 차단을 확인해 주세요": "Verifique o Bloqueador Automático",
+  "무선 디버깅을 켤 수 없어요. 보안 위험 자동 차단이 켜져 있다면 잠시 끈 뒤 bluedotOFF로 돌아와 주세요. 이미 꺼져 있다면 연결 설정을 확인해 주세요.": "Não foi possível ativar a depuração sem fio. Se o Bloqueador Automático estiver ativado, desative-o brevemente e volte ao bluedotOFF. Se já estiver desativado, verifique as configurações de conexão.",
+  "확인이 끝났어요. 보안 위험 자동 차단을 껐다면 다시 켜도 돼요.": "A verificação terminou. Se você desativou o Bloqueador Automático, pode ativá-lo novamente.",
+  "‘앱을 켤 때만 적용’으로 숨긴 뒤에는 보안 위험 자동 차단을 다시 켜도 돼요. 숨김을 확인하거나 다시 적용할 때만 설정 → 보안 및 개인정보 보호에서 잠시 꺼주세요. 백그라운드 감시 중 USB 디버깅이 꺼지면 감시가 멈춰요.": "Após ocultar com “Só ao abrir o app”, você pode reativar o Bloqueador Automático. Desative-o brevemente em Configurações → Segurança e privacidade apenas para verificar ou reaplicar a ocultação. Se a depuração USB for desativada durante o monitoramento em segundo plano, o monitoramento para.",
+  "휴대폰이 재시작됐어요. bluedotOFF에서 등록한 앱의 숨김 상태를 확인해 주세요.": "O celular foi reiniciado. Verifique no bluedotOFF o estado de ocultação dos apps cadastrados.",
+  "무선 디버깅에 연결할 수 없어요. 이 Wi-Fi에서 무선 디버깅을 허용했는지, 보안 위험 자동 차단이 연결을 막고 있는지 확인해 주세요.": "Não foi possível conectar à depuração sem fio. Verifique se você permitiu a depuração sem fio nesta rede Wi-Fi e se o Bloqueador Automático está bloqueando a conexão."
 }

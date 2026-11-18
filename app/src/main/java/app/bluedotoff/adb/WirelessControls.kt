@@ -47,14 +47,18 @@ class WirelessControls(private val context:Context) {
         WifiConnection.connected(context),consent,granted,
         context.getSharedPreferences("local-adb",0).getString("pairedGuid",null)!=null&&AdbHostIdentity(context).exists,wireless))
     /** [noScreen]: the after-restart job (R-1) and the widget's refresh tap are the only callers allowed without a visible screen. */
-    fun enableWirelessDebugging(noScreen:Boolean=false):Boolean {
+    fun enableWirelessDebugging(noScreen:Boolean=false):Boolean = requestWirelessDebugging(noScreen)==EnableResult.ON
+    internal enum class EnableResult { ON, REFUSED, FAILED }
+    internal fun requestWirelessDebugging(noScreen:Boolean):EnableResult {
         check(mayStart(app.bluedotoff.ForegroundState.active||noScreen))
         runCatching{stopPairingExpiry()}
         val before=wireless
         val written=runCatching{Settings.Global.putInt(context.contentResolver,"adb_wifi_enabled",1)}.getOrDefault(false)
-        val result=written&&wireless
-        AutoBlocker.suspected=written&&!result
-        audit("wireless_on","adb_wifi_enabled",before,wireless,result);return result
+        val after=runCatching{Settings.Global.getInt(context.contentResolver,"adb_wifi_enabled",-1)}.getOrDefault(-1)
+        val result=when { !written->EnableResult.FAILED; after==1->EnableResult.ON; after==0->EnableResult.REFUSED; else->EnableResult.FAILED }
+        AutoBlocker.suspected=result==EnableResult.REFUSED
+        audit("wireless_on","adb_wifi_enabled",before,after.takeIf{it>=0}?.let{it==1},result==EnableResult.ON)
+        return result
     }
     fun disableWirelessDebugging():Boolean {
         check(consent&&granted)
@@ -87,6 +91,19 @@ class WirelessControls(private val context:Context) {
  *  is @hide and not readable by apps, even with WRITE_SECURE_SETTINGS (Fold7, 2026-10-10). Observed instead: while it is on,
  *  writing adb_wifi_enabled=1 succeeds but reads back 0 at once (off: stays 1). That refusal is what this remembers. */
 object AutoBlocker {
-    const val MESSAGE="휴대폰이 무선 디버깅을 막고 있어요. 설정 → 보안 및 개인정보 보호 → 보안 위험 자동 차단을 끈 뒤 다시 시도해주세요."
+    const val SETUP_VISIT="securitySettingsVisitedDuringSetup"
+    const val TITLE=SetupFlow.AUTO_BLOCKER_TITLE
+    const val MESSAGE=SetupFlow.AUTO_BLOCKER_HINT
+    const val FINISHED="확인이 끝났어요. 보안 위험 자동 차단을 껐다면 다시 켜도 돼요."
+    const val CONNECTION_HINT="무선 디버깅에 연결할 수 없어요. 이 Wi-Fi에서 무선 디버깅을 허용했는지, 보안 위험 자동 차단이 연결을 막고 있는지 확인해 주세요."
+    class EnableRefused:IllegalStateException(MESSAGE)
+    class EnableFailed:IllegalStateException("무선 디버깅을 켜지 못했어요. 설정에서 직접 켜주세요.")
+    fun connectionGuide(error:Throwable):String?=when{
+        error is EnableRefused -> MESSAGE
+        error is EnableFailed || error is WirelessWork.ServiceNotFound || error is LocalAdbStageException&&
+            error.state in setOf(LocalAdbState.ADB_CONNECTION_FAILED,LocalAdbState.ADB_DISCOVERY_FAILED) -> CONNECTION_HINT
+        else -> null
+    }
+    fun isGuide(message:String)=message==MESSAGE||message==CONNECTION_HINT
     @Volatile var suspected=false
 }

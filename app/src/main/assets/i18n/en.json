@@ -766,6 +766,7 @@
   "백그라운드 감시가 멈췄어요": "Background watch stopped",
   "휴대폰이 다시 시작되어 백그라운드 감시가 멈췄어요.": "Background watch stopped because the phone restarted.",
   "USB 디버깅이 꺼져서 백그라운드 감시가 멈췄어요.": "Background watch stopped because USB debugging was turned off.",
+  "USB 디버깅 상태를 확인하지 못해 백그라운드 감시를 멈췄어요.": "Background watch was stopped because the USB debugging status could not be checked.",
   "백그라운드 감시가 멈췄어요.": "Background watch stopped.",
   "다시 켜려면 Wi-Fi에 연결된 상태에서 bluedotOFF를 열어주세요.": "To start it again, open bluedotOFF while connected to Wi-Fi.",
   "USB 디버깅을 켜 두면 bluedotOFF를 열지 않아도 숨김이 풀린 앱을 감지하는 대로 다시 적용해요.": "With USB debugging on, apps that lost hiding are reapplied as soon as a change is detected, even without opening bluedotOFF.",
@@ -1001,5 +1002,13 @@
   "관리 목록에서 제외한 앱": "Apps removed from the managed list",
   "업데이트 후 위치 권한 요청이 없어졌어요.": "This app no longer requests location permission after the update.",
   "위젯 확인": "Widget check",
-  "확인하지 못했어요. bluedotOFF를 열어 다시 확인해주세요.": "Couldn't check. Open bluedotOFF to check again."
+  "확인하지 못했어요. bluedotOFF를 열어 다시 확인해주세요.": "Couldn't check. Open bluedotOFF to check again.",
+  "앱을 열 때 다시 숨기고 닫으면 무선 디버깅이 꺼져요. 적용 후에는 보안 위험 자동 차단을 다시 켜도 돼요. 다음에 확인하거나 다시 적용할 때만 잠시 꺼주세요.": "Apps are hidden again when you open the app, and wireless debugging turns off when you close it. After applying, you can turn Auto Blocker back on. Turn it off briefly only when you next check or reapply.",
+  "앱을 열지 않아도 다시 숨겨요. 보안 위험 자동 차단 때문에 USB 디버깅이 꺼지면 감시가 멈춰요. USB 디버깅을 켜 두면 일부 은행·결제 앱이 안 열릴 수 있어요.": "Apps are hidden again even without opening the app. If Auto Blocker turns off USB debugging, the watch stops. Some banking and payment apps may not open while USB debugging is on.",
+  "보안 위험 자동 차단을 확인해 주세요": "Check Auto Blocker",
+  "무선 디버깅을 켤 수 없어요. 보안 위험 자동 차단이 켜져 있다면 잠시 끈 뒤 bluedotOFF로 돌아와 주세요. 이미 꺼져 있다면 연결 설정을 확인해 주세요.": "Wireless debugging could not be turned on. If Auto Blocker is on, turn it off briefly, then return to bluedotOFF. If it is already off, check your connection settings.",
+  "확인이 끝났어요. 보안 위험 자동 차단을 껐다면 다시 켜도 돼요.": "The check is complete. If you turned Auto Blocker off, you can turn it back on.",
+  "‘앱을 켤 때만 적용’으로 숨긴 뒤에는 보안 위험 자동 차단을 다시 켜도 돼요. 숨김을 확인하거나 다시 적용할 때만 설정 → 보안 및 개인정보 보호에서 잠시 꺼주세요. 백그라운드 감시 중 USB 디버깅이 꺼지면 감시가 멈춰요.": "After hiding apps with “Only when you open the app”, you can turn Auto Blocker back on. Turn it off briefly under Settings → Security and privacy only when checking or reapplying hiding. If USB debugging turns off during background watch, the watch stops.",
+  "휴대폰이 재시작됐어요. bluedotOFF에서 등록한 앱의 숨김 상태를 확인해 주세요.": "Your phone restarted. Please check the hiding status of your registered apps in bluedotOFF.",
+  "무선 디버깅에 연결할 수 없어요. 이 Wi-Fi에서 무선 디버깅을 허용했는지, 보안 위험 자동 차단이 연결을 막고 있는지 확인해 주세요.": "Could not connect to wireless debugging. Check whether you allowed wireless debugging on this Wi-Fi network and whether Auto Blocker is blocking the connection."
 }

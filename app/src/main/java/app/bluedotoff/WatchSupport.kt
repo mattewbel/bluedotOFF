@@ -71,6 +71,7 @@ object WatchNotification {
     enum class Reason(val message:String){
         BOOT("휴대폰이 다시 시작되어 백그라운드 감시가 멈췄어요."),
         USB_DEBUGGING_OFF("USB 디버깅이 꺼져서 백그라운드 감시가 멈췄어요."),
+        USB_STATE_UNKNOWN("USB 디버깅 상태를 확인하지 못해 백그라운드 감시를 멈췄어요."),
         STOPPED("백그라운드 감시가 멈췄어요.")
     }
     /** What the user does to start watching again. Automatic management turns wireless debugging on by itself;
@@ -84,7 +85,6 @@ object WatchNotification {
         else->"다시 켜려면 Wi-Fi에 연결해 무선 디버깅을 켠 뒤 bluedotOFF를 열어주세요."
     }
     private fun autoManaged(c:Context)=app.bluedotoff.adb.WirelessControls(c).let{it.consent&&it.granted}
-    private fun usbOn(c:Context)=Settings.Global.getInt(c.contentResolver,Settings.Global.ADB_ENABLED,0)==1
     /** Once per stop: later reports stay quiet until watching runs again ([BackgroundWatch.running]). */
     fun stopped(c:Context,reason:Reason){
         c.getSharedPreferences("ui-state",Context.MODE_PRIVATE).edit().putBoolean("watchRunning",false).apply()
@@ -95,10 +95,13 @@ object WatchNotification {
         val prefs=c.getSharedPreferences("ui-state",Context.MODE_PRIVATE)
         if(prefs.contains("watchStopNotified")&&!unconfirmed(c))return
         if(reason==Reason.USB_DEBUGGING_OFF)WatchDiagnostics.record(c,WatchDiagnostics.Event.USB_OFF)
+        if(reason==Reason.USB_STATE_UNKNOWN)WatchDiagnostics.record(c,WatchDiagnostics.Event.USB_UNKNOWN)
         prefs.edit().putString("watchStopNotified",reason.name).apply()
         WatchLog.event("state","watchStopNotice reason=${reason.name}")
-        val usb=usbOn(c)
-        post(c,"백그라운드 감시가 멈췄어요",UiText.text(c,reason.message)+" "+UiText.text(c,advice(usb,autoManaged(c),app.bluedotoff.adb.PcStart.chosen(c))),usbAction=!usb)
+        val usbOff=app.bluedotoff.adb.WatchClient.usbState(c)==app.bluedotoff.adb.WatchClient.UsbState.OFF
+        val message=UiText.text(c,reason.message)
+        val text=if(reason==Reason.USB_STATE_UNKNOWN)message else message+" "+UiText.text(c,advice(!usbOff,autoManaged(c),app.bluedotoff.adb.PcStart.chosen(c)))
+        post(c,"백그라운드 감시가 멈췄어요",text,usbAction=usbOff)
     }
     /** USB debugging is on again while watching is stopped (the app is not open; an open app starts it by itself). */
     fun usbBack(c:Context){

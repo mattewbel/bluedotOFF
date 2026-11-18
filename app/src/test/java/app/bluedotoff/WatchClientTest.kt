@@ -83,6 +83,59 @@ class WatchClientTest {
         assertEquals(setOf("b.policy","c.update","d.retry"),WatchClient.attachTargets(entries,true))
     }
     @Test fun providerDoesNotAcceptOrdinaryAppCalls(){try{WatchBridgeProvider().call("attach",null,Bundle());fail()}catch(_:IllegalStateException){}}
+    @Test fun aMissingUsbReadCannotAuthorizeWorkAndAnExplicitZeroIsFinal(){
+        fun sample(vararg values:Int):Pair<WatchClient.UsbState,Int>{
+            var count=0
+            return WatchClient.UsbState.read{values[count++]} to count
+        }
+        val on=WatchClient.UsbState.ON;val off=WatchClient.UsbState.OFF;val unknown=WatchClient.UsbState.UNKNOWN
+        assertEquals(on to 2,sample(-1,1));assertEquals(off to 2,sample(-1,0))
+        assertEquals(off to 1,sample(0,1));assertEquals(on to 1,sample(1))
+        assertEquals(unknown to 2,sample(2,-1))
+        var reads=0
+        assertEquals(unknown,WatchClient.UsbState.read{reads++;throw SecurityException()})
+        assertEquals(1,reads)
+    }
+    @Test fun unknownUsbStateClosesAccessAndShowsADistinctStopNotice(){
+        shadowOf(c).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        val server=Server();assertTrue(attach(server))
+        Settings.Global.putString(c.contentResolver,Settings.Global.ADB_ENABLED,null)
+        assertFalse(WatchClient.available(c));assertFalse(WatchClient.owns(c,server))
+        assertFalse(WatchClient.owns(c,server))
+        assertEquals(1,WatchDiagnostics.report(c).lines().count{it.endsWith(WatchDiagnostics.Event.USB_UNKNOWN.label)})
+        WatchClient.stopNow(c,WatchNotification.Reason.USB_STATE_UNKNOWN)
+        assertTrue(server.stopped)
+        assertEquals("USB_STATE_UNKNOWN",c.getSharedPreferences("ui-state",0).getString("watchStopNotified",""))
+        val notice=c.getSystemService(NotificationManager::class.java).activeNotifications.single{it.id==4201}
+        assertTrue(notice.notification.actions.isNullOrEmpty())
+        assertFalse(WatchDiagnostics.report(c).contains(WatchDiagnostics.Event.USB_OFF.label))
+        assertTrue(attach(Server()))
+        assertTrue(c.getSystemService(NotificationManager::class.java).activeNotifications.none{it.id==4201})
+    }
+    @Test fun onlyAnExitReplyToTheActiveOwnerIsRecorded(){
+        val active=Server()
+        assertTrue(attach(active))
+        val provider=WatchBridgeProvider().also{
+            it.attachInfo(c, android.content.pm.ProviderInfo().apply{authority=WatchProtocol.AUTHORITY})
+        }
+        fun reply(peer:IBinder)=provider.call("state",null,Bundle().apply{
+            putBinder("helper",peer);putString("profile",profile().toString())
+            putString("apk",c.applicationInfo.sourceDir);putLong("version",BuildConfig.VERSION_CODE.toLong())
+        })
+        val label=WatchDiagnostics.Event.ACTIVE_REFUSED.label
+        val caller=Binder.getCallingUid()
+        try {
+            org.robolectric.shadows.ShadowBinder.setCallingUid(2000)
+            assertFalse(reply(Server()).getBoolean("enabled"))
+            assertTrue(reply(active).getBoolean("enabled"))
+            Settings.Global.putInt(c.contentResolver,Settings.Global.ADB_ENABLED,0)
+            LocalAdbSession.exclusive {assertTrue(reply(active).getBoolean("draining"))}
+            assertFalse(WatchDiagnostics.report(c).contains(label))
+            val refused=reply(active)
+            assertFalse(refused.getBoolean("enabled"));assertFalse(refused.getBoolean("draining"))
+            assertTrue(WatchDiagnostics.report(c).contains(label))
+        } finally { org.robolectric.shadows.ShadowBinder.setCallingUid(caller) }
+    }
     @Test fun launchHasFixedEntrypointAndRejectsShellInjection(){val command=WatchProtocol.launch("/data/app/~~fixture/bluedot/base.apk");assertTrue(command.contains("nohup setsid app_process"));assertTrue(command.contains("ResidentWatchHelper"));try{WatchProtocol.launch("/data/app/test/base.apk;id");fail()}catch(_:IllegalArgumentException){}}
     @Test fun foregroundRoutingUsesResidentHelperWithoutOpeningWireless(){val s=Server();attach(s);Settings.Global.putInt(c.contentResolver,"adb_wifi_enabled",0);Settings.Global.putInt(c.contentResolver,"wifi_on",0);WirelessWork.run(c,true){assertTrue(it.liveShellServer());assertEquals("fixture",it.verify().abiProfile)};assertFalse(WirelessWork.leasing);assertFalse(WirelessControls(c).wireless)}
     @Test fun updateWithTheSameVersionAndPathCannotKeepTheOldHelper(){val s=Server();try{attach(s,profile().put("appUpdatedAt",profile().getLong("appUpdatedAt")+1));fail()}catch(_:IllegalArgumentException){};assertFalse(WatchClient.available(c))}

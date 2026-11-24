@@ -29,6 +29,11 @@ class MainActivity : ComponentActivity() {
     private var handledBatchId=0L
     private var skipNotice=""
     private var refreshJob: Job? = null
+    private class WatchVisit {
+        var pending:Job?=null
+        var replayed=false
+    }
+    @Volatile private var watchVisit:WatchVisit?=null
     private var reapplyHistoryJob:Job?=null
     private var discoveryJob: Job? = null
     private var discoveryGeneration=0
@@ -119,6 +124,8 @@ class MainActivity : ComponentActivity() {
             }
             return
         }
+        if(refreshJob?.isActive==true||model.busy||BatchRuntime.state.value.busy)
+            deferHomeWatch(watchVisit)
         val registered=model.entries.filter{it.enabled}.flatMap{e->listOf(e.identity.packageName)+e.groupIdentities.map{it.packageName}}.toSet()
         val touched=synchronized(changedPackages){changedPackages.filter{it in registered}.toSet()}
         val plan=clock.plan(android.os.SystemClock.elapsedRealtime(),touched)
@@ -128,6 +135,54 @@ class MainActivity : ComponentActivity() {
             plan==null->refresh(true,Check.LOCAL)
             else->refresh(true,Check.REGISTERED,plan)
         }
+    }
+    private fun watchConfigured()=prefs.getBoolean("welcomed",false)&&scopes.resolved&&DeviceSupport.basic()&&BackgroundWatch.enabled(this)
+
+    // A busy Home visit owes only a watch-start check; do not replay the inventory scan or a permission operation.
+    private fun deferHomeWatch(visit:WatchVisit?,initialWait:WatchClient.StartWait?=null){
+        if(visit==null||visit!==watchVisit||visit.replayed||visit.pending?.isActive==true||
+            !watchConfigured()||PcStart.chosen(this)||WatchClient.available(this))return
+        visit.pending=lifecycleScope.launch {
+            val job=currentCoroutineContext().job
+            val eligible={
+                job.isActive&&watchVisit===visit&&BackgroundWatch.enabled(applicationContext)&&
+                    !PcStart.chosen(applicationContext)&&
+                    WifiConnection.connected(applicationContext)&&SetupSession.current()==null
+            }
+            var wait=initialWait
+            var waitedForUsb=false
+            while(eligible()){
+                when(val reason=wait){
+                    is WatchClient.StartWait.InFlight -> reason.finished.join()
+                    is WatchClient.StartWait.Cooldown -> delay((reason.until-android.os.SystemClock.elapsedRealtime()).coerceAtLeast(0L))
+                    WatchClient.StartWait.UsbRead -> {
+                        if(waitedForUsb||!WatchClient.awaitReadableUsb(applicationContext,eligible))break
+                        waitedForUsb=true
+                    }
+                    null -> Unit
+                }
+                wait=null
+                if(!eligible()||!watchConfigured()||WatchClient.available(this@MainActivity))break
+                val reading=refreshJob
+                if(reading?.isActive==true){reading.join();continue}
+                if(BatchRuntime.state.value.busy){BatchRuntime.state.first{!it.busy};continue}
+                if(model.busy){androidx.compose.runtime.snapshotFlow{model.busy}.first{!it};continue}
+                visit.replayed=true
+                // Only an admission refusal can defer this visit. Any actual attempt (success or failure) ends it.
+                wait=startHomeWatch(eligible) ?: break
+            }
+        }
+    }
+
+    private suspend fun startHomeWatch(stillWanted:()->Boolean={true}):WatchClient.StartWait? {
+        model=model.copy(watchStarting=!WatchClient.available(this))
+        return try {
+            withContext(Dispatchers.IO){
+                var wait:WatchClient.StartWait?=null
+                WatchClient.ensureStarted(applicationContext,onWait={wait=it},stillWanted=stillWanted)
+                wait
+            }
+        }finally{model=model.copy(watchStarting=false,watchRunning=WatchClient.available(this))}
     }
     /** Home refresh icon: all registered apps, not the whole app inventory. */
     private fun recheck()=refresh(true,Check.REGISTERED)
@@ -250,8 +305,9 @@ class MainActivity : ComponentActivity() {
     private val releaseHeld=Runnable{WirelessWork.release(applicationContext)}
     override fun onStart() { super.onStart(); ForegroundState.started(); releaseHandler.removeCallbacks(releaseHeld); WirelessReleaseJob.cancel(applicationContext) }
     override fun onStop() { StatusWidget.update(applicationContext);interactionOpened=0L;autoReapplyTried=false;ForegroundState.stopped(); releaseHandler.postDelayed(releaseHeld,2000); WirelessReleaseJob.schedule(applicationContext); super.onStop() }
-    override fun onPause() { ForegroundState.paused();super.onPause() }
+    override fun onPause() { val leaving=watchVisit;watchVisit=null;leaving?.pending?.cancel();ForegroundState.paused();super.onPause() }
     override fun onResume() { super.onResume();runCatching{controls.stopPairingExpiry()};model=model.copy(wifiConnected=WifiConnection.connected(this));pendingRestore=emptySet();ForegroundState.resumed();autoReapplyArmed=true;model=model.copy(notifications=reapplyNotificationsEnabled(),usbDebugging=WatchClient.usbEnabled(this),watchRunning=WatchClient.available(this),batteryUnrestricted=BatteryOptimization.unrestricted(this))
+        watchVisit=WatchVisit()
         if(watchAfterUsbPending){watchAfterUsbPending=false;if(WatchClient.usbEnabled(this))backgroundWatchChanged(true) else model=model.copy(notice="USB 디버깅이 꺼져 있어서 백그라운드 감시를 켜지 않았어요.")}
         takeSetupSecurityVisit()
         if (::store.isInitialized) resumeCheck(); updateOnOpen() }
@@ -313,6 +369,7 @@ class MainActivity : ComponentActivity() {
     private fun firmwareNotice()=prefs.getBoolean("firmwareUnverified",false)&&prefs.getString("firmwareNoticeDismissed","")!=prefs.getString("firmwareProfile","")
     private fun refresh(userAction:Boolean=false,mode:Check=Check.AUTO,only:Set<String> = emptySet()) {
         if((!userAction&&SetupSession.current()!=null)||model.busy||BatchRuntime.state.value.busy||refreshJob?.isActive==true)return
+        val visit=watchVisit
         var allowImmediateReapply=true
         val job=lifecycleScope.launch {
             try {
@@ -324,10 +381,10 @@ class MainActivity : ComponentActivity() {
                 // "shown" read must not make Detail say "재적용 필요" (Codex 2026-10-22). A later read marks it fresh again.
                 val changed=entries.filterNot{it in model.entries}.map{it.identity.packageName}.toSet()
                 model=model.copy(journalProblem=false,entries=entries,freshPackages=model.freshPackages-changed)
-                if(userAction&&prefs.getBoolean("welcomed",false)&&scopes.resolved&&DeviceSupport.basic()&&BackgroundWatch.enabled(this@MainActivity)){
+                if(userAction&&watchConfigured()){
                     // Home hides the "멈춰 있어요" card while a stopped watch is being started.
-                    model=model.copy(watchStarting=!WatchClient.available(this@MainActivity))
-                    try{withContext(Dispatchers.IO){WatchClient.ensureStarted(applicationContext)}}finally{model=model.copy(watchStarting=false)}
+                    if(visit!=null&&!visit.replayed){visit.pending?.cancel();visit.pending=null}
+                    startHomeWatch()?.let{deferHomeWatch(visit,it)}
                 }
                 model=model.copy(applicationScope=scopes.current,scopePending=scopes.pending!=null||scopes.requested!=null,scopeResolved=scopes.resolved,entries=entries,firmwareNotice=firmwareNotice(),reapplyNotify=prefs.getBoolean("reapplyNotify",true),autoReapply=prefs.getBoolean("autoReapply",true),backgroundWatch=BackgroundWatch.enabled(this@MainActivity),usbDebugging=WatchClient.usbEnabled(this@MainActivity),watchRunning=WatchClient.available(this@MainActivity),watchAcknowledged=BackgroundWatch.acknowledged(this@MainActivity),notifications=reapplyNotificationsEnabled(),automaticReady=automaticReady(),connected=controls.wireless||WatchClient.available(this@MainActivity),autoManagement=controls.consent,autoPermission=controls.granted,paired=getSharedPreferences("local-adb",0).getString("pairedGuid",null)!=null&&AdbHostIdentity(this@MainActivity).exists,updateCheck=UpdateCheck.enabled(this@MainActivity),updateOffer=!UpdateCheck.asked(this@MainActivity),latestVersion=UpdateCheck.latest(this@MainActivity),pcOnly=PcStart.chosen(this@MainActivity))
                 if(mode==Check.LOCAL)return@launch
@@ -520,7 +577,7 @@ class MainActivity : ComponentActivity() {
     private fun backgroundWatchChanged(on:Boolean){
         if(on){securityVisit=SecurityVisit.NONE;model=model.copy(blockerReminder=false)}
         BackgroundWatch.set(this,on);model=model.copy(backgroundWatch=on,watchAcknowledged=model.watchAcknowledged||on)
-        if(!on){WatchClient.stop(applicationContext);model=model.copy(automaticReady=automaticReady(),connected=controls.wireless||WatchClient.available(this@MainActivity));return}
+        if(!on){watchVisit?.pending?.cancel();WatchClient.stop(applicationContext);model=model.copy(automaticReady=automaticReady(),connected=controls.wireless||WatchClient.available(this@MainActivity));return}
         WatchClient.startFromSwitch(applicationContext){started->runOnUiThread{if(!isDestroyed&&BackgroundWatch.enabled(this)){
             if(!started)model=model.copy(notice=if(!WatchClient.usbEnabled(this))"감시를 시작하려면 USB 디버깅을 켜주세요." else if(PcStart.chosen(this))"감시를 시작하려면 PC에서 bluedotOFF 시작 명령을 실행해주세요." else "감시를 시작하려면 Wi-Fi에 연결하고 연결 준비를 완료해주세요.")
             refresh(true)

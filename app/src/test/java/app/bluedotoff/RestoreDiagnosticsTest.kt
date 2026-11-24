@@ -107,6 +107,11 @@ class RestoreDiagnosticsTest {
         val controller = Robolectric.buildActivity(MainActivity::class.java).create()
         try {
             val activity = controller.get()
+            val attempt=java.util.UUID.randomUUID().toString()
+            val helper=java.util.UUID.randomUUID().toString()
+            WatchEvidence.died(activity,helper)
+            WatchEvidence.hostFailure(activity,attempt,"HANDSHAKE_TIMEOUT")
+            WatchEvidence.helperFailure(activity,attempt,"PACKAGE_CALLBACK","SECURITY")
             val model = UiModel(entries=listOf(records.first(), records.last().copy(state=TargetState.UNSUPPORTED_STATE)))
             MainActivity::class.java.getDeclaredMethod("setModel", UiModel::class.java)
                 .apply { isAccessible=true }.invoke(activity, model)
@@ -117,6 +122,10 @@ class RestoreDiagnosticsTest {
             val mail = shadowOf(activity).nextStartedActivity
             assertEquals(Intent.ACTION_SENDTO, mail.action)
             assertEquals(copied, mail.getStringExtra(Intent.EXTRA_TEXT))
+            val reason=copied.lineSequence().single { it.startsWith("Start attempt:") }
+            assertTrue(reason.contains("HANDSHAKE_TIMEOUT")&&reason.contains("PACKAGE_CALLBACK"))
+            assertTrue(copied.contains("no helper exit reason received"))
+            assertFalse(copied.contains(attempt)||copied.contains(helper))
             assertTrue(copied.lineSequence().filter { it.startsWith("Needs check:") }.single().contains("#1 APPLIED | #2 UNSUPPORTED_STATE"))
             assertFalse(names.any { copied.contains(it) })
         } finally {

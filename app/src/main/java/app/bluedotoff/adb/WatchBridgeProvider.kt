@@ -23,10 +23,25 @@ class WatchBridgeProvider:ContentProvider() {
             val phase=profile.getString("startupPhase");val error=profile.getString("startupError")
             require(phase in setOf("PROFILE","PACKAGE_CALLBACK","PROCESS_CALLBACK","CLIENT_HANDSHAKE")&&error.matches(Regex("[A-Za-z0-9_]{1,100}")))
             app.bluedotoff.WatchLog.event("state","watchStartupFailed phase=$phase error=$error")
+            val kind=when(error){
+                "SecurityException" -> "SECURITY"
+                "RemoteException","DeadObjectException" -> "REMOTE"
+                "InvocationTargetException","ReflectiveOperationException","NoSuchMethodException","ClassNotFoundException","NoSuchFieldException","IllegalAccessException" -> "REFLECTION"
+                "IOException" -> "IO"
+                "IllegalStateException","IllegalArgumentException" -> "STATE"
+                else -> "OTHER"
+            }
+            val attempt=profile.optString("startAttempt")
+            app.bluedotoff.WatchEvidence.helperFailure(c,attempt,phase,profile.optString("startupErrorKind",kind),profile.optBoolean("externalStart"))
+            WatchClient.recordAttachedStartupFailure(c,b,attempt)
             WatchClient.startupFailed(c)
             return Bundle().apply{putInt("uid",c.applicationInfo.uid);putBoolean("enabled",false)}
         }
-        val accepted=WatchClient.attach(c,b,profile,extras.getString("apk")?:error("Missing install"),extras.getLong("version"))
+        // Keep the read that refused this contact. The system setting can recover before the reply.
+        var unownedUsbUnknown=false
+        val accepted=WatchClient.attach(c,b,profile,extras.getString("apk")?:error("Missing install"),extras.getLong("version")) {
+            unownedUsbUnknown=true
+        }
         val targets=if(accepted) WatchClient.config(c) else JSONArray()
         var receipt=WatchReceipt()
         if(accepted){
@@ -46,12 +61,16 @@ class WatchBridgeProvider:ContentProvider() {
             val draining=WatchClient.draining(b)
             val retryContact=!enabled&&!draining&&WatchClient.retryUsbContact(c,b)
             putBoolean("enabled",enabled)
+            if(enabled) WatchClient.exitReceiver(c,b)?.let { putBinder(WatchExitReport.EXTRA,it) }
             putBoolean("draining",draining)
             putBoolean("retryContact",retryContact)
+            if(method=="attach"&&extras.getBoolean("initialContact")&&!enabled&&!draining&&!retryContact&&
+                extras.getString("apk")==c.applicationInfo.sourceDir&&extras.getLong("version")==app.bluedotoff.BuildConfig.VERSION_CODE.toLong())
+                app.bluedotoff.WatchEvidence.refused(c,profile.optString("startAttempt"))
             putString("targets",targets.toString())
             putLongArray("checkedRevisions",receipt.checked)
             putLongArray("failedRevisions",receipt.failed)
-            if(!enabled&&!draining&&!retryContact)WatchClient.recordExitReply(c,b)
+            if(!enabled&&!draining&&!retryContact)WatchClient.recordExitReply(c,b,unownedUsbUnknown)
         }
     }
     override fun query(u:Uri,p:Array<out String>?,s:String?,a:Array<out String>?,o:String?):Cursor?=throw UnsupportedOperationException()

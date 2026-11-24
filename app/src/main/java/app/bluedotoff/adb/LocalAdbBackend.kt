@@ -14,7 +14,7 @@ class LocalAdbBackend private constructor(private val context:Context,private va
     constructor(context:Context,connection:LocalAdbConnection,proof:JSONObject,sessionId:String=java.util.UUID.randomUUID().toString()):this(context,connection,proof,sessionId,null)
     internal constructor(context:Context,proof:JSONObject,exchange:(JSONObject)->JSONObject):this(context,null,proof,"resident",exchange)
     private fun exchange(request:JSONObject)=residentExchange?.invoke(request)?:connection!!.exchange(request)
-    internal fun startWatch(){check(connection!=null);ready();connection.finishHelper();connection.startWatch(context.applicationInfo.sourceDir);connection.finishHelper()}
+    internal fun startWatch(attempt:java.util.UUID){check(connection!=null);ready();connection.finishHelper();connection.startWatch(context.applicationInfo.sourceDir,attempt);connection.finishHelper()}
     override val applicationScope get()=app.bluedotoff.ScopePreferences(context).current
     private val generation=LocalAdbSession.generation
     private var live=true

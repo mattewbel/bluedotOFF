@@ -51,7 +51,8 @@ object WatchNotification {
         val prefs=c.getSharedPreferences("ui-state",0)
         return when(prefs.getString("watchStopNotified",null)){
             UNCONFIRMED->true
-            null->usbOn&&prefs.getBoolean("watchRunning",false)
+            null->prefs.getBoolean("watchRunning",false)&&(usbOn||
+                app.bluedotoff.adb.WatchClient.usbState(c)==app.bluedotoff.adb.WatchClient.UsbState.UNKNOWN)
             else->false
         }
     }

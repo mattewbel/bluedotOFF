@@ -86,6 +86,50 @@ class WatchUsbRecoveryTest {
         idleWorker()
     }
 
+    // A new app process has a remembered helper but no live connection to it.
+    private fun forgetConnection() {
+        WatchClient.stopNow(c)
+        c.getSharedPreferences("ui-state",0).edit().putBoolean("watchRunning",true).apply()
+        assertFalse(WatchClient.connected())
+    }
+
+    @Config(shadows=[WatchUsbReadSequence::class])
+    @Test fun coldRefusalKeepsTheUnreadableUsbSampleAfterRecoveryOnlyOnce() {
+        forgetConnection()
+        repeat(2) {
+            WatchUsbReadSequence.set(-1,-1)
+            val reply=contact()
+            assertFalse(reply.getBoolean("enabled"))
+            assertFalse(reply.getBoolean("draining"))
+            assertFalse(reply.getBoolean("retryContact"))
+            assertTrue(WatchClient.usbEnabled(c))
+        }
+        assertEquals(1,WatchDiagnostics.report(c).lines().count { it.endsWith(WatchDiagnostics.Event.UNOWNED_USB_UNKNOWN.label) })
+    }
+
+    @Config(shadows=[WatchUsbReadSequence::class])
+    @Test fun coldConfirmedOffIsNotRelabelledIfUsbBecomesUnreadableBeforeTheReply() {
+        forgetConnection()
+        try {
+            WatchUsbReadSequence.set(0,-1,-1)
+            val reply=contact()
+            assertFalse(reply.getBoolean("enabled"))
+            assertFalse(reply.getBoolean("draining"))
+            assertFalse(reply.getBoolean("retryContact"))
+            assertFalse(WatchDiagnostics.report(c).contains(WatchDiagnostics.Event.UNOWNED_USB_UNKNOWN.label))
+        } finally { WatchUsbReadSequence.set() }
+    }
+
+    @Config(shadows=[WatchUsbReadSequence::class])
+    @Test fun establishedContactGetsItsRetryForTheSameBriefReadGap() {
+        WatchUsbReadSequence.set(-1,-1)
+        val reply=contact()
+        assertFalse(reply.getBoolean("enabled"))
+        assertTrue(reply.getBoolean("retryContact"))
+        assertTrue(contact().getBoolean("enabled"))
+        assertFalse(WatchDiagnostics.report(c).contains(WatchDiagnostics.Event.UNOWNED_USB_UNKNOWN.label))
+    }
+
     @Test fun aTemporaryUnreadableContactDeniesWorkWithoutAskingTheActivePeerToExit() {
         unreadable()
         val response = contact()
@@ -96,6 +140,29 @@ class WatchUsbRecoveryTest {
         assertFalse(WatchClient.available(c))
         assertFalse(WatchDiagnostics.report(c).contains(WatchDiagnostics.Event.ACTIVE_REFUSED.label))
     }
+    @Test fun aSecondReadGapAfterConfirmedRecoveryGetsItsOwnFullGraceWindow() {
+        unreadable()
+        assertTrue(contact().getBoolean("retryContact")) // first gap begins at t=0
+        step(500)
+        Settings.Global.putInt(c.contentResolver, Settings.Global.ADB_ENABLED, 1)
+        assertTrue("the same authenticated owner must recover on confirmed ON", contact().getBoolean("enabled"))
+
+        step(500)
+        unreadable()
+        assertTrue("a later gap for the same owner gets a fresh retry", contact().getBoolean("retryContact"))
+        step(250) // first gap's old deadline; only 250ms into the second gap
+        assertFalse("the old timer must not send a stale STOP", peer.stopped)
+        assertTrue(WatchClient.connected())
+        assertFalse(notice())
+        assertNull(c.getSharedPreferences("ui-state", 0).getString("watchStopNotified", null))
+        step(999)
+        assertFalse("the second gap must retain its full 1,250ms grace", peer.stopped)
+        step(1)
+        assertTrue("persistent second gap stops at its own deadline", peer.stopped)
+        assertTrue(notice())
+        assertEquals("USB_STATE_UNKNOWN", c.getSharedPreferences("ui-state", 0).getString("watchStopNotified", null))
+    }
+
     @Test fun anObserverReadGapRecoversWithoutStoppingTheKnownPeer() {
         WatchClient.initialize(c)
         unreadable()

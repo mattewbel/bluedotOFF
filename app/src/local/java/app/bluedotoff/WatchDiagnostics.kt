@@ -16,7 +16,7 @@ internal object WatchDiagnostics {
 
     /** Only fixed lifecycle facts are stored; callers cannot attach package names or arbitrary text. */
     enum class Event(val label: String) {
-        START_FAILED("Watch start failed"),
+        START_FAILED("Watch start failed (legacy record; multiple reports may refer to one attempt)"),
         RESTART_REQUESTED("A watch start was requested while previous helper contact was outstanding"),
         INIT_FAILED("Watch initialization failed"),
         CONTACT_UNCONFIRMED("Helper contact could not be confirmed"),
@@ -75,7 +75,11 @@ internal object WatchDiagnostics {
     }
 
     /** English text suitable for the user's existing support email and clipboard. */
-    fun report(context: Context): String = runCatching {
+    fun report(context: Context): String = listOf(legacyReport(context),
+        WatchEvidence.report(context).ifEmpty { "Build 70+ watch evidence: no start or exit evidence recorded." })
+        .filter { it.isNotEmpty() }.joinToString("\n")
+
+    private fun legacyReport(context: Context): String = runCatching {
         val items = decode(context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_EVENTS, null))
         val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val work = runCatching { JSONObject(prefs.getString(KEY_WORK, null) ?: "") }.getOrNull()

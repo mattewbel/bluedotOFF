@@ -52,7 +52,7 @@ class LocalAdbConnection(private val wire:AdbWire):AutoCloseable {
         authenticated=true
     }
     fun startHelper(apk:String):Unit=startCommand(HelperLaunch.command(apk))
-    internal fun startWatch(apk:String):Unit=startCommand(WatchProtocol.launch(apk))
+    internal fun startWatch(apk:String,attempt:java.util.UUID):Unit=startCommand(WatchProtocol.launch(apk,attempt))
     private fun startCommand(command:String):Unit=protocol {
         check(authenticated&&remote==0&&streamClosed&&streamId<Int.MAX_VALUE)
         streamId++;ended=false;helperExitConfirmed=false;streamClosed=false

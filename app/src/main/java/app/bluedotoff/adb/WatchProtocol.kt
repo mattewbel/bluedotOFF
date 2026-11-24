@@ -9,8 +9,9 @@ object WatchProtocol {
     const val STOP=3
     const val MAX_REQUEST=65_536
     const val MAX_RESPONSE=524_288
-    fun launch(apk:String):String {
+    fun launch(apk:String, attempt:java.util.UUID?=null):String {
         app.bluedotoff.core.HelperLaunch.command(apk)
-        return "CLASSPATH=$apk nohup setsid app_process /system/bin app.bluedotoff.adb.ResidentWatchHelper $apk </dev/null >/dev/null 2>&1 &"
+        val argument=attempt?.let{" $it"}.orEmpty()
+        return "CLASSPATH=$apk nohup setsid app_process /system/bin app.bluedotoff.adb.ResidentWatchHelper $apk$argument </dev/null >/dev/null 2>&1 &"
     }
 }
